@@ -228,7 +228,7 @@ fn inline_edit_submit_with_unchanged_text_closes_editor() {
 
 /// Points loaded with a pre-selected target skip the picker straight into
 /// ModeSelect — the same popup `/rewind` shows — with the editor still open
-/// behind it. In this inline context the "File changes only" row is hidden
+/// behind it. In this inline context the "仅文件变更" row is hidden
 /// (`offer_files_only: false`): the conversation rewind is a given.
 #[test]
 fn inline_edit_points_loaded_opens_mode_select_over_open_editor() {

@@ -719,7 +719,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
         ActionDef {
             id: ActionId::NewSession,
             label: "new",
-            description: "New session",
+            description: "新会话",
             default_key: key!('n', CONTROL),
             alt_keys: vec![],
             category: Category::Session,

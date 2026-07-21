@@ -164,7 +164,7 @@ const CODING_DATA_SHARING_CHOICES: &[EnumChoice] = &[
 // which row the cursor preselects on the FIRST permission prompt of a
 // session; after the user confirms any prompt, the cursor sticks to the
 // last-used option kind. `always_allow_all_sessions` (the effective default)
-// lands the cursor on the "Always allow on all sessions" / enable-always-approve
+// lands the cursor on the "在所有会话中始终允许" / enable-always-approve
 // row explicitly, via `is_enable_always_approve_option` — not via index 0; the
 // other three map onto `acp::PermissionOptionKind::{AllowOnce, AllowAlways,
 // Reject*}`.

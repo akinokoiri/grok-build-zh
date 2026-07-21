@@ -732,7 +732,7 @@ impl SessionActor {
             .await;
             let acp_err = acp::Error::new(
                 crate::sampling::error::RATE_LIMITED_ERROR_CODE,
-                "Rate limited".to_string(),
+                "请求频率受限".to_string(),
             )
             .data(detailed_message);
             return Err(acp_err);

@@ -258,7 +258,7 @@
             &mut app,
         );
 
-        // A live child message chunk resolves "Responding" and stamps both
+        // A live child message chunk resolves "正在回复" and stamps both
         // the block and the info.
         let _ = handle(
             make_agent_chunk_with_event(child_sid, "child text", "p-child", None),
@@ -266,7 +266,7 @@
         );
         let agent = app.agents.get(&AgentId(0)).unwrap();
         let info = agent.subagent_sessions.get(child_sid).unwrap();
-        assert_eq!(info.activity_label.as_deref(), Some("Responding"));
+        assert_eq!(info.activity_label.as_deref(), Some("正在回复"));
         let entry_id = info.scrollback_entry_id.unwrap();
         let entry = agent.scrollback.get_by_id(entry_id).unwrap();
         let RenderBlock::Subagent(sb) = &entry.block else {
@@ -297,7 +297,7 @@
                 .unwrap()
                 .activity_label
                 .as_deref(),
-            Some("Responding")
+            Some("正在回复")
         );
 
         let _ = handle(

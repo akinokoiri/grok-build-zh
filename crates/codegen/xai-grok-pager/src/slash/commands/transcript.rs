@@ -70,7 +70,7 @@ mod tests {
             pager_state: PagerLocalSnapshot::default(),
         };
         match TranscriptCommand.run(&mut ctx, "") {
-            CommandResult::Error(msg) => assert!(msg.contains("No active session")),
+            CommandResult::Error(msg) => assert!(msg.contains("无活动会话")),
             other => panic!("expected Error, got {other:?}"),
         }
     }

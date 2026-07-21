@@ -787,7 +787,7 @@ impl RenderBlock {
         RenderBlock::CreditLimit(CreditLimitBlock::new(heading, action, url))
     }
 
-    /// Create a "Task started" background task block.
+    /// Create a "任务已开始" background task block.
     pub fn bg_task(command: impl Into<String>, task_id: impl Into<String>) -> Self {
         RenderBlock::BgTask(BgTaskBlock::started(command, task_id))
     }
@@ -801,7 +801,7 @@ impl RenderBlock {
         RenderBlock::BgTask(BgTaskBlock::completed(command, task_id, elapsed))
     }
 
-    /// Create a "Task failed" background task block.
+    /// Create a "任务失败" background task block.
     pub fn bg_task_failed(
         command: impl Into<String>,
         task_id: impl Into<String>,

@@ -1968,7 +1968,7 @@ impl MvpAgent {
                         url: Some(
                             "https://grok.com/supergrok?referrer=grok-build".to_string(),
                         ),
-                        label: Some("Subscribe".to_string()),
+                        label: Some("订阅".to_string()),
                     })
                 } else {
                     gate

@@ -330,8 +330,8 @@
     /// Resume regression: the agent's cold-load reconciliation
     /// completes replay-restored dead tasks with `signal: "session_restart"`.
     /// That synthetic completion must finalize state QUIETLY — finish the
-    /// replayed "Task started" entry and mark the task not-running — without
-    /// pushing a fresh red "Task failed" block into the resumed scrollback.
+    /// replayed "任务已开始" entry and mark the task not-running — without
+    /// pushing a fresh red "任务失败" block into the resumed scrollback.
     #[test]
     fn session_restart_completion_finalizes_without_failure_block() {
         let mut app = make_app_with_agent("sess-1");

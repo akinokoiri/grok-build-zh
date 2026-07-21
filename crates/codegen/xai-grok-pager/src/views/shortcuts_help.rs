@@ -76,7 +76,7 @@ impl ShortcutsHelpEntry {
 
 /// Category display order and labels for the cheatsheet.
 const CATEGORY_ORDER: &[(Category, &str)] = &[
-    (Category::GettingStarted, "Essentials"),
+    (Category::GettingStarted, "基础"),
     (Category::Input, "Input"),
     (Category::ConversationNav, "Conversation Navigation"),
     (Category::ConversationAction, "Conversation Actions"),
@@ -690,7 +690,7 @@ pub fn render_detail(
     };
     let footer = modal_footer_detail();
     let modal_config = mw::ModalWindowConfig {
-        title: "Keyboard Shortcuts",
+        title: "键盘快捷键",
         tabs: None,
         shortcuts: &footer,
         sizing: modal_sizing(compact),
@@ -1036,7 +1036,7 @@ pub fn modal_footer(filter_active: bool) -> Vec<crate::views::modal_window::Shor
             id: 0,
         },
         Shortcut {
-            label: "Esc close",
+            label: "Esc 关闭",
             clickable: false,
             id: 0,
         },
@@ -1274,7 +1274,7 @@ pub fn render_modal(
     let non_sel: Vec<bool> = vec![false; picker_entries.len()];
     let footer = modal_footer(filter_active);
     let modal_config = mw::ModalWindowConfig {
-        title: "Keyboard Shortcuts",
+        title: "键盘快捷键",
         tabs: None,
         shortcuts: &footer,
         sizing: modal_sizing(compact),
@@ -1393,7 +1393,7 @@ pub fn handle_modal_key(
         modal_footer(filter_active)
     };
     let chrome_cfg = mw::ModalWindowConfig {
-        title: "Keyboard Shortcuts",
+        title: "键盘快捷键",
         tabs: None,
         shortcuts: &footer,
         sizing: modal_sizing(compact),
@@ -1668,7 +1668,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(headers.contains(&"Essentials"));
+        assert!(headers.contains(&"基础"));
         assert!(headers.contains(&"Conversation Navigation"));
         assert!(headers.contains(&"Panels"));
     }
@@ -1713,7 +1713,7 @@ mod tests {
             match entry {
                 ShortcutsHelpEntry::SectionHeader { label, .. } => {
                     in_panels = *label == "Panels";
-                    in_essentials = *label == "Essentials";
+                    in_essentials = *label == "基础";
                 }
                 ShortcutsHelpEntry::Hint { item, .. } => {
                     if item.label == "mouse reporting" {
@@ -3453,7 +3453,7 @@ mod tests {
         item.description = Some("Quit the app".into());
         let entries = vec![
             ShortcutsHelpEntry::SectionHeader {
-                label: "Essentials",
+                label: "基础",
                 category_idx: 0,
                 entry_count: 1,
             },
@@ -3515,7 +3515,7 @@ mod tests {
         item.description = Some("Quit the app".into());
         let entries = vec![
             ShortcutsHelpEntry::SectionHeader {
-                label: "Essentials",
+                label: "基础",
                 category_idx: 0,
                 entry_count: 1,
             },
@@ -3549,7 +3549,7 @@ mod tests {
         let item = HintItem::new(key!('q', CONTROL), "quit");
         let entries = vec![
             ShortcutsHelpEntry::SectionHeader {
-                label: "Essentials",
+                label: "基础",
                 category_idx: 0,
                 entry_count: 1,
             },

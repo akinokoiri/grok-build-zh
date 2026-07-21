@@ -1530,7 +1530,7 @@ pub(super) fn make_permission_message(
         ),
         vec![
             acp::PermissionOption::new(acp::PermissionOptionId::new(Arc::from("allow-once")),
-            "Allow once", acp::PermissionOptionKind::AllowOnce,)
+            "仅允许一次", acp::PermissionOptionKind::AllowOnce,)
         ],
     );
     let msg = AcpClientMessage::RequestPermission(xai_acp_lib::AcpArgs {

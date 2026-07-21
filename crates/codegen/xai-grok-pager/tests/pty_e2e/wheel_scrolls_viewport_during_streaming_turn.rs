@@ -106,7 +106,7 @@ async fn wheel_scrolls_viewport_during_streaming_turn() {
     // status label is still up and the last chunk is not on screen (the
     // completion gate guarantees the turn itself cannot have ended).
     assert!(
-        harness.contains_text("Responding"),
+        harness.contains_text("正在回复"),
         "movement observed but the streaming status label is gone — the turn \
          ended despite the held completion gate\nscreen:\n{}",
         harness.screen_contents()
@@ -121,7 +121,7 @@ async fn wheel_scrolls_viewport_during_streaming_turn() {
     // (status label clears) — scrolling mid-stream didn't wedge it.
     content.release_agent_completions();
     let deadline = std::time::Instant::now() + Duration::from_secs(40);
-    while harness.contains_text("Responding") {
+    while harness.contains_text("正在回复") {
         assert!(
             std::time::Instant::now() < deadline,
             "turn never completed after releasing the gate\nscreen:\n{}",

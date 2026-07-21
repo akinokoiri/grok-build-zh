@@ -3,7 +3,7 @@
 use super::common::*;
 
 const THINKING_SENTINEL: &str = "THINKING_SENTINEL_XYZ";
-const THOUGHT_HEADER: &str = "Thought for";
+const THOUGHT_HEADER: &str = "思考用时";
 
 fn chat_completion_with_reasoning_stream(
     reasoning: &str,

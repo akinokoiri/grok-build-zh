@@ -137,7 +137,7 @@ pub fn map_sampling_err_to_acp(err: SamplingError) -> acp::Error {
             StatusCode::NOT_FOUND => acp::Error::resource_not_found(None).data(message),
             StatusCode::PAYLOAD_TOO_LARGE => acp::Error::invalid_params().data(message),
             StatusCode::TOO_MANY_REQUESTS => {
-                acp::Error::new(RATE_LIMITED_ERROR_CODE, "Rate limited".to_string()).data(message)
+                acp::Error::new(RATE_LIMITED_ERROR_CODE, "请求频率受限".to_string()).data(message)
             }
             // Preserve the HTTP status in data so the classifier folds capacity
             // errors (503/529) into `rate_limit`.
@@ -350,7 +350,7 @@ mod tests {
         };
         let free = "subscription:free-usage-exhausted quota hit";
         let err = attach_prompt_usage(
-            acp::Error::new(RATE_LIMITED_ERROR_CODE, "Rate limited").data(free),
+            acp::Error::new(RATE_LIMITED_ERROR_CODE, "请求频率受限").data(free),
             Some(usage),
         );
         let msg = err
@@ -499,7 +499,7 @@ mod tests {
         };
         let acp_err = map_sampling_err_to_acp(err);
         assert_eq!(acp_err.code, acp::ErrorCode::from(RATE_LIMITED_ERROR_CODE));
-        assert_eq!(acp_err.message, "Rate limited");
+        assert_eq!(acp_err.message, "请求频率受限");
         assert_eq!(
             acp_err.data,
             Some(serde_json::Value::String("Rate limit exceeded".into()))
@@ -518,7 +518,7 @@ mod tests {
         assert_eq!(err.retry_after(), Some(60));
         let acp_err = map_sampling_err_to_acp(err);
         assert_eq!(acp_err.code, acp::ErrorCode::from(RATE_LIMITED_ERROR_CODE));
-        assert_eq!(acp_err.message, "Rate limited");
+        assert_eq!(acp_err.message, "请求频率受限");
     }
 
     #[test]
@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn prompt_complete_fields_rate_limit_omits_detail() {
-        let err = acp::Error::new(RATE_LIMITED_ERROR_CODE, "Rate limited".to_string())
+        let err = acp::Error::new(RATE_LIMITED_ERROR_CODE, "请求频率受限".to_string())
             .data("Rate limit exceeded");
         let (stop, agent_result) = prompt_complete_fields(&Err(err));
         assert_eq!(stop, serde_json::json!("rate_limit"));

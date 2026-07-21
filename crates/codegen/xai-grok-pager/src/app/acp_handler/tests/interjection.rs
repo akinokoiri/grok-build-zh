@@ -373,7 +373,7 @@
 
     /// Synthetic completions from cold-load reconciliation (`session_restart`
     /// signal) finalize quietly — no countdown line, mirroring the suppressed
-    /// "Task failed" block: nothing happened in THIS session.
+    /// "任务失败" block: nothing happened in THIS session.
     #[test]
     fn stale_on_load_completion_pushes_no_countdown() {
         use crate::app::agent_view::test_fixtures::simulate_task_output_wait;

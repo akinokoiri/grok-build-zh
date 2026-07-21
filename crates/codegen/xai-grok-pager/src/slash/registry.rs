@@ -714,7 +714,7 @@ mod tests {
         // Add ACP commands.
         let acp_cmds = vec![agent_client_protocol::AvailableCommand::new(
             "flush".to_string(),
-            "Flush memory".to_string(),
+            "清空记忆".to_string(),
         )];
         registry.set_acp_commands(&acp_cmds);
         assert_eq!(registry.command_count(), 2);
@@ -892,7 +892,7 @@ mod tests {
         let mut registry = CommandRegistry::new(vec![builtin]);
         registry.set_acp_commands(&[agent_client_protocol::AvailableCommand::new(
             "flush".to_string(),
-            "Flush memory".to_string(),
+            "清空记忆".to_string(),
         )]);
         assert!(registry.get("flush").is_some());
 
@@ -902,7 +902,7 @@ mod tests {
         // Deny list survives an ACP catalog resync.
         registry.set_acp_commands(&[agent_client_protocol::AvailableCommand::new(
             "flush".to_string(),
-            "Flush memory".to_string(),
+            "清空记忆".to_string(),
         )]);
         assert!(registry.get("flush").is_none());
     }

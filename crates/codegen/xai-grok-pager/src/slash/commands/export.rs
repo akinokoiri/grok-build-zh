@@ -194,7 +194,7 @@ mod tests {
         let mut ctx = make_ctx(&models);
         let cmd = ExportCommand;
         match cmd.run(&mut ctx, "") {
-            CommandResult::Error(msg) => assert!(msg.contains("No active session")),
+            CommandResult::Error(msg) => assert!(msg.contains("无活动会话")),
             other => panic!("expected Error, got {other:?}"),
         }
     }

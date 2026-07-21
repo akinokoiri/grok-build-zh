@@ -1000,7 +1000,7 @@ fn stop_failure_error_type_covers_each_discriminable_class() {
     };
     let classify = |e: &acp::Error| SessionActor::stop_failure_error_type(e).as_str();
 
-    let rate = acp::Error::new(RATE_LIMITED_ERROR_CODE, "Rate limited".to_string());
+    let rate = acp::Error::new(RATE_LIMITED_ERROR_CODE, "请求频率受限".to_string());
     assert_eq!(classify(&rate), "rate_limit");
     // Defensive: a 429 that arrives only as a data-carried status.
     let rate_status = acp::Error::internal_error().data(error_data_with_status(

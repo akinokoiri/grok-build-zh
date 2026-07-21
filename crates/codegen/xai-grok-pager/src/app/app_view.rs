@@ -808,7 +808,7 @@ pub struct AppView {
     pub welcome_menu_index: Option<usize>,
     /// Hit-test rects for welcome menu items (populated during render).
     pub welcome_menu_rects: Vec<ratatui::layout::Rect>,
-    /// Whether the welcome menu currently includes a "Changelog" row (above
+    /// Whether the welcome menu currently includes a "更新日志" row (above
     /// Quit). Set during render; the input handler uses it to size the menu and
     /// map the extra row to the release-notes action.
     pub welcome_show_changelog_action: bool,
@@ -2821,7 +2821,7 @@ struct WelcomeInputCtx<'a> {
     import_claude_modal: &'a mut Option<crate::views::import_claude_modal::ImportClaudeModalState>,
     welcome_doc_viewer: &'a mut Option<crate::views::modal::ActiveModal>,
     changelog_markdown: &'a Option<String>,
-    /// Whether the welcome menu currently includes a "Changelog" row (above
+    /// Whether the welcome menu currently includes a "更新日志" row (above
     /// Quit), so index→action mapping accounts for it.
     show_changelog_action: bool,
     has_pending_update: bool,
@@ -2993,7 +2993,7 @@ fn handle_welcome_input(ev: &Event, ctx: &mut WelcomeInputCtx<'_>) -> InputOutco
         let entry_count = entry_map.len();
         let non_selectable_flags: Vec<bool> = entry_map.iter().map(|e| e.is_none()).collect();
         let config = PickerConfig {
-            title: Some("Resume session"),
+            title: Some("恢复会话"),
             show_search_hint: true,
             expandable: true,
             esc_clears_query: true,
@@ -6713,7 +6713,7 @@ pub(crate) mod tests {
     fn apply_auth_meta_gate_unchanged_when_still_gated() {
         let mut app = test_app();
         let gate = xai_grok_shell::auth::GateInfo {
-            message: "Subscribe".into(),
+            message: "订阅".into(),
             url: None,
             label: None,
         };

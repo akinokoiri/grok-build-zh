@@ -47,7 +47,7 @@ pub struct BgTaskBlock {
 }
 
 impl BgTaskBlock {
-    /// Create a "Task started" block.
+    /// Create a "任务已开始" block.
     pub fn started(command: impl Into<String>, task_id: impl Into<String>) -> Self {
         Self {
             command: command.into(),
@@ -71,7 +71,7 @@ impl BgTaskBlock {
         }
     }
 
-    /// Create a "Task failed" block.
+    /// Create a "任务失败" block.
     pub fn failed(
         command: impl Into<String>,
         task_id: impl Into<String>,

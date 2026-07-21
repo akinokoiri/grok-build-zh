@@ -696,7 +696,7 @@ fn new_session_seeds_available_commands_from_bootstrap() {
     let mut app = test_app();
     app.bootstrap_acp_commands = vec![acp::AvailableCommand::new(
         "flush".to_string(),
-        "Flush memory".to_string(),
+        "清空记忆".to_string(),
     )];
     dispatch(Action::NewSession, &mut app);
     let id = AgentId(0);
@@ -1812,7 +1812,7 @@ fn dispatch_cycle_mode_pre_session_cycles_locally_and_creates_session() {
     assert_eq!(agent.plan_mode_pending, Some(false));
 }
 /// No-session bail-out: when the active agent
-/// has no ACP session, the setter toasts "No active session" and
+/// has no ACP session, the setter toasts "无活动会话" and
 /// returns empty effects. Pins the safety contract that we never
 /// dispatch a mode change to a non-existent session.
 #[test]
@@ -1829,7 +1829,7 @@ fn set_plan_mode_no_session_toasts_and_bails() {
     );
     let toast = read_toast(&app);
     assert!(
-        toast.contains("No active session"),
+        toast.contains("无活动会话"),
         "bail-out must surface the reason to the user: {toast}",
     );
     let agent = app.agents.get(&AgentId(0)).unwrap();

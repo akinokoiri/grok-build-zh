@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn test_full_file_roundtrip() {
         let v1_lines = [
-            r#"{"type":"system","content":"System prompt"}"#,
+            r#"{"type":"system","content":"系统提示"}"#,
             r#"{"type":"user","content":[{"type":"text","text":"Hello"}]}"#,
             r#"{"type":"assistant","content":"Hi!","tool_calls":[]}"#,
             r#"{"type":"assistant","content":"","tool_calls":[{"id":"c1","name":"bash","arguments":"{}"}]}"#,

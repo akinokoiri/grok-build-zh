@@ -778,7 +778,7 @@ pub struct AgentView {
     /// until replay finishes, so a terminal seen mid-replay can't be finalized
     /// yet — it is recorded here and consulted by
     /// [`Self::should_adopt_running_prompt`] so the post-replay adoption skips a
-    /// turn that already ended (otherwise the viewer re-strands on "Waiting…").
+    /// turn that already ended (otherwise the viewer re-strands on "等待中…").
     /// Reset at the start of every load so it never leaks across loads.
     pub(crate) replayed_terminal_prompts: HashSet<String>,
     pub active_pane: AgentPane,
@@ -1394,7 +1394,7 @@ pub struct AgentView {
     /// routing / reconnect races), the event loop reconciles turn state from
     /// the broadcast after [`super::dispatch::TURN_END_RECONCILE_GRACE`] so
     /// the pane cannot stay latched in `TurnRunning`/`TurnCancelling` forever
-    /// (a lost response would otherwise leave the TUI on "Cancelling…" with
+    /// (a lost response would otherwise leave the TUI on "正在取消…" with
     /// Esc and the input dead until a restart).
     pub(crate) pending_turn_end_reconcile: Option<PendingTurnEnd>,
     /// Send-now cancel expectation: the client-minted id of a cancel-and-send

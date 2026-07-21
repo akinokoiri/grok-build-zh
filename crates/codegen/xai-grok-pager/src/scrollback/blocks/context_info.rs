@@ -374,7 +374,7 @@ impl ContextInfoBlock {
             LegendRow {
                 glyph: system_glyph,
                 color: system_color,
-                label: "System prompt".to_string(),
+                label: "系统提示".to_string(),
                 tokens: system_tokens,
                 detail: None,
             },
@@ -1261,13 +1261,13 @@ mod tests {
         let block = ContextInfoBlock::new(snapshot(), "grok-4");
         let theme = test_theme();
         let lines = block.build_lines(&theme, BarLayout::WIDE);
-        let row = find_legend_line(&lines, "System prompt").expect("legend row");
+        let row = find_legend_line(&lines, "系统提示").expect("legend row");
         // Span layout for WIDE: [glyph+space, label, " ", tokens, ...].
-        // The label span content begins with "System prompt".
+        // The label span content begins with "系统提示".
         let label_span = row
             .spans
             .iter()
-            .find(|s| s.content.as_ref().starts_with("System prompt"))
+            .find(|s| s.content.as_ref().starts_with("系统提示"))
             .expect("label span");
         assert_eq!(
             label_span.style.fg,
@@ -1282,12 +1282,12 @@ mod tests {
         let block = ContextInfoBlock::new(snapshot(), "grok-4");
         let theme = test_theme();
         let lines = block.build_lines(&theme, BarLayout::NARROW);
-        let row = find_legend_line(&lines, "System prompt").expect("legend row 1");
+        let row = find_legend_line(&lines, "系统提示").expect("legend row 1");
         // Span layout for NARROW row 1: [glyph+space, label].
         let label_span = row
             .spans
             .iter()
-            .find(|s| s.content.as_ref() == "System prompt")
+            .find(|s| s.content.as_ref() == "系统提示")
             .expect("label span");
         assert_eq!(
             label_span.style.fg,
@@ -1303,7 +1303,7 @@ mod tests {
         let theme = test_theme();
         let lines = block.build_lines(&theme, BarLayout::NARROW);
         let categories = [
-            ("System prompt", "1.2k"),
+            ("系统提示", "1.2k"),
             ("Messages", "29.9k"),
             ("Reasoning/overhead", "5.6k"),
             ("Free", "963k"),
@@ -1339,7 +1339,7 @@ mod tests {
         let theme = test_theme();
         let lines = block.build_lines(&theme, BarLayout::NARROW);
         // The data row for the first legend entry sits at index 17
-        // (16 = "System prompt" header row, 17 = its data row).
+        // (16 = "系统提示" header row, 17 = its data row).
         let data_row = &lines[17];
         let first = data_row
             .spans
@@ -1362,7 +1362,7 @@ mod tests {
             |i: usize| -> String { lines[i].spans.iter().map(|s| s.content.as_ref()).collect() };
         let l11 = row_text(11);
         assert!(
-            l11.contains("System prompt") && l11.contains("1.2k"),
+            l11.contains("系统提示") && l11.contains("1.2k"),
             "wide legend should keep label + tokens on one line, got: {l11:?}"
         );
         let l12 = row_text(12);

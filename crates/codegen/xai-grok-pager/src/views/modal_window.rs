@@ -200,7 +200,7 @@ pub struct FoldInfo {
 
 /// A single footer shortcut definition.
 pub struct Shortcut<'a> {
-    /// Display label (e.g. "Enter import 3" or "Esc cancel").
+    /// Display label (e.g. "Enter import 3" or "Esc 取消").
     pub label: &'a str,
     /// Whether clicking this shortcut dispatches `ShortcutActivated`.
     /// All shortcuts get the same visual style and hover highlights
@@ -1913,7 +1913,7 @@ mod tests {
 
     #[test]
     fn split_shortcut_label_basic_ascii() {
-        assert_eq!(split_shortcut_label("Esc cancel"), ("Esc", " cancel"));
+        assert_eq!(split_shortcut_label("Esc 取消"), ("Esc", " cancel"));
         assert_eq!(split_shortcut_label("Enter select"), ("Enter", " select"));
     }
 

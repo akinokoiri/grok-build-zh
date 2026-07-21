@@ -20,7 +20,7 @@ impl SlashCommand for RecapCommand {
     }
 
     fn description(&self) -> &str {
-        "Summarize the session so far"
+        "总结目前为止的会话"
     }
 
     fn session_scoped(&self) -> bool {

@@ -41,7 +41,7 @@ impl SlashCommand for RenameCommand {
 
     fn run(&self, ctx: &mut CommandExecCtx, args: &str) -> CommandResult {
         if ctx.session_id.is_none() {
-            return CommandResult::Error("No active session".to_string());
+            return CommandResult::Error("无活动会话".to_string());
         }
 
         let title = args.trim().to_string();

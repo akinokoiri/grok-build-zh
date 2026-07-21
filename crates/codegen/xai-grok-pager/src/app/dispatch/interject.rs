@@ -36,7 +36,7 @@ pub(super) fn dispatch_interject(
     agent.ephemeral_tip.clear_on_submit();
 
     let Some(session_id) = agent.session.session_id.clone() else {
-        agent.show_toast("No active session");
+        agent.show_toast("无活动会话");
         return vec![];
     };
 
@@ -123,7 +123,7 @@ pub(super) fn dispatch_send_prompt_now(
     agent.ephemeral_tip.clear_on_submit();
 
     let Some(session_id) = agent.session.session_id.clone() else {
-        agent.show_toast("No active session");
+        agent.show_toast("无活动会话");
         return vec![];
     };
 
@@ -274,7 +274,7 @@ mod tests {
     }
 
     /// A no-session interject still retires the tip: the clear now runs before
-    /// the "No active session" early return, matching the other submit paths.
+    /// the "无活动会话" early return, matching the other submit paths.
     #[test]
     fn interject_without_session_still_clears_ephemeral_tip() {
         let mut app = test_app_with_agent();
@@ -307,7 +307,7 @@ mod tests {
         );
         assert_eq!(
             agent.toast.as_ref().map(|(m, _)| m.as_str()),
-            Some("No active session"),
+            Some("无活动会话"),
             "no-session interject takes the 'No active session' path"
         );
     }

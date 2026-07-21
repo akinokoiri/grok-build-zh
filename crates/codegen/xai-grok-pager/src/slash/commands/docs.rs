@@ -175,9 +175,9 @@ mod tests {
     fn title_opens_guide() {
         let models = ModelState::default();
         let mut ctx = make_ctx(&models);
-        match DocsCommand.run(&mut ctx, "Getting Started") {
+        match DocsCommand.run(&mut ctx, "入门指南") {
             CommandResult::Action(Action::ShowReleaseNotes { title, content }) => {
-                assert_eq!(title, "Getting Started");
+                assert_eq!(title, "入门指南");
                 assert!(!content.is_empty());
             }
             other => panic!("expected ShowReleaseNotes, got {other:?}"),
@@ -216,6 +216,6 @@ mod tests {
         let items = DocsCommand.suggest_args(&ctx, "").expect("suggestions");
         assert!(items.iter().any(|i| i.insert_text == "web"));
         assert!(items.iter().any(|i| i.insert_text == "how-to"));
-        assert!(items.iter().any(|i| i.insert_text == "Getting Started"));
+        assert!(items.iter().any(|i| i.insert_text == "入门指南"));
     }
 }

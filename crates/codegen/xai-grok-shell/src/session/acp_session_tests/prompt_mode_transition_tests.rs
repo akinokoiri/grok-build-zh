@@ -31,7 +31,7 @@ fn cursor_filter_in_plan_mode_keeps_writes_and_shows_create_plan() {
         fn_def("Grep"),
         fn_def("Write"),
         fn_def("StrReplace"),
-        fn_def("CreatePlan"),
+        fn_def("创建计划"),
         fn_def("SwitchMode"),
         fn_def("AskQuestion"),
     ];
@@ -39,7 +39,7 @@ fn cursor_filter_in_plan_mode_keeps_writes_and_shows_create_plan() {
     let kept = names(&filtered);
     assert!(kept.contains(&"Read"));
     assert!(kept.contains(&"Grep"));
-    assert!(kept.contains(&"CreatePlan"));
+    assert!(kept.contains(&"创建计划"));
     assert!(kept.contains(&"SwitchMode"));
     assert!(kept.contains(&"AskQuestion"));
     assert!(kept.contains(&"Write"));

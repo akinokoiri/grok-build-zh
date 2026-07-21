@@ -49,7 +49,7 @@ async fn drag_from_above_prompt_strip_pty() {
         .wait_for_text(ENTRY_WORD, Duration::from_secs(45))
         .expect("message rendered");
     harness
-        .wait_for_text("Worked for", Duration::from_secs(20))
+        .wait_for_text("已工作", Duration::from_secs(20))
         .expect("turn marker rendered");
 
     harness.inject_keys(b"\t").expect("focus scrollback");

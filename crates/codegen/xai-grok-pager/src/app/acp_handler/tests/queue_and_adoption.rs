@@ -418,7 +418,7 @@
     /// broadcasts `x.ai/queue/changed` with `runningPromptId` = that synthetic
     /// id. The pager must NOT adopt it via the turn-start shim: those turns run
     /// inside the actor and emit no `prompt_complete` / `PromptResponse`, so
-    /// `start_turn()` here would strand the pager on "Responding…" forever
+    /// `start_turn()` here would strand the pager on "正在回复…" forever
     /// (the exact reported bug — a background task finishing left the spinner
     /// running indefinitely). It must stay Idle (content still renders via the
     /// live-delta path, which no longer claims `current_prompt_id` for a driver).
@@ -483,7 +483,7 @@
     /// same (already-ended) `runningPromptId` must NOT re-adopt it. The pid is
     /// user-driven (so it passes the pid-only synthetic guard) — only the
     /// agent-aware `should_adopt_running_prompt`, which consults
-    /// `replayed_terminal_prompts`, stops the viewer re-stranding on "Waiting…",
+    /// `replayed_terminal_prompts`, stops the viewer re-stranding on "等待中…",
     /// mirroring the `SessionLoaded` / reconnect adoption.
     #[test]
     fn queue_changed_does_not_readopt_terminal_in_replay_running_prompt() {
@@ -2035,7 +2035,7 @@
     #[test]
     fn viewer_mid_turn_reattach_shows_running_chrome_after_replay_window() {
         // Reproduces the MID-TURN reattach ordering that left a viewer stuck
-        // Idle (no "Responding…"/cancel chrome) even though the driver's turn
+        // Idle (no "正在回复…"/cancel chrome) even though the driver's turn
         // was live:
         //   (1) the viewer subscribes on its load request, so it receives a
         //       LIVE delta DURING its replay window (loading_replay = true). It
@@ -2112,7 +2112,7 @@
         // background subagent or task completion: `task-completed-…`) runs inside
         // the actor and emits NO `x.ai/session/prompt_complete`. If a viewer
         // entered TurnRunning for it, nothing would ever finish the turn and the
-        // viewer would be stuck "Responding…" forever — exactly the bug where one
+        // viewer would be stuck "正在回复…" forever — exactly the bug where one
         // dashboard showed "Worked for" while the other was stuck responding.
         // The driver also declines to show chrome for these (its server-initiated
         // adopt path never calls start_turn), so the viewer must mirror that:

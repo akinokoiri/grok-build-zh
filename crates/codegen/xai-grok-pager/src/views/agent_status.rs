@@ -830,7 +830,7 @@ mod tests {
     #[test]
     fn mcp_status_line_hidden_for_zero_total() {
         // total == 0 (startup seed) renders nothing in the top bar — that state
-        // shows "Starting session…" above the prompt instead.
+        // shows "正在启动会话…" above the prompt instead.
         let progress = McpInitProgress {
             total: 0,
             connected: 0,

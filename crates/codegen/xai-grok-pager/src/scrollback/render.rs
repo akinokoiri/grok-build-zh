@@ -1767,7 +1767,7 @@ mod tests {
         let mut block = SubagentBlock::started(
             "task", "child-A", "explore", None, None, None, /*is_background=*/ false,
         );
-        block.activity_label = Some("Thinking".to_string());
+        block.activity_label = Some("思考中".to_string());
         state.push_block(RenderBlock::Subagent(block));
         let viewport = Rect::new(0, 0, 80, 10);
         state.prepare_layout(viewport.width, viewport.height);

@@ -258,7 +258,7 @@ impl SessionActor {
         // Durable twin of the fire-and-forget `prompt_complete` (emitted from
         // `MvpAgent::prompt`): publish the turn's terminal on the persisted +
         // replayed `_x.ai/session/update` rail so a viewer that re-attaches
-        // mid-turn finalizes from replay instead of stranding on "Waiting…".
+        // mid-turn finalizes from replay instead of stranding on "等待中…".
         // The caller flushed the replay buffer first, so this lands strictly
         // after the turn's last `session/update` delta. Emit ONLY for a
         // completion this handler owned (dequeued at the front): the

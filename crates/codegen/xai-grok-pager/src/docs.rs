@@ -48,7 +48,7 @@ macro_rules! guide {
 pub static USER_GUIDE: &[Doc] = &[
     guide!(
         "01-getting-started.md",
-        "Getting Started",
+        "入门指南",
         "Installation, first launch, and basic interaction"
     ),
     guide!(
@@ -58,7 +58,7 @@ pub static USER_GUIDE: &[Doc] = &[
     ),
     guide!(
         "03-keyboard-shortcuts.md",
-        "Keyboard Shortcuts",
+        "键盘快捷键",
         "Complete reference for all TUI key bindings"
     ),
     guide!(
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn find_doc_is_case_insensitive() {
         let doc = find_doc("getting started").expect("should find Getting Started");
-        assert_eq!(doc.title, "Getting Started");
+        assert_eq!(doc.title, "入门指南");
         assert!(find_doc("nonexistent guide").is_none());
     }
 
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn get_howto_doc_delegates_to_find_doc() {
-        assert!(get_howto_doc("Getting Started").is_some());
+        assert!(get_howto_doc("入门指南").is_some());
         assert!(get_howto_doc("Hooks & Plugins Guide").is_some());
         assert!(get_howto_doc("no such doc").is_none());
     }

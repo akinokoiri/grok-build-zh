@@ -247,6 +247,6 @@ pub(super) fn plan_review_source_for_tool(
         .session
         .tracker
         .tool_title(tool_call_id)
-        .filter(|title| *title == "CreatePlan" || *title == "Plan: Submit for approval")
+        .filter(|title| *title == "创建计划" || *title == "Plan: Submit for approval")
         .map_or(PlanReviewSource::FileBacked, |_| PlanReviewSource::Inline)
 }

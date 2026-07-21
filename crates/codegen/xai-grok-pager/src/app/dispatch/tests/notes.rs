@@ -406,7 +406,7 @@ fn btw_no_session_feedback_is_mode_specific() {
     minimal.agents.get_mut(&id).unwrap().session.session_id = None;
     assert!(dispatch(Action::SendBtw("q".into()), &mut minimal).is_empty());
     assert!(minimal.agents[&id].toast.is_none());
-    assert!(last_system_text(&minimal, id).contains("No active session"));
+    assert!(last_system_text(&minimal, id).contains("无活动会话"));
 
     let mut fullscreen = test_app_with_agent();
     fullscreen.agents.get_mut(&id).unwrap().session.session_id = None;
@@ -416,7 +416,7 @@ fn btw_no_session_feedback_is_mode_specific() {
             .toast
             .as_ref()
             .map(|(text, _)| text.as_str()),
-        Some("No active session")
+        Some("无活动会话")
     );
     assert_eq!(fullscreen.agents[&id].scrollback.len(), 0);
 }

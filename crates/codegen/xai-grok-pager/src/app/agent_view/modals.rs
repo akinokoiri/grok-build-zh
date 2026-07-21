@@ -918,7 +918,7 @@ impl AgentView {
                         }
                         return InputOutcome::Changed;
                     } else if id == 99 {
-                        // "Esc close" shortcut — signal close via sentinel.
+                        // "Esc 关闭" shortcut — signal close via sentinel.
                         Some('\x00')
                     } else if id >= 100 {
                         let keys = crate::views::extensions_modal::extensions_action_keys(
@@ -935,7 +935,7 @@ impl AgentView {
         // Dispatch shortcut click (if any) now that the &mut borrow is released.
         if let Some(ch) = chrome_shortcut_ch {
             if ch == '\x00' {
-                // "Esc close" shortcut clicked.
+                // "Esc 关闭" shortcut clicked.
                 self.extensions_modal = None;
                 return InputOutcome::Changed;
             }
@@ -1415,7 +1415,7 @@ impl AgentView {
                     state.modal_message = None;
                     if matches!(hooks_action, xai_hooks_plugins_types::HooksAction::Reload) {
                         // Reload rebuilds the entire plugin registry -- show
-                        // tab-level "Loading..." instead of a single-entry badge.
+                        // tab-level "加载中..." instead of a single-entry badge.
                         state.pending_action = Some("Reloading...".into());
                         state.pending_entry_index = None;
                         state.hooks_data = TabDataState::Loading;
@@ -1437,7 +1437,7 @@ impl AgentView {
                         xai_hooks_plugins_types::PluginsAction::Reload
                     ) {
                         // Reload rebuilds the entire plugin registry -- show
-                        // tab-level "Loading..." instead of a single-entry badge.
+                        // tab-level "加载中..." instead of a single-entry badge.
                         state.pending_action = Some("Reloading...".into());
                         state.pending_entry_index = None;
                         state.plugins_data = TabDataState::Loading;

@@ -54,7 +54,7 @@ pub struct SubagentInfo {
     pub context_usage_pct: Option<u8>,
     pub tools_used: Vec<Arc<str>>,
     pub error_count: Option<u32>,
-    /// Live activity label ("Thinking", "Running: cargo build") mirroring
+    /// Live activity label ("思考中", "Running: cargo build") mirroring
     /// the scrollback block's field; feeds the tasks pane row and the
     /// dashboard activity column. Cleared on `SubagentFinished`.
     pub activity_label: Option<String>,
@@ -447,8 +447,8 @@ pub(crate) fn format_subagent_meta(
 pub(crate) fn format_activity_label(activity: &crate::acp::tracker::TurnActivity) -> String {
     use crate::acp::tracker::TurnActivity;
     match activity {
-        TurnActivity::Thinking => "Thinking".to_string(),
-        TurnActivity::Responding => "Responding".to_string(),
+        TurnActivity::Thinking => "思考中".to_string(),
+        TurnActivity::Responding => "正在回复".to_string(),
         TurnActivity::ToolRunning { title, description } => {
             if let Some(desc) = description
                 .as_deref()
@@ -457,30 +457,30 @@ pub(crate) fn format_activity_label(activity: &crate::acp::tracker::TurnActivity
             {
                 crate::acp::tracker::format_waiting_for_subject(desc)
             } else if title.is_empty() {
-                "Running tool".to_string()
+                "正在运行工具".to_string()
             } else {
                 let first_line = title.lines().next().unwrap_or(title);
                 let max_len = crate::acp::tracker::MAX_ACTIVITY_SUBJECT_CHARS;
                 if first_line.len() <= max_len {
-                    format!("Running: {first_line}")
+                    format!("运行中：{first_line}")
                 } else {
                     let char_count = first_line.chars().count();
                     if char_count <= max_len {
-                        format!("Running: {first_line}")
+                        format!("运行中：{first_line}")
                     } else {
                         let truncated: String = first_line.chars().take(max_len).collect();
-                        format!("Running: {truncated}\u{2026}")
+                        format!("运行中：{truncated}\u{2026}")
                     }
                 }
             }
         }
-        TurnActivity::AutoCompacting => "Compacting".to_string(),
+        TurnActivity::AutoCompacting => "正在压缩上下文".to_string(),
         TurnActivity::Retrying {
             attempt,
             max_retries,
             ..
         } => {
-            format!("Retrying ({attempt}/{max_retries})")
+            format!("重试中 ({attempt}/{max_retries})")
         }
         TurnActivity::Waiting(reason) => reason.label(),
     }
@@ -1023,14 +1023,14 @@ mod tests {
     #[test]
     fn activity_label_thinking() {
         use crate::acp::tracker::TurnActivity;
-        assert_eq!(format_activity_label(&TurnActivity::Thinking), "Thinking");
+        assert_eq!(format_activity_label(&TurnActivity::Thinking), "思考中");
     }
     #[test]
     fn activity_label_responding() {
         use crate::acp::tracker::TurnActivity;
         assert_eq!(
             format_activity_label(&TurnActivity::Responding),
-            "Responding",
+            "正在回复",
         );
     }
     #[test]
@@ -1038,7 +1038,7 @@ mod tests {
         use crate::acp::tracker::TurnActivity;
         assert_eq!(
             format_activity_label(&TurnActivity::AutoCompacting),
-            "Compacting",
+            "正在压缩上下文",
         );
     }
     #[test]
@@ -1058,11 +1058,11 @@ mod tests {
         use crate::acp::tracker::{TurnActivity, WaitingReason};
         assert_eq!(
             format_activity_label(&TurnActivity::Waiting(WaitingReason::Subagent)),
-            "Waiting on subagent…",
+            "等待子代理…",
         );
         assert_eq!(
             format_activity_label(&TurnActivity::Waiting(WaitingReason::task_output())),
-            "Waiting on task output…",
+            "等待任务输出…",
         );
         assert_eq!(
             format_activity_label(&TurnActivity::Waiting(WaitingReason::TaskOutput {
@@ -1081,7 +1081,7 @@ mod tests {
                 title: String::new(),
                 description: None
             }),
-            "Running tool",
+            "正在运行工具",
         );
     }
     #[test]

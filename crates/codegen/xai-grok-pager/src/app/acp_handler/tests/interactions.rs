@@ -305,7 +305,7 @@
         // is carried in the ext_method params, not read from disk).
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "tc-reopen", "CreatePlan");
+            seed_pending_tool(agent, "tc-reopen", "创建计划");
         }
 
         let (tx, _rx) = tokio::sync::oneshot::channel();
@@ -343,7 +343,7 @@
         let mut app = make_app_with_agent("sess-A");
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "tc-prompt", "CreatePlan");
+            seed_pending_tool(agent, "tc-prompt", "创建计划");
         }
 
         let (tx, rx) = tokio::sync::oneshot::channel();

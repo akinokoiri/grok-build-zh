@@ -92,7 +92,7 @@ pub(super) fn dispatch_rewind(app: &mut AppView) -> Vec<Effect> {
         return vec![];
     };
     let Some(session_id) = agent.session.session_id.clone() else {
-        app.show_toast("No active session");
+        app.show_toast("无活动会话");
         return vec![];
     };
 
@@ -137,7 +137,7 @@ pub(super) fn dispatch_rewind_show_picker(app: &mut AppView) -> Vec<Effect> {
         return vec![];
     };
     let Some(session_id) = agent.session.session_id.clone() else {
-        app.show_toast("No active session");
+        app.show_toast("无活动会话");
         return vec![];
     };
 
@@ -505,7 +505,7 @@ pub(super) fn dispatch_inline_edit_submit(app: &mut AppView) -> Vec<Effect> {
         return vec![];
     };
     let Some(session_id) = agent.session.session_id.clone() else {
-        app.show_toast("No active session");
+        app.show_toast("无活动会话");
         return vec![];
     };
     let Some(edit) = agent.inline_edit.as_ref() else {
@@ -728,7 +728,7 @@ pub(super) fn handle_rewind_points_loaded(
                 target,
                 has_file_changes,
                 // Inline edit-and-resubmit: the conversation rewind is a
-                // given — hide the "File changes only" row entirely.
+                // given — hide the "仅文件变更" row entirely.
                 agent.inline_edit.is_none(),
                 draft,
             ));

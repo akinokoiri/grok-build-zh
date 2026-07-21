@@ -185,13 +185,13 @@ mod tests {
         let mut ctx = exec_ctx(&models, &bundle, ScreenMode::Fullscreen, None);
         assert!(matches!(
             ScreenModeSwitchCommand::minimal().run(&mut ctx, ""),
-            CommandResult::Error(msg) if msg.contains("No active session")
+            CommandResult::Error(msg) if msg.contains("无活动会话")
         ));
 
         let mut ctx = exec_ctx(&models, &bundle, ScreenMode::Minimal, None);
         assert!(matches!(
             ScreenModeSwitchCommand::fullscreen().run(&mut ctx, ""),
-            CommandResult::Error(msg) if msg.contains("No active session")
+            CommandResult::Error(msg) if msg.contains("无活动会话")
         ));
     }
 

@@ -48,7 +48,7 @@ async fn drag_enters_content_from_gap_pty() {
         .wait_for_text(ENTRY_WORD, Duration::from_secs(45))
         .expect("message rendered");
     harness
-        .wait_for_text("Worked for", Duration::from_secs(20))
+        .wait_for_text("已工作", Duration::from_secs(20))
         .expect("turn marker rendered");
 
     harness.inject_keys(b"\t").expect("focus scrollback");
@@ -61,7 +61,7 @@ async fn drag_enters_content_from_gap_pty() {
     let (entry_row, entry_col) = locate_screen_text(&screen, ENTRY_WORD)
         .unwrap_or_else(|| panic!("could not locate {ENTRY_WORD:?}; screen:\n{screen}"));
     assert_eq!(entry_row, msg_row, "setup: single unwrapped message line");
-    let (marker_row, _) = locate_screen_text(&screen, "Worked for")
+    let (marker_row, _) = locate_screen_text(&screen, "已工作")
         .unwrap_or_else(|| panic!("could not locate the turn marker; screen:\n{screen}"));
     assert!(marker_row > msg_row, "setup: marker below the message");
 

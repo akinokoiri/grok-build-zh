@@ -631,7 +631,7 @@ pub fn current_value_for(
         // default_selected_permission: maps `[ui].default_selected_permission`
         // onto one of the four registry canonicals. `None` / unrecognised on
         // disk → `always_allow_all_sessions` (the effective default — the
-        // cursor lands on the "Always allow on all sessions" row, picked
+        // cursor lands on the "在所有会话中始终允许" row, picked
         // explicitly in `enqueue_permission`).
         "default_selected_permission" => Some(SettingValue::Enum(
             crate::appearance::permission_cursor::DefaultSelectedPermission::from_config_value(
@@ -1080,7 +1080,7 @@ mod tests {
                 }
                 // default_selected_permission: Option<String>; None →
                 // "always_allow_all_sessions" (the effective default; first
-                // prompt's cursor lands on the "Always allow on all sessions"
+                // prompt's cursor lands on the "在所有会话中始终允许"
                 // row, picked explicitly in `enqueue_permission`).
                 ("default_selected_permission", SettingKind::Enum { default, .. }) => {
                     assert_eq!(

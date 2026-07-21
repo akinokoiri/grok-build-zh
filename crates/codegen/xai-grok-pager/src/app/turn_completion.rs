@@ -6,7 +6,7 @@
 //! `XaiSessionUpdate::TurnCompleted`. Both converge on
 //! [`finalize_turn_from_terminal`] so the turn-finalize behavior lives in one
 //! place — and so a viewer that re-attaches mid-turn can finalize the turn from
-//! replay instead of staying stuck on "Waiting…".
+//! replay instead of staying stuck on "等待中…".
 
 use crate::scrollback::blocks::SessionEvent;
 
@@ -302,7 +302,7 @@ pub(super) fn finalize_turn_from_terminal(
 ///   re-arms the tick when a batch reports a change. A background-tab driver
 ///   (`is_active == false`) that armed the reconcile must still report the change
 ///   or `reconcile_overdue_turn_ends` never fires and the turn strands on
-///   "Waiting…" — the exact bug this rail fixes.
+///   "等待中…" — the exact bug this rail fixes.
 /// - `ViewerFinalized` -> `true` only when `is_active` (drop pending adoption).
 pub(super) fn apply_terminal_outcome(
     outcome: TerminalApply,

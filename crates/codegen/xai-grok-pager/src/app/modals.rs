@@ -306,7 +306,7 @@ impl AgentView {
                 shortcuts_help::modal_footer(*filter_active)
             };
             let chrome_cfg = mw::ModalWindowConfig {
-                title: "Keyboard Shortcuts",
+                title: "键盘快捷键",
                 tabs: None,
                 shortcuts: &footer,
                 sizing: crate::views::shortcuts_help::modal_sizing(
@@ -957,7 +957,7 @@ impl AgentView {
                 // source filter and local-disk delete are dead weight there.
                 let chat_mode = self.app_chat_mode;
                 let config = PickerConfig {
-                    title: Some("Resume session"),
+                    title: Some("恢复会话"),
                     show_search_hint: true,
                     expandable: true,
                     esc_clears_query: false, // Esc returns to palette or closes
@@ -1656,7 +1656,7 @@ impl AgentView {
                     id: 0,
                 },
                 Shortcut {
-                    label: "Esc close",
+                    label: "Esc 关闭",
                     clickable: false,
                     id: 0,
                 },
@@ -1889,7 +1889,7 @@ impl AgentView {
                 }
                 let compact = self.scrollback.appearance().prompt.compact;
                 let modal_config = ModalWindowConfig {
-                    title: "Resume session",
+                    title: "恢复会话",
                     tabs: None,
                     shortcuts: &session_shortcuts,
                     sizing: ModalSizing {
@@ -2165,7 +2165,7 @@ impl AgentView {
                         id: 0,
                     },
                     Shortcut {
-                        label: "Esc cancel",
+                        label: "Esc 取消",
                         clickable: false,
                         id: 0,
                     },
@@ -2254,7 +2254,7 @@ impl AgentView {
                 let non_sel: Vec<bool> = vec![false; picker_entries.len()];
                 let footer = shortcuts_help::modal_footer(*filter_active);
                 let modal_config = mw::ModalWindowConfig {
-                    title: "Keyboard Shortcuts",
+                    title: "键盘快捷键",
                     tabs: None,
                     shortcuts: &footer,
                     sizing: shortcuts_help::modal_sizing(compact),

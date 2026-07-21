@@ -546,7 +546,7 @@ impl SessionActor {
                 }
             });
 
-            // Scoped so the "Verifying…" latch clears on normal exit AND on
+            // Scoped so the "正在校验…" latch clears on normal exit AND on
             // a turn cancel dropping this future — later `GoalUpdated`s
             // carry the cleared flag, and a cancelled turn never latches it.
             let outcome = {
@@ -871,7 +871,7 @@ impl SessionActor {
     }
 
     /// Latch `verifying_in_flight` (see its field doc) and emit a `GoalUpdated`
-    /// so the pager shows the "Verifying…" badge while the skeptic panel runs;
+    /// so the pager shows the "正在校验…" badge while the skeptic panel runs;
     /// the caller's `TrackerDropGuard` clears the latch when the verification
     /// scope exits (including a turn cancel dropping it). The classifier
     /// counters are read straight off the orchestration (the caller bumped

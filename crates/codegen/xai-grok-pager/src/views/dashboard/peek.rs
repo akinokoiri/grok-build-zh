@@ -68,7 +68,7 @@ pub const MAX_REPLY_ROWS: u16 = 6;
 pub struct PeekFields {
     pub label: String,
     pub time_ago: String,
-    /// Type of the most recent agent response (e.g. `"Thinking"`,
+    /// Type of the most recent agent response (e.g. `"思考中"`,
     /// `"Response"`, `"Edit"`), shown as the header's left label.
     pub response_type: String,
     pub last_user_message: Option<String>,
@@ -105,7 +105,7 @@ pub struct PeekPanelState {
     /// `"just now"`). Painted right-aligned in dim grey.
     pub time_ago: String,
     /// Type of the most recent agent response, shown as the header's
-    /// left label: `"Thinking"` / `"Thought"`, `"Response"`, `"Edit"`,
+    /// left label: `"思考中"` / `"Thought"`, `"Response"`, `"Edit"`,
     /// `"Read"`, `"Bash"`, … (or `"Working"` / `"Idle"` when the agent
     /// hasn't produced a response yet). See [`extract_last_response_type`].
     pub response_type: String,
@@ -936,7 +936,7 @@ pub fn reply_row_count(
         .max(1)
 }
 
-/// The header label for the peek panel, e.g. `"Thinking"` / `"Thought"`,
+/// The header label for the peek panel, e.g. `"思考中"` / `"Thought"`,
 /// `"Response"`, `"Edit"`, `"Read"`, `"Bash"`, `"Working"`, …
 ///
 /// While the turn is RUNNING the label follows the live turn activity
@@ -963,9 +963,9 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
     // execution or waiting for results.
     if running {
         match agent.session.turn_activity() {
-            Some(TurnActivity::Thinking) => return "Thinking".to_string(),
-            Some(TurnActivity::Responding) => return "Response".to_string(),
-            Some(TurnActivity::AutoCompacting) => return "Compacting".to_string(),
+            Some(TurnActivity::Thinking) => return "思考中".to_string(),
+            Some(TurnActivity::Responding) => return "回复".to_string(),
+            Some(TurnActivity::AutoCompacting) => return "压缩中".to_string(),
             Some(TurnActivity::Retrying { .. }) => return "Retrying".to_string(),
             // A tool is executing: fall through to the scan to recover its
             // specific label (Bash/Read/…); a missing/stale block yields the
@@ -997,7 +997,7 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
                 return "Response".to_string();
             }
             RenderBlock::Thinking(_) => {
-                return if running { "Thinking" } else { "Thought" }.to_string();
+                return if running { "思考中" } else { "Thought" }.to_string();
             }
             RenderBlock::ToolCall(tc) => {
                 let label = match tc {
@@ -1785,11 +1785,11 @@ mod tests {
             PeekFields {
                 label: "agent".to_string(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".to_string(),
+                response_type: "等待你的输入".to_string(),
                 last_user_message: None,
                 question: Some("Allow Edit?".to_string()),
                 options: vec![
-                    ("allow_once".into(), "Allow once".into()),
+                    ("allow_once".into(), "仅允许一次".into()),
                     ("deny".into(), "Deny".into()),
                 ],
                 request_id: Some(42),
@@ -1839,7 +1839,7 @@ mod tests {
             PeekFields {
                 label: "agent".to_string(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".to_string(),
+                response_type: "等待你的输入".to_string(),
                 last_user_message: None,
                 question: Some("Allow Edit?".to_string()),
                 options: vec![
@@ -1892,7 +1892,7 @@ mod tests {
             PeekFields {
                 label: "agent".to_string(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".to_string(),
+                response_type: "等待你的输入".to_string(),
                 last_user_message: None,
                 question: Some("Allow Edit?".to_string()),
                 options: vec![
@@ -1949,7 +1949,7 @@ mod tests {
             PeekFields {
                 label: "agent".to_string(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".to_string(),
+                response_type: "等待你的输入".to_string(),
                 last_user_message: None,
                 question: Some("Allow Edit?".to_string()),
                 options: vec![
@@ -2013,7 +2013,7 @@ mod tests {
             PeekFields {
                 label: "agent".to_string(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".to_string(),
+                response_type: "等待你的输入".to_string(),
                 last_user_message: None,
                 question: Some("Which approach?".to_string()),
                 options: vec![
@@ -2069,7 +2069,7 @@ mod tests {
             PeekFields {
                 label: "agent".to_string(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".to_string(),
+                response_type: "等待你的输入".to_string(),
                 last_user_message: None,
                 question: Some("Allow Edit?".to_string()),
                 options: vec![

@@ -1483,7 +1483,7 @@
         // Sync ACP commands with "flush".
         let acp_cmds = vec![agent_client_protocol::AvailableCommand::new(
             "flush".to_string(),
-            "Flush memory".to_string(),
+            "清空记忆".to_string(),
         )];
         pw.sync_acp_commands(&acp_cmds, None, &models);
 
@@ -1789,7 +1789,7 @@
 
         let acp_cmds = vec![agent_client_protocol::AvailableCommand::new(
             "flush".to_string(),
-            "Flush memory".to_string(),
+            "清空记忆".to_string(),
         )];
 
         // Sync three times.

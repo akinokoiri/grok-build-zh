@@ -475,7 +475,7 @@ pub(crate) fn handle(msg: AcpClientMessage, app: &mut AppView) -> bool {
                         // terminal `prompt_complete` exit). This is what lets a
                         // viewer (and the dashboard's locally-tracked row, which
                         // reads live turn state) show a running `/loop` session as
-                        // Working without stranding "Responding…" forever on an
+                        // Working without stranding "正在回复…" forever on an
                         // exit-less auto-wake / server-initiated turn.
                         if agent.attached_as_viewer
                             && !meta.is_replay

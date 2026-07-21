@@ -6384,7 +6384,7 @@ mod tests {
     fn peek_arrows_navigate_options_and_enter_answers() {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
-        let mut f = peek_fields_for_test("Awaiting your input");
+        let mut f = peek_fields_for_test("等待你的输入");
         f.question = Some("Allow Edit?".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
@@ -6475,7 +6475,7 @@ mod tests {
     fn peek_right_arrow_opens_agent_in_focused_question_picker() {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
-        let mut f = peek_fields_for_test("Awaiting your input");
+        let mut f = peek_fields_for_test("等待你的输入");
         f.question = Some("Allow Edit?".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
@@ -6509,7 +6509,7 @@ mod tests {
     fn peek_reject_option_accepts_typed_feedback() {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
-        let mut f = peek_fields_for_test("Awaiting your input");
+        let mut f = peek_fields_for_test("等待你的输入");
         f.question = Some("Allow Edit?".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
@@ -6672,7 +6672,7 @@ mod tests {
     fn peek_paste_in_question_mode_gated_on_reject_selection() {
         let mut state = make_state_with_selection();
         let reg = crate::actions::ActionRegistry::defaults();
-        let mut f = peek_fields_for_test("Awaiting your input");
+        let mut f = peek_fields_for_test("等待你的输入");
         f.question = Some("Allow Edit?".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
@@ -6709,7 +6709,7 @@ mod tests {
     fn peek_ask_question_answer_routing() {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
-        let mut f = peek_fields_for_test("Awaiting your input");
+        let mut f = peek_fields_for_test("等待你的输入");
         f.question = Some("Which approach?".into());
         // Two real options + an appended "Other" free-text row.
         f.options = vec![
@@ -7944,7 +7944,7 @@ mod tests {
     fn enter_on_reject_feedback_paste_chip_expands() {
         let mut state = DashboardState::new();
         let reg = crate::actions::ActionRegistry::defaults();
-        let mut f = peek_fields_for_test("Awaiting your input");
+        let mut f = peek_fields_for_test("等待你的输入");
         f.question = Some("Allow Edit?".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),

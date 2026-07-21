@@ -244,7 +244,7 @@ mod tests {
 
     fn watch_gate() -> xai_grok_shell::auth::GateInfo {
         xai_grok_shell::auth::GateInfo {
-            message: "Subscribe".into(),
+            message: "订阅".into(),
             url: None,
             label: None,
         }

@@ -627,7 +627,7 @@ pub fn render_import_claude_modal(
             id: SHORTCUT_ID_CONFIRM,
         },
         Shortcut {
-            label: "Esc cancel",
+            label: "Esc 取消",
             clickable: true,
             id: SHORTCUT_ID_CANCEL,
         },

@@ -1089,7 +1089,7 @@ fn build_agents_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a>>
             id: 0,
         },
         Shortcut {
-            label: "Esc close",
+            label: "Esc 关闭",
             clickable: false,
             id: 0,
         },
@@ -1112,7 +1112,7 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
                 id: 0,
             },
             Shortcut {
-                label: "Esc cancel",
+                label: "Esc 取消",
                 clickable: false,
                 id: 0,
             },
@@ -1173,7 +1173,7 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
                 id: 0,
             },
             Shortcut {
-                label: "Esc close",
+                label: "Esc 关闭",
                 clickable: false,
                 id: 0,
             },

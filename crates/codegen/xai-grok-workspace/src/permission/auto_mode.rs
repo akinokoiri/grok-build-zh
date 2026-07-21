@@ -928,7 +928,7 @@ pub fn is_auto_mode_allowlisted_tool_name(tool_name: &str) -> bool {
     matches!(
         tool_name,
         "todo_write"
-            | "TodoWrite"
+            | "待办写入"
             | "task_output"
             | "TaskOutput"
             | "wait_tasks"
@@ -942,7 +942,7 @@ pub fn is_auto_mode_allowlisted_tool_name(tool_name: &str) -> bool {
             | "switch_mode"
             | "SwitchMode"
             | "create_plan"
-            | "CreatePlan"
+            | "创建计划"
             | "update_plan"
             | "UpdatePlan"
             | "list_mcp_resources"

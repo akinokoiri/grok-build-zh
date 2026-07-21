@@ -970,7 +970,7 @@
     /// replay window records its prompt id (the running turn isn't adopted yet),
     /// and the post-replay `SessionLoaded` adoption then SKIPS that same id — so
     /// a viewer that re-attached after the turn ended does not re-strand on
-    /// "Waiting…".
+    /// "等待中…".
     #[test]
     fn replayed_turn_completed_blocks_session_loaded_adoption() {
         use crate::app::dispatch::dispatch;
@@ -1020,7 +1020,7 @@
     /// BUG 1 pin: a BACKGROUND-tab driver (`is_active == false`) that arms the
     /// lost-RPC reconcile from a live `TurnCompleted` must STILL report a change.
     /// Otherwise `event_loop` skips `schedule_tick` and `reconcile_overdue_turn_ends`
-    /// never fires, stranding the turn on "Waiting…". The reconcile-arm return must
+    /// never fires, stranding the turn on "等待中…". The reconcile-arm return must
     /// NOT be gated on `is_active`. (This test fails if the live arm routes the arm
     /// through `changed && is_active`.)
     #[test]

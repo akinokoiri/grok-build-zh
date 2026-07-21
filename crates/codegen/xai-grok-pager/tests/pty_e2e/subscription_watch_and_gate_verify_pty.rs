@@ -332,7 +332,7 @@ async fn startup_gate_shows_paywall_for_free_user_after_live_check() {
     content.server().set_settings(json!({
         "gate_message": GATE_MSG,
         "gate_url": "https://grok.com/supergrok?referrer=grok-build",
-        "gate_label": "Subscribe",
+        "gate_label": "订阅",
     }));
 
     let mut harness = spawn_subscription_pager(&content, "pty-subgate-free", &[]);

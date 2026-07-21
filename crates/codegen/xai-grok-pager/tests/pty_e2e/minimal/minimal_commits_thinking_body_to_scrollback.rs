@@ -62,7 +62,7 @@ async fn minimal_commits_thinking_body_to_scrollback() {
         .expect("turn committed");
 
     harness
-        .wait_for_full_text("Thought for", Duration::from_secs(10))
+        .wait_for_full_text("思考用时", Duration::from_secs(10))
         .expect("thinking header committed");
     harness
         .wait_for_full_text(REASONING_SENTINEL, Duration::from_secs(10))

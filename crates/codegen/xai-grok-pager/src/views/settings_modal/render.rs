@@ -342,7 +342,7 @@ fn build_reset_confirm_shortcuts() -> Vec<Shortcut<'static>> {
             id: RESET_CONFIRM_NO_ID,
         },
         Shortcut {
-            label: "Esc cancel",
+            label: "Esc 取消",
             clickable: false,
             id: 0,
         },
@@ -2758,7 +2758,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "F2/Esc close",
+                    label: "F2/Esc 关闭",
                     clickable: false,
                     id: 0,
                 },
@@ -2805,7 +2805,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
             } else {
                 "\u{2191}/\u{2193} nav"
             };
-            let esc_label = if *sp { "Esc revert" } else { "Esc cancel" };
+            let esc_label = if *sp { "Esc 还原" } else { "Esc 取消" };
             vec![
                 Shortcut {
                     label: nav_label,
@@ -2849,7 +2849,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "Esc cancel",
+                    label: "Esc 取消",
                     clickable: false,
                     id: 0,
                 },
@@ -2877,7 +2877,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                 id: 0,
             },
             Shortcut {
-                label: "Esc cancel",
+                label: "Esc 取消",
                 clickable: false,
                 id: 0,
             },

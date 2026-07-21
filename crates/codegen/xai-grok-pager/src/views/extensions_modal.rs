@@ -3193,7 +3193,7 @@ pub fn render_extensions_modal(
             id: 0,
         });
         shortcuts.push(Shortcut {
-            label: "Esc cancel",
+            label: "Esc 取消",
             clickable: false,
             id: 0,
         });
@@ -3216,7 +3216,7 @@ pub fn render_extensions_modal(
             id: 0,
         });
         shortcuts.push(Shortcut {
-            label: "Esc cancel",
+            label: "Esc 取消",
             clickable: false,
             id: 0,
         });
@@ -3251,7 +3251,7 @@ pub fn render_extensions_modal(
         // from the footer to save space — the cheatsheet still lists it.
         // ID 99 = close action, handled in the mouse handler.
         shortcuts.push(Shortcut {
-            label: "Esc close",
+            label: "Esc 关闭",
             clickable: true,
             id: 99,
         });

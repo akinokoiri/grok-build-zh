@@ -713,7 +713,7 @@ mod link_click_tests {
             message: Some("ZZPROMO".into()),
             dismissible: Some(false),
             cta: Some(xai_grok_announcements::AnnouncementCta {
-                label: Some("Upgrade Account".into()),
+                label: Some("升级账号".into()),
                 url: Some("https://x.ai/promo".into()),
                 caption: None,
             }),
@@ -858,7 +858,7 @@ mod link_click_tests {
         let reg = ActionRegistry::defaults();
         let cta = || {
             Some(xai_grok_announcements::AnnouncementCta {
-                label: Some("Upgrade Account".into()),
+                label: Some("升级账号".into()),
                 url: Some("https://x.ai/promo".into()),
                 caption: None,
             })

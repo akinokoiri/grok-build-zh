@@ -595,7 +595,7 @@ pub(super) fn handle_task_completed(notif: &acp::ExtNotification, app: &mut AppV
     // Synthetic completion emitted by the agent's cold-load reconciliation
     // (`reconcile_stale_background_tasks`): the task's process died with a
     // previous session lifetime — it did not fail NOW. Finalize pane/state
-    // quietly instead of pushing a fresh red "Task failed" block into the
+    // quietly instead of pushing a fresh red "任务失败" block into the
     // resumed scrollback (one per dead task — pure noise on every resume).
     let stale_on_load = signal.as_deref() == Some("session_restart");
 
@@ -606,7 +606,7 @@ pub(super) fn handle_task_completed(notif: &acp::ExtNotification, app: &mut AppV
 
     // Compute elapsed duration from the bg task state (if we have it).
     // Prefer the human description for "Task completed/failed: …" labels
-    // (same as "Task started"), falling back to the raw command only when
+    // (same as "任务已开始"), falling back to the raw command only when
     // no description was supplied.
     let (command, elapsed, mut description, scrollback_entry_id, was_running) =
         if let Some(bg_task) = session.bg_tasks.get_mut(task_id) {
@@ -639,7 +639,7 @@ pub(super) fn handle_task_completed(notif: &acp::ExtNotification, app: &mut AppV
                 .unwrap_or_default();
             let description = task_snapshot.display_command.clone().and_then(|d| {
                 // Strip the baked "[monitor] " prefix so the completed label
-                // matches the "Task started" path (which uses the bare
+                // matches the "任务已开始" path (which uses the bare
                 // monitor description), not "[monitor] …".
                 let d = d
                     .strip_prefix("[monitor] ")
@@ -657,8 +657,8 @@ pub(super) fn handle_task_completed(notif: &acp::ExtNotification, app: &mut AppV
             (command, elapsed, description, None, false)
         };
 
-    // Finish the "Task started" scrollback entry (stops bullet animation).
-    // Also sync description onto that block so the historical "Task started"
+    // Finish the "任务已开始" scrollback entry (stops bullet animation).
+    // Also sync description onto that block so the historical "任务已开始"
     // line shows the label if it was missing at background time.
     if let Some(entry_id) = scrollback_entry_id {
         if let Some(entry) = scrollback.get_by_id_mut(entry_id)
@@ -690,7 +690,7 @@ pub(super) fn handle_task_completed(notif: &acp::ExtNotification, app: &mut AppV
     }
 
     if stale_on_load {
-        // The replayed "Task started" block above is finished (static
+        // The replayed "任务已开始" block above is finished (static
         // bullet); the pane row leaves the running filter via the status
         // update. No new scrollback block: nothing happened in THIS session.
         return is_active;

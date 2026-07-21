@@ -262,7 +262,7 @@ impl SessionActor {
 
         // Unified-log processing marker (counterpart of `shell.cancel.received`
         // in `MvpAgent::cancel`): records which prompt the cancel lands on so
-        // a stuck "Cancelling…" can be attributed to delivery vs. processing.
+        // a stuck "正在取消…" can be attributed to delivery vs. processing.
         // A pin snapshot only — the authoritative cancel identity is captured
         // from `running_task.prompt_id` under the state lock below, because
         // `current_prompt_id` is cleared early (turn scope guard drop /

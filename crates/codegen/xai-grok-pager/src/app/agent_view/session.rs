@@ -470,7 +470,7 @@ impl AgentView {
     /// ([`acp_handler::should_adopt_running_prompt`]) AND not terminal-in-replay.
     /// A turn whose durable `TurnCompleted` already arrived in this load's replay
     /// (recorded in [`Self::replayed_terminal_prompts`]) has ended; adopting it
-    /// would re-strand the viewer on "Waiting…".
+    /// would re-strand the viewer on "等待中…".
     ///
     /// [`acp_handler::should_adopt_running_prompt`]: crate::app::acp_handler::should_adopt_running_prompt
     pub(crate) fn should_adopt_running_prompt(&self, prompt_id: &str) -> bool {
@@ -575,7 +575,7 @@ impl AgentView {
     /// foreground subagent is registered as running, it's still `Subagent`
     /// (covers any window where the task tool call has cleared but the child is
     /// live); otherwise the model itself (`Model`). Bash turns keep `None` so
-    /// the status line renders its own "Running…".
+    /// the status line renders its own "运行中…".
     ///
     /// For `Waiting(TaskOutput { task_ids, .. })`, also resolves a display
     /// `subject` from live bg-task / subagent state (description preferred,
@@ -660,7 +660,7 @@ impl AgentView {
     /// a *short* command / subagent description).
     ///
     /// Long bare commands are intentionally not used as subjects — the spinner
-    /// falls back to the generic `"Waiting on task output…"` instead of
+    /// falls back to the generic `"等待任务输出…"` instead of
     /// stuffing a wall of shell into the status line. Descriptions are kept
     /// but clamped by the caller via [`clamp_activity_subject`].
     fn lookup_task_subject(&self, task_id: &str) -> Option<String> {
@@ -705,7 +705,7 @@ impl AgentView {
     }
     /// Whether a foreground subagent (`task`/`spawn_subagent`, not
     /// `run_in_background`) is currently running. The parent turn is blocked on
-    /// it, so the spinner should read "Waiting on subagent…".
+    /// it, so the spinner should read "等待子代理…".
     fn has_running_foreground_subagent(&self) -> bool {
         self.subagent_sessions
             .values()
@@ -1318,7 +1318,7 @@ mod resolve_turn_activity_tests {
         };
         assert_eq!(
             reason.label(),
-            "Waiting on task output…",
+            "等待任务输出…",
             "long command without description must not become the spinner subject"
         );
         assert_eq!(

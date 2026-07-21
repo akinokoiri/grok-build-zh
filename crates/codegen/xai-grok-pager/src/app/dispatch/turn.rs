@@ -67,7 +67,7 @@ pub(super) fn dispatch_cancel_turn(app: &mut AppView) -> Vec<Effect> {
         // never resolved — the `session/cancel` notification or the turn-end
         // response may have been lost in transit. Re-send instead of silently
         // no-opping (cancel is idempotent on the agent), so Ctrl+C / palette
-        // CancelTurn is never a dead key on a stuck "Cancelling…" spinner.
+        // CancelTurn is never a dead key on a stuck "正在取消…" spinner.
         // Skips the subagent panel — that
         // choice was already made (or defaulted) on the first cancel.
         if agent.session.state.is_cancelling() {
@@ -560,7 +560,7 @@ pub(super) fn handle_bg_task_killed(
                 // Stale row (e.g. restored from a resume replay but the
                 // process belongs to a previous session lifetime): the
                 // agent has nothing to kill, so drop the row and finish
-                // its "Task started" scrollback entry (stops the
+                // its "任务已开始" scrollback entry (stops the
                 // running accent that the replay restore turned on).
                 tracing::info!(task_id = %task_id, "Task not found, removing");
                 if let Some(task) = agent.session.bg_tasks.remove(&task_id)

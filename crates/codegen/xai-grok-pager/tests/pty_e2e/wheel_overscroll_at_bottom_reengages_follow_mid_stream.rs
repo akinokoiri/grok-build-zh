@@ -126,7 +126,7 @@ async fn wheel_overscroll_at_bottom_reengages_follow_mid_stream() {
     );
     // The completion gate is still held, so the turn is provably running.
     assert!(
-        harness.contains_text("Responding"),
+        harness.contains_text("正在回复"),
         "turn ended despite the held completion gate\nscreen:\n{}",
         harness.screen_contents()
     );
@@ -148,7 +148,7 @@ async fn wheel_overscroll_at_bottom_reengages_follow_mid_stream() {
     // Release the gate and let the turn complete: the dance didn't wedge it.
     content.release_agent_completions();
     let deadline = std::time::Instant::now() + Duration::from_secs(40);
-    while harness.contains_text("Responding") {
+    while harness.contains_text("正在回复") {
         assert!(
             std::time::Instant::now() < deadline,
             "turn never completed after releasing the gate\nscreen:\n{}",

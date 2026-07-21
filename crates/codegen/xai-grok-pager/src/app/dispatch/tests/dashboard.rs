@@ -4123,7 +4123,7 @@ fn dashboard_upgrade_cta_paints_arms_rect_and_ctrl_o_override() {
         &[],
         false,
         Some(HeaderUpgradeCta {
-            label: "Upgrade Account",
+            label: "升级账号",
             pinned: true,
             caption: Some(CAPTION),
         }),
@@ -4177,7 +4177,7 @@ fn dashboard_upgrade_cta_paints_arms_rect_and_ctrl_o_override() {
         &[],
         false,
         Some(HeaderUpgradeCta {
-            label: "Upgrade Account",
+            label: "升级账号",
             pinned: true,
             caption: None,
         }),
@@ -4208,7 +4208,7 @@ fn dashboard_upgrade_cta_paints_arms_rect_and_ctrl_o_override() {
         &[],
         false,
         Some(HeaderUpgradeCta {
-            label: "Upgrade Account",
+            label: "升级账号",
             pinned: false,
             caption: Some(CAPTION),
         }),
@@ -4991,7 +4991,7 @@ fn dashboard_permission_select_drops_stale_request() {
             crate::views::dashboard::peek::PeekFields {
                 label: "label".into(),
                 time_ago: String::new(),
-                response_type: "Awaiting your input".into(),
+                response_type: "等待你的输入".into(),
                 last_user_message: None,
                 question: Some("q?".into()),
                 options: vec![("allow".into(), "Allow".into())],

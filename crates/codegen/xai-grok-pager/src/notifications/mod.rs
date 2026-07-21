@@ -125,7 +125,7 @@ impl NotificationService {
     /// Flush the tab title and progress bar to the idle state, writing
     /// directly to stderr.  Call before `notify()` so that Ghostty's
     /// notification popup picks up the updated (non-spinning) title
-    /// instead of a stale "Responding" subtitle.
+    /// instead of a stale "正在回复" subtitle.
     pub fn flush_idle_state(&mut self, state: &title::TitleState<'_>) {
         let mut buf = String::new();
 

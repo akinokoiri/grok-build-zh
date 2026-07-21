@@ -1201,7 +1201,7 @@ async fn goal_classifier_status_changed_during_await_drops_result() {
     unsafe { std::env::remove_var(ENV_FLAG) };
 }
 /// A turn cancel dropping the drain future mid-verification must clear the
-/// `verifying_in_flight` latch — otherwise "Verifying…" sticks forever.
+/// `verifying_in_flight` latch — otherwise "正在校验…" sticks forever.
 #[tokio::test(flavor = "current_thread")]
 #[serial]
 async fn verifying_latch_clears_when_drain_future_dropped_mid_verification() {

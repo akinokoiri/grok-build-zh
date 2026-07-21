@@ -1615,7 +1615,7 @@ fn gate_refreshed_emits_check_subscription_on_gate_lift() {
     app.gate = Some(xai_grok_shell::auth::GateInfo {
         message: "SuperGrok subscription required".into(),
         url: Some("https://grok.com/supergrok".into()),
-        label: Some("Subscribe".into()),
+        label: Some("订阅".into()),
     });
     assert!(!app.has_access());
 
@@ -1647,13 +1647,13 @@ fn gate_refreshed_emits_check_subscription_on_gate_lift() {
 fn gate_refreshed_no_effect_when_still_gated() {
     let mut app = test_app();
     app.gate = Some(xai_grok_shell::auth::GateInfo {
-        message: "Subscribe".into(),
+        message: "订阅".into(),
         url: None,
         label: None,
     });
 
     let settings = xai_grok_shell::util::config::RemoteSettings {
-        gate_message: Some("Subscribe".into()),
+        gate_message: Some("订阅".into()),
         ..Default::default()
     };
     let effects = dispatch_task_result(
@@ -1694,7 +1694,7 @@ fn gate_refreshed_newly_blocked_defers_gate_for_verification() {
     assert!(app.has_access()); // ungated
 
     let settings = xai_grok_shell::util::config::RemoteSettings {
-        gate_message: Some("Subscribe".into()),
+        gate_message: Some("订阅".into()),
         ..Default::default()
     };
     let effects = dispatch_task_result(
@@ -1727,7 +1727,7 @@ fn gate_refreshed_newly_blocked_defers_gate_for_verification() {
 
 fn test_gate() -> xai_grok_shell::auth::GateInfo {
     xai_grok_shell::auth::GateInfo {
-        message: "Subscribe".into(),
+        message: "订阅".into(),
         url: None,
         label: None,
     }

@@ -3,7 +3,7 @@ use super::*;
 /// Update the activity label on a subagent's collapsed scrollback block.
 ///
 /// Skips the write (and cache invalidation) when the label hasn't changed,
-/// so the per-delta common case ("Responding" stays "Responding") allocates
+/// so the per-delta common case ("正在回复" stays "正在回复") allocates
 /// nothing.
 pub(super) fn sync_activity_label(
     scrollback: &mut crate::scrollback::state::ScrollbackState,

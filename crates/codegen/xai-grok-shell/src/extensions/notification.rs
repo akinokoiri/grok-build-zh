@@ -683,7 +683,7 @@ pub enum SessionUpdate {
         monitor_description: Option<String>,
         /// Model-supplied tool `description` for ordinary bash bg tasks
         /// (e.g. "Wait for the server to start"). Prefer over raw `command`
-        /// in the pager "Task started" line / tasks pane. `None` when omitted.
+        /// in the pager "任务已开始" line / tasks pane. `None` when omitted.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
@@ -895,7 +895,7 @@ pub enum SessionUpdate {
     /// outcome. Rides the persisted `_x.ai/session/update` rail (unlike the
     /// fire-and-forget `x.ai/session/prompt_complete` notification), so a
     /// viewer that re-attaches mid-turn can finalize the turn from replay
-    /// instead of staying stuck on "Waiting…".
+    /// instead of staying stuck on "等待中…".
     TurnCompleted {
         /// Correlation key the re-attaching viewer finalizes the turn on:
         /// the prompt/turn whose terminal outcome this carries.

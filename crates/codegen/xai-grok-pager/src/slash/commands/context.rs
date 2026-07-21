@@ -25,7 +25,7 @@ impl SlashCommand for ContextCommand {
 
     fn run(&self, ctx: &mut CommandExecCtx, _args: &str) -> CommandResult {
         if ctx.session_id.is_none() {
-            return CommandResult::Error("No active session".to_string());
+            return CommandResult::Error("无活动会话".to_string());
         }
 
         CommandResult::Action(Action::ShowContextInfo)

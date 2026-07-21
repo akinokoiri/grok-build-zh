@@ -63,7 +63,7 @@ async fn unknown_ssh_clipboard_delivery_is_unverified() {
         .wait_for_text(MOCK_RESPONSE_SENTINEL, Duration::from_secs(30))
         .expect("response");
     harness
-        .wait_for_text("Worked for", Duration::from_secs(20))
+        .wait_for_text("已工作", Duration::from_secs(20))
         .expect("turn completion marker before /copy");
     inject_keys_paced(&mut harness, b"/copy 1");
     harness

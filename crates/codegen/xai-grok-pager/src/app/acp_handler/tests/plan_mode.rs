@@ -6,7 +6,7 @@
         let mut app = make_app_with_agent("sess-1");
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "create-plan-call", "CreatePlan");
+            seed_pending_tool(agent, "create-plan-call", "创建计划");
         }
         let (ext, _rx) =
             make_exit_plan_ext_with_tool_call_id("create-plan-call", Some("# Cursor Plan"));
@@ -29,7 +29,7 @@
         let mut app = make_app_with_agent("sess-1");
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "create-plan-call", "CreatePlan");
+            seed_pending_tool(agent, "create-plan-call", "创建计划");
         }
         let (ext, _rx) =
             make_exit_plan_ext_with_tool_call_id("create-plan-call", Some("# First Plan"));
@@ -117,7 +117,7 @@
         let mut app = make_app_with_agent("sess-1");
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "create-plan-call", "CreatePlan");
+            seed_pending_tool(agent, "create-plan-call", "创建计划");
             agent.active_modal = Some(crate::views::modal::ActiveModal::CommandPalette {
                 entries: crate::views::modal::default_palette_entries(agent.sharing_enabled),
                 state: crate::views::picker::PickerState::input_active(),
@@ -147,7 +147,7 @@
         let mut app = make_app_with_agent("sess-1");
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "create-plan-call", "CreatePlan");
+            seed_pending_tool(agent, "create-plan-call", "创建计划");
             agent.block_viewer = Some(crate::views::block_viewer::BlockViewerPane::for_plain_text(
                 "edit",
                 "diff content",
@@ -172,7 +172,7 @@
         let mut app = make_app_with_agent("sess-1");
         {
             let agent = app.agents.get_mut(&AgentId(0)).unwrap();
-            seed_pending_tool(agent, "create-plan-call", "CreatePlan");
+            seed_pending_tool(agent, "create-plan-call", "创建计划");
         }
         let (first, _first_rx) =
             make_exit_plan_ext_with_tool_call_id("create-plan-call", Some("# First Plan"));
@@ -317,7 +317,7 @@
             make_tool_call_update("enter_plan_mode"),
             make_tool_call("Execute `rg enter_plan_mode`"),
             make_tool_call_update("Execute `rg enter_plan_mode`"),
-            make_tool_call_update("Plan mode entered"),
+            make_tool_call_update("已进入计划模式"),
             make_tool_call("mcp__foo__enter_plan_mode"),
         ];
         for update in &updates {
@@ -343,7 +343,7 @@
         let updates = [
             make_tool_call("exit_plan_mode"),
             make_tool_call_update("exit_plan_mode"),
-            make_tool_call_update("Plan mode exited"),
+            make_tool_call_update("已退出计划模式"),
             make_tool_call("Execute `rg exit_plan_mode`"),
         ];
         for update in &updates {

@@ -773,7 +773,7 @@ mod tests {
                 },
                 {
                     "name": "flush",
-                    "description": "Flush memory"
+                    "description": "清空记忆"
                 }
             ]
         });

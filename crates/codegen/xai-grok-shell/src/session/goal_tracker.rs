@@ -659,7 +659,7 @@ pub struct GoalOrchestration {
 
     /// True while the verification skeptic panel is running. Latched around
     /// the verification stage (mirrors `planning_in_flight`) so the
-    /// "Verifying…" badge survives the token-accounting / continuation
+    /// "正在校验…" badge survives the token-accounting / continuation
     /// `GoalUpdated`s that fire mid-verification. Transient (never persisted).
     #[serde(skip)]
     pub verifying_in_flight: bool,

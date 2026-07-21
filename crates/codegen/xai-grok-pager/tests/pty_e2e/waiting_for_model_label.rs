@@ -4,8 +4,8 @@ use super::common::*;
 
 /// The turn-status spinner names *what* the agent is waiting on. Right after a
 /// prompt is submitted, before the model streams its first token, the spinner
-/// reads "Waiting for response…" — the explicit `WaitingReason::Model` label
-/// that replaced the old opaque "Waiting…". This is the literal feedback that
+/// reads "等待模型回复…" — the explicit `WaitingReason::Model` label
+/// that replaced the old opaque "等待中…". This is the literal feedback that
 /// prompted the change ("what is 'Waiting…' waiting on?").
 ///
 /// Drives the real binary end-to-end: prompt submit → `resolve_turn_activity`
@@ -35,7 +35,7 @@ async fn waiting_for_model_label_shows_before_first_token() {
         .inject_keys(format!("{PROMPT}\r").as_bytes())
         .expect("submit prompt");
 
-    // The new explicit label, not the old generic "Waiting…". Match without the
+    // The new explicit label, not the old generic "等待中…". Match without the
     // trailing ellipsis so terminal width / glyph handling can't flake it.
     harness
         .wait_for_text("Waiting for response", Duration::from_secs(10))

@@ -298,7 +298,7 @@ fn turn_completed_meta(msgs: &[PersistenceMsg]) -> Option<serde_json::Value> {
 /// slot are still queued. The cancel identity must come from
 /// `running_task.prompt_id`, so the durable `TurnCompleted` (with
 /// `cancelTrigger=send_now`) is still persisted — otherwise viewers strand on
-/// "Waiting…" with no terminal at all.
+/// "等待中…" with no terminal at all.
 #[tokio::test(flavor = "current_thread")]
 async fn send_now_cancel_in_completion_race_window_still_persists_turn_completed() {
     let local = tokio::task::LocalSet::new();

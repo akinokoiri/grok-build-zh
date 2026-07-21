@@ -1074,7 +1074,7 @@ fn build_shortcuts(
                     id: 0,
                 },
                 Shortcut {
-                    label: "Esc close",
+                    label: "Esc 关闭",
                     clickable: false,
                     id: 0,
                 },

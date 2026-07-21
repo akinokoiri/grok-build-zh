@@ -10,7 +10,7 @@ const DONE_SENTINEL: &str = "VERB_GROUP_THINKING_DONE";
 const REASONING_SENTINEL: &str = "THOUGHTFOLDSENTINEL";
 
 /// Collapsed thought member/header text ("Thought for Xs").
-const THOUGHT_HEADER: &str = "Thought for";
+const THOUGHT_HEADER: &str = "思考用时";
 
 /// PTY: a thought folds into the verb-group run it precedes. The scripted
 /// turn thinks, then reads twice: while the reasoning streams its live panel

@@ -1223,9 +1223,9 @@ pub(super) fn handle_prompt_response(
             (Ok(_), false) if !agent.bash_turn => {
                 let body = match elapsed {
                     Some(d) => {
-                        format!("Turn complete in {}.", crate::util::format_duration(d))
+                        format!("回合完成，用时 {}。", crate::util::format_duration(d))
                     }
-                    None => String::from("Turn complete."),
+                    None => String::from("回合完成。"),
                 };
                 Some((NotificationEventKind::TurnComplete, body))
             }

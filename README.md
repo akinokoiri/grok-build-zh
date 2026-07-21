@@ -2,137 +2,205 @@
 
 # Grok Build 汉化版（grok-build-zh）
 
-**面向中文用户的 [Grok Build](https://github.com/xai-org/grok-build) 社区汉化分支**
+### 社区维护 · 非官方 · 开源免费
 
-把设置、权限确认等高频界面改成中文，本地编译后即可使用。
+把 [Grok Build](https://github.com/xai-org/grok-build) 终端界面（设置、权限、状态栏等）翻译成**简体中文**。
 
-[![GitHub stars](https://img.shields.io/github/stars/ivan6232/grok-build-zh?style=social)](https://github.com/ivan6232/grok-build-zh)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/ivan6232/grok-build-zh?style=social)](https://github.com/ivan6232/grok-build-zh/stargazers)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Upstream](https://img.shields.io/badge/upstream-xai--org%2Fgrok--build-orange)](https://github.com/xai-org/grok-build)
+[![Release](https://img.shields.io/github/v/release/ivan6232/grok-build-zh?include_prereleases)](https://github.com/ivan6232/grok-build-zh/releases)
 
-[快速开始](#快速开始) · [已汉化内容](#已汉化内容) · [与官方差异](#与官方的关系) · [参与贡献](#参与贡献) · [Star 支持](#star--转发)
+**本项目是社区汉化分支，与 SpaceXAI / xAI 无官方隶属关系。**  
+「Grok」「Grok Build」为相关权利人商标。使用请遵守 xAI 服务条款与账号规定。
+
+[安装使用](#安装与使用) · [已汉化范围](#已汉化范围) · [与官方区别](#与官方版的区别) · [同步上游](#同步官方更新) · [参与贡献](#参与贡献)
 
 </div>
 
 ---
 
-## 为什么做这个项目？
+## 重要声明（请先读）
 
-官方 Grok Build TUI 目前只有英文界面，设置项、权限弹窗、状态提示对中文用户不友好。
+| | |
+|--|--|
+| **性质** | 社区爱好者维护的 **非官方汉化** |
+| **上游** | 基于 [xai-org/grok-build](https://github.com/xai-org/grok-build)（Apache 2.0） |
+| **不包含** | 官方账号代充、破解、API 密钥分发 |
+| **风险** | 请自行审查代码后再编译运行；生产环境请谨慎 |
+| **商标** | 未获 xAI 背书；不得伪称为官方发行版 |
 
-本仓库是 **xai-org/grok-build 的社区 Fork**，在 **Apache 2.0** 许可下：
+如果你需要**纯官方、英文界面**，请使用：
 
-- 汉化高频用户可见文案  
-- 保持可跟随官方 upstream 同步  
-- 欢迎 Issue / PR 一起完善翻译  
-
-> 对话本身可以用中文；本项目解决的是 **软件 UI 语言**。
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
 
 ---
 
-## 快速开始
+## 这个汉化版解决什么问题？
 
-### 方式 A：从源码编译（当前推荐）
+Grok Build 的 **对话**可以用中文，但 **软件 UI**（权限弹窗、设置页、状态提示「Responding…」等）默认是英文。
 
-依赖与官方相同：Rust（见 `rust-toolchain.toml`）、[DotSlash](https://dotslash-cli.com)、protoc 等。详见官方 README 的 Building from source。
+本仓库在源码层把这些**用户可见文案**改成中文，编译后即可使用中文界面。
+
+---
+
+## 安装与使用
+
+### 方式一：下载预编译二进制（推荐）
+
+1. 打开 [Releases](https://github.com/ivan6232/grok-build-zh/releases)  
+2. 按系统下载：
+   - macOS Apple Silicon：`grok-zh-aarch64-apple-darwin.tar.gz`
+   - macOS Intel：`grok-zh-x86_64-apple-darwin.tar.gz`
+   - Linux x64：`grok-zh-x86_64-unknown-linux-gnu.tar.gz`
+3. 解压并安装到 PATH：
 
 ```bash
+# 示例：macOS / Linux
+tar -xzf grok-zh-*.tar.gz
+chmod +x grok-zh
+mkdir -p ~/.local/bin
+mv grok-zh ~/.local/bin/
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # 或 ~/.bashrc
+source ~/.zshrc
+
+grok-zh --version   # 或 grok-zh
+```
+
+> 若 Releases 尚无对应平台包，请用下方「源码编译」。
+
+### 方式二：源码编译
+
+依赖与官方一致：
+
+- Rust（见仓库 `rust-toolchain.toml`，建议用 rustup）
+- [DotSlash](https://dotslash-cli.com)（构建 hermetic 工具需要）
+- protoc（可通过 DotSlash 的 `bin/protoc`）
+
+```bash
+# 1. 克隆汉化分支
 git clone https://github.com/ivan6232/grok-build-zh.git
 cd grok-build-zh
-git checkout zh-CN   # 汉化主分支
+git checkout zh-CN
 
-# 安装 dotslash 后：
+# 2. 安装 DotSlash（首次）
+cargo install dotslash
+# 确认：
+dotslash --help
+
+# 3. 编译
 cargo build -p xai-grok-pager-bin --release
 
-# 二进制一般在：
-#   target/release/xai-grok-pager
-# 可自行复制为 grok 并放入 PATH，例如：
+# 4. 安装为 grok-zh（不覆盖官方 grok）
 mkdir -p ~/.local/bin
 cp target/release/xai-grok-pager ~/.local/bin/grok-zh
 ~/.local/bin/grok-zh
 ```
 
-也可：
+开发调试：
 
 ```bash
 cargo run -p xai-grok-pager-bin
 ```
 
-### 方式 B：预编译包
+### 与官方 `grok` 并存
 
-GitHub Actions 将尝试在 Release 中提供构建产物（见 `.github/workflows/build.yml`）。若暂无产物，请用方式 A。
+| 命令 | 说明 |
+|------|------|
+| `grok` | 官方安装脚本安装的英文版 |
+| `grok-zh` | 本汉化版（建议这样命名，避免覆盖） |
 
-### 与官方版共存
+登录、API Key、配置目录（如 `~/.grok`）等行为与上游一致，**请自行阅读上游文档与隐私说明**。
 
-不要覆盖官方 `grok` 也可，使用不同命令名如 `grok-zh`。
-
----
-
-## 已汉化内容（持续扩展）
-
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| 设置分类标题 | ✅ | 外观 / 鼠标 / 编辑与输入 / 代理与授权… |
-| 设置项名称 (label) | ✅ | 紧凑模式、权限模式、主题等 |
-| 设置项说明 (description) | ✅ 大部分 | 选项说明中文 |
-| 权限确认文案 | ✅ 核心 | 是 / 始终允许 / 否… |
-| 底部快捷键 / 全局状态 | 🚧 | 欢迎 PR |
-| 帮助文档 user-guide | 🚧 | 可选中文文档 |
-| 完整 i18n 可切换语言 | 📋 规划中 | 长期目标：en/zh 可配置 |
-
----
-
-## 与官方的关系
-
-| | 官方 | 本仓库 |
-|--|------|--------|
-| 上游 | [xai-org/grok-build](https://github.com/xai-org/grok-build) | 本 Fork |
-| 协议 | Apache 2.0 | 相同，保留 NOTICE |
-| 目标 | 完整产品能力 | **中文 UI** + 同步上游能力 |
-| 非目标 | — | 不修改模型、不替代 xAI 账号体系 |
-
-同步上游示例：
+### 基本使用
 
 ```bash
-git remote add upstream https://github.com/xai-org/grok-build.git  # 若尚未添加
+# 在项目目录启动 TUI
+cd /path/to/your/project
+grok-zh
+
+# 常用（与官方 slash 命令相同，界面文案为中文）
+# /settings   打开设置
+# /model      切换模型
+# /help       帮助
+```
+
+配置文件仍为 `~/.grok/config.toml` 等，键名保持英文（与上游兼容）。
+
+---
+
+## 已汉化范围
+
+| 模块 | 状态 |
+|------|------|
+| 设置分类 / 设置项名称 | ✅ 已完成 |
+| 设置项说明文字 | ✅ 大部分 |
+| 权限确认（是 / 始终允许 / 否…） | ✅ 核心路径 |
+| 状态栏：正在回复、思考中、压缩中、等待… | ✅ |
+| 回合事件：已工作、回合失败、上下文压缩… | ✅ |
+| 快捷键条：Esc 取消/关闭 等 | ✅ 部分 |
+| 仪表盘：等待你的输入、新会话 等 | ✅ 部分 |
+| 全部 tips / 全部错误长文 / 完整 user-guide | 🚧 进行中 |
+| 可配置 en/zh 切换（正规 i18n） | 📋 规划中 |
+
+完整 100% 文案需要社区持续 PR。欢迎对照英文截图提 Issue「漏网英文」。
+
+---
+
+## 与官方版的区别
+
+| | 官方 Grok Build | 本仓库 grok-build-zh |
+|--|-----------------|----------------------|
+| 维护方 | SpaceXAI / xAI | 社区 |
+| 界面语言 | 英文 | **简体中文（硬编码）** |
+| 功能能力 | 完整上游能力 | 同步上游，另加汉化补丁 |
+| 安装包 | x.ai/cli | GitHub Releases / 源码编译 |
+| 默认分支 | main | **zh-CN** |
+
+---
+
+## 同步官方更新
+
+```bash
+git remote add upstream https://github.com/xai-org/grok-build.git  # 只需一次
 git fetch upstream
-git merge upstream/main   # 或 rebase，按需解决冲突
+git checkout zh-CN
+git merge upstream/main   # 或 rebase
+# 解决冲突后：
+git push origin zh-CN
 ```
 
 ---
 
 ## 参与贡献
 
-非常欢迎：
+1. Fork 本仓库，分支建议：`i18n/xxx`  
+2. 优先改用户可见字符串，勿改 option id、配置键  
+3. 术语见 [docs/zh/TRANSLATING.md](docs/zh/TRANSLATING.md)  
+4. 提交 PR，最好附图  
 
-1. **补翻译**：提交 PR 修改 `crates/codegen/xai-grok-pager` / `xai-grok-shell` / `xai-grok-workspace` 中用户可见字符串  
-2. **报漏网英文**：开 Issue，附截图与英文原文  
-3. **i18n 架构**：若有 Rust 本地化经验，欢迎一起设计 `zh-CN`/`en` 资源文件方案  
+高频文件：
 
-翻译约定见 [docs/zh/TRANSLATING.md](docs/zh/TRANSLATING.md)。
-
----
-
-## Star & 转发
-
-如果这个汉化版帮到你：
-
-1. 点一下右上角 **Star**，让更多中文用户看到  
-2. 分享给同事 / 群友  
-3. 提 PR 一起把界面做完整  
+- `crates/codegen/xai-grok-pager/src/settings/`  
+- `crates/codegen/xai-grok-pager/src/views/turn_status.rs`  
+- `crates/codegen/xai-grok-workspace/src/permission/prompter.rs`  
+- `crates/codegen/xai-grok-pager/src/scrollback/blocks/session_event.rs`  
 
 ---
 
-## 免责声明
+## Star 与传播
 
-- 本项目为**社区维护**，与 SpaceXAI / xAI **无官方隶属关系**  
-- 「Grok」「Grok Build」等为相关权利人商标  
-- 使用前请遵守 xAI 服务条款与 API/账号规定  
-- 从源码编译与运行风险自负；请在可信环境审查代码后再使用  
+如果对你有用：
+
+1. 点仓库 **Star**  
+2. 分享给需要中文界面的朋友  
+3. 提 PR 补翻译  
 
 ---
 
 ## License
 
-Apache License 2.0 — 见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。  
+Apache License 2.0 — 见 [LICENSE](LICENSE)、[NOTICE](NOTICE)。  
 基于 [xai-org/grok-build](https://github.com/xai-org/grok-build) 修改。

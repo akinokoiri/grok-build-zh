@@ -91,7 +91,7 @@ pub enum RewindPhase {
     ModeSelect {
         target_prompt_index: usize,
         has_file_changes: bool,
-        /// Whether the "File changes only" row exists at all. `false` in the
+        /// Whether the "仅文件变更" row exists at all. `false` in the
         /// inline edit-and-resubmit context, where the conversation rewind is
         /// a given and the only question is whether to also revert files.
         offer_files_only: bool,
@@ -547,7 +547,7 @@ pub fn rewind_overlay_height(phase: &RewindPhase, screen_h: u16) -> u16 {
             .height(screen_h);
         }
         RewindPhase::CancelOffer { .. } => 5,
-        // One row shorter when the "File changes only" row is hidden
+        // One row shorter when the "仅文件变更" row is hidden
         // (inline edit-and-resubmit context).
         RewindPhase::ModeSelect {
             offer_files_only, ..
@@ -754,7 +754,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                     y,
                     content_w,
                     'f',
-                    "File changes only",
+                    "仅文件变更",
                     *has_file_changes,
                     *active_idx == 2,
                     focused,
@@ -1217,7 +1217,7 @@ mod tests {
         assert_eq!(rewind_row_at(&no_files, area(), 5, 4), None);
     }
 
-    /// Inline edit-and-resubmit: the "File changes only" row does not exist
+    /// Inline edit-and-resubmit: the "仅文件变更" row does not exist
     /// at all — the mouse hit-test has nothing at index 2 even when the
     /// point has file changes, and the overlay is one row shorter.
     #[test]

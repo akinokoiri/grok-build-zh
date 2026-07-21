@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0-zh.1)"
+        required: true
+        default: "v0.1.0-zh.1"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            name: grok-zh-aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+            name: grok-zh-x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            name: grok-zh-x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install DotSlash
+        run: cargo install dotslash --locked
+        continue-on-error: true
+
+      - name: Build release
+        run: |
+          set -e
+          cargo build -p xai-grok-pager-bin --release --target ${{ matrix.target }}
+        continue-on-error: false
+        env:
+          CARGO_TERM_COLOR: always
+
+      - name: Package
+        shell: bash
+        run: |
+          set -e
+          BIN="target/${{ matrix.target }}/release/xai-grok-pager"
+          if [ ! -f "$BIN" ]; then
+            BIN="target/release/xai-grok-pager"
+          fi
+          test -f "$BIN"
+          STAGE="dist/${{ matrix.name }}"
+          mkdir -p "$STAGE"
+          cp "$BIN" "$STAGE/grok-zh"
+          chmod +x "$STAGE/grok-zh"
+          cp README.md LICENSE NOTICE ZH_VERSION "$STAGE/" 2>/dev/null || true
+          cat > "$STAGE/INSTALL.txt" << EOT
+Grok Build 汉化版（非官方社区构建）
+二进制名: grok-zh
+安装: chmod +x grok-zh && mv grok-zh ~/.local/bin/
+仓库: https://github.com/ivan6232/grok-build-zh
+EOT
+          tar -C dist -czf "${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
+          ls -la "${{ matrix.name }}.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}.tar.gz
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Grok Build 汉化版 ${{ steps.tag.outputs.name }}
+          body: |
+            ## Grok Build 社区汉化版（非官方）
+
+            基于 [xai-org/grok-build](https://github.com/xai-org/grok-build) 的简体中文界面构建。
+
+            ### 下载后
+            ```bash
+            tar -xzf grok-zh-*.tar.gz
+            chmod +x */grok-zh
+            mv */grok-zh ~/.local/bin/
+            grok-zh
+            ```
+
+            ### 声明
+            社区维护，与 SpaceXAI/xAI 无官方关系。请遵守 xAI 服务条款。
+          files: artifacts/**/*.tar.gz
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

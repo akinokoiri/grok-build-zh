@@ -11,7 +11,7 @@ use std::time::{Instant, SystemTime};
 /// Title prefix for a session that has no name / generated title / prompt
 /// yet. The renderer paints this part in the primary colour and the trailing
 /// ` #<id>` suffix in dim gray (see `render::render_row`).
-pub(crate) const NEW_SESSION_LABEL: &str = "New session";
+pub(crate) const NEW_SESSION_LABEL: &str = "新会话";
 /// A single row in the dashboard. Built per-frame from `app.agents`.
 #[derive(Debug, Clone)]
 pub struct DashboardRow {
@@ -809,14 +809,14 @@ fn subagent_secondary_line(
 }
 fn top_level_activity(agent: &AgentView, state: RowState) -> Option<String> {
     match state {
-        RowState::NeedsInput => Some("Awaiting your input".to_string()),
+        RowState::NeedsInput => Some("等待你的输入".to_string()),
         RowState::Working => {
             if let Some(cmd) = agent.session.state.command_in_flight() {
                 Some(format!("{}…", cmd.display_name()))
             } else if let Some(activity) = agent.resolve_turn_activity() {
                 Some(sanitize(&format_activity_label(&activity)))
             } else if agent.session.loading_replay {
-                Some("Loading…".to_string())
+                Some("加载中…".to_string())
             } else if let Some(bg) = background_work_label(agent) {
                 Some(bg)
             } else {
@@ -1979,7 +1979,7 @@ mod tests {
         let row = top_level_row(AgentId(0), &agent, false, false, None);
         assert_eq!(
             row.activity.as_deref(),
-            Some("Loading…"),
+            Some("加载中…"),
             "loading-replay activity must win over the background label",
         );
     }

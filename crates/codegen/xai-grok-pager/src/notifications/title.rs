@@ -218,8 +218,8 @@ fn push_separator(buf: &mut String, has_parts: &mut bool) {
 
 fn write_activity(buf: &mut String, activity: &TurnActivity) {
     match activity {
-        TurnActivity::Thinking => buf.push_str("Thinking"),
-        TurnActivity::Responding => buf.push_str("Responding"),
+        TurnActivity::Thinking => buf.push_str("思考中"),
+        TurnActivity::Responding => buf.push_str("正在回复"),
         TurnActivity::ToolRunning { title, description } => {
             if let Some(desc) = description
                 .as_deref()
@@ -228,13 +228,13 @@ fn write_activity(buf: &mut String, activity: &TurnActivity) {
             {
                 buf.push_str(&crate::acp::tracker::format_waiting_for_subject(desc));
             } else if title.is_empty() {
-                buf.push_str("Running tool");
+                buf.push_str("正在运行工具");
             } else {
                 buf.push_str("Running: ");
                 write_truncated(buf, title, 30);
             }
         }
-        TurnActivity::AutoCompacting => buf.push_str("Compacting"),
+        TurnActivity::AutoCompacting => buf.push_str("正在压缩上下文"),
         TurnActivity::Retrying {
             attempt,
             max_retries,
@@ -455,7 +455,7 @@ mod tests {
             ..idle_state()
         };
         mgr.update(&state);
-        assert_eq!(mgr.last_title, "Thinking");
+        assert_eq!(mgr.last_title, "思考中");
     }
 
     #[test]
@@ -468,7 +468,7 @@ mod tests {
             ..idle_state()
         };
         mgr.update(&state);
-        assert_eq!(mgr.last_title, "Responding");
+        assert_eq!(mgr.last_title, "正在回复");
     }
 
     #[test]
@@ -500,7 +500,7 @@ mod tests {
             ..idle_state()
         };
         mgr.update(&state);
-        assert_eq!(mgr.last_title, "Running tool");
+        assert_eq!(mgr.last_title, "正在运行工具");
     }
 
     #[test]
@@ -806,7 +806,7 @@ mod tests {
         // Both should contain the persistent parts.
         for t in [&t1, &t2] {
             assert!(t.contains("grok"), "title missing 'grok': {t}");
-            assert!(t.contains("Responding"), "title missing 'Responding': {t}");
+            assert!(t.contains("正在回复"), "title missing 'Responding': {t}");
             assert!(t.contains("my-session"), "title missing session name: {t}");
         }
         // One should have ActionRequired, the other should not (blinking).

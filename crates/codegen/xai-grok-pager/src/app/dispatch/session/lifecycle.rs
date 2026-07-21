@@ -170,13 +170,13 @@ pub(in crate::app::dispatch) fn open_new_session_question(app: &mut AppView) -> 
     let mut options = vec![
         QuestionOption {
             label: "Yes".into(),
-            description: "New session in a new isolated git worktree".into(),
+            description: "在新的隔离 git worktree 中创建会话".into(),
             preview: None,
             id: None,
         },
         QuestionOption {
             label: "No".into(),
-            description: "New session in the current cwd".into(),
+            description: "在当前目录创建会话".into(),
             preview: None,
             id: None,
         },

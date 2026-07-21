@@ -241,7 +241,7 @@ pub fn render_turn_status(
 
     let theme = Theme::current();
 
-    // MCP startup seed (total == 0) while idle — show "Starting session…"
+    // MCP startup seed (total == 0) while idle — show "正在启动会话…"
     // above the prompt until the shell reports real server counts. Real MCP
     // progress (total > 0) renders as the compact top-bar chip instead, not
     // here. Auto-expires via `is_visible()` if the shell never reports.
@@ -454,7 +454,7 @@ pub fn render_turn_status(
                     .strip_prefix("Ask: ")
                     .or_else(|| title.strip_prefix("Ask "))
                     .unwrap_or(title.as_str());
-                let msg = format!("Waiting on answers for {detail}");
+                let msg = format!("等待回答：{detail}");
                 let display = truncate_str(&msg, available_for_label);
                 left_spans.push(Span::styled(display, activity_style));
             } else if let Some(desc) = description
@@ -611,28 +611,28 @@ fn compute_activity(
     match (state, activity) {
         (AgentState::TurnCancelling | AgentState::CommandCancelling { .. }, _) => (
             Style::default().fg(theme.accent_error),
-            "Cancelling…".to_string(),
+            "正在取消…".to_string(),
             false,
         ),
         // Goal-mode completion verification runs in-turn after the model
         // stops streaming. The harness drives the skeptic panel (the model
         // itself is idle), but the turn's last streaming activity can still
         // read as `Responding`/`Thinking`; label the whole window
-        // "Verifying…" so the multi-minute panel isn't mislabelled as the
-        // model responding (or a hung "Waiting…").
+        // "正在校验…" so the multi-minute panel isn't mislabelled as the
+        // model responding (or a hung "等待中…").
         (AgentState::TurnRunning, _) if goal_verifying => (
             Style::default().fg(theme.text_secondary),
-            "Verifying…".to_string(),
+            "正在校验…".to_string(),
             false,
         ),
         (AgentState::TurnRunning, Some(TurnActivity::Thinking)) => (
             Style::default().fg(theme.text_secondary),
-            "Thinking…".to_string(),
+            "思考中…".to_string(),
             false,
         ),
         (AgentState::TurnRunning, Some(TurnActivity::Responding)) => (
             Style::default().fg(theme.text_secondary),
-            "Responding…".to_string(),
+            "正在回复…".to_string(),
             false,
         ),
         (AgentState::TurnRunning, Some(TurnActivity::ToolRunning { title, description })) => {
@@ -655,26 +655,26 @@ fn compute_activity(
         }
         (AgentState::TurnRunning, Some(TurnActivity::AutoCompacting)) => (
             Style::default().fg(theme.text_secondary),
-            "Compacting…".to_string(),
+            "正在压缩上下文…".to_string(),
             false,
         ),
         (AgentState::TurnRunning, Some(TurnActivity::Retrying { attempt, .. })) => (
             Style::default().fg(theme.warning),
-            format!("Retrying (attempt {attempt})…"),
+            format!("重试中（第 {attempt} 次）…"),
             false,
         ),
         (AgentState::TurnRunning, Some(TurnActivity::Waiting(reason))) => (
             // Explicit wait reason (model / subagent / task output / tasks /
             // sleep): name what the agent is blocked on instead of a generic
-            // "Waiting…". See `WaitingReason` and `AgentView::resolve_turn_activity`.
+            // "等待中…". See `WaitingReason` and `AgentView::resolve_turn_activity`.
             Style::default().fg(theme.text_secondary),
             reason.label(),
             false,
         ),
         (AgentState::TurnRunning, None) if is_bash_turn => (
-            // Bash turn: not inference, show generic "Running…".
+            // Bash turn: not inference, show generic "运行中…".
             Style::default().fg(theme.text_secondary),
-            "Running…".to_string(),
+            "运行中…".to_string(),
             false,
         ),
         (AgentState::TurnRunning, None) => (
@@ -682,7 +682,7 @@ fn compute_activity(
             // view resolves this gap into Waiting(Model/Subagent) before render,
             // so this is now a rarely-hit safety net.
             Style::default().fg(theme.text_secondary),
-            "Waiting…".to_string(),
+            "等待中…".to_string(),
             false,
         ),
         (
@@ -709,7 +709,7 @@ fn compute_activity(
     }
 }
 
-/// Whether the idle "Starting session…" indicator wants the turn-status row.
+/// Whether the idle "正在启动会话…" indicator wants the turn-status row.
 ///
 /// True only for a fresh `total == 0` startup seed (gated by
 /// [`McpInitProgress::is_visible`] so an orphaned seed expires). Real MCP
@@ -719,7 +719,7 @@ fn starting_session_visible(progress: Option<&McpInitProgress>) -> bool {
     progress.is_some_and(|p| p.total == 0 && p.is_visible())
 }
 
-/// Render the idle "Starting session…" indicator above the prompt.
+/// Render the idle "正在启动会话…" indicator above the prompt.
 ///
 /// Format: `⠋ Starting session… 0:01` — braille spinner + label + elapsed
 /// timer. Rendered in `theme.gray_dim` (the dimmest gray) so it reads as
@@ -740,7 +740,7 @@ fn render_starting_session(
     let style = Style::default().fg(theme.gray_dim);
     let spans = vec![
         Span::styled(format!("{} ", frames[frame_idx]), style),
-        Span::styled("Starting session…", style),
+        Span::styled("正在启动会话…", style),
         Span::styled(timer_str, style),
     ];
     buf.set_line(area.x, area.y, &Line::from(spans), area.width);
@@ -750,7 +750,7 @@ fn render_starting_session(
 ///
 /// Returns true when a turn is active (Running or Cancelling), when the drain
 /// is blocked (agent idle, waiting on user edit), while the MCP startup seed
-/// is showing "Starting session…" (a fresh `total == 0` seed), or when the
+/// is showing "正在启动会话…" (a fresh `total == 0` seed), or when the
 /// agent is idle but background watchers are still running
 /// (`watchers.total() > 0`) — running commands and monitors wake the agent on
 /// completion/events, scheduled `/loop` tasks fire prompts, and background
@@ -888,15 +888,15 @@ mod tests {
     #[test]
     fn activity_label_reads_verifying_while_goal_verifying_overriding_stale_activity() {
         let theme = Theme::current();
-        // Running turn, no streaming activity, goal verifying → "Verifying…".
+        // Running turn, no streaming activity, goal verifying → "正在校验…".
         let (_, label, _) = compute_activity(&theme, &AgentState::TurnRunning, &None, false, true);
-        assert_eq!(label, "Verifying…");
-        // Same state without the verifying flag → generic "Waiting…".
+        assert_eq!(label, "正在校验…");
+        // Same state without the verifying flag → generic "等待中…".
         let (_, label, _) = compute_activity(&theme, &AgentState::TurnRunning, &None, false, false);
-        assert_eq!(label, "Waiting…");
+        assert_eq!(label, "等待中…");
         // During verification the model is idle but its last streaming
         // activity (Responding/Thinking) can linger — the flag overrides it
-        // so the panel reads "Verifying…", not "Responding…" (the bug).
+        // so the panel reads "正在校验…", not "正在回复…" (the bug).
         for activity in [TurnActivity::Responding, TurnActivity::Thinking] {
             let (_, label, _) = compute_activity(
                 &theme,
@@ -905,7 +905,7 @@ mod tests {
                 false,
                 true,
             );
-            assert_eq!(label, "Verifying…");
+            assert_eq!(label, "正在校验…");
         }
         // Without the flag the streaming label stands.
         let (_, label, _) = compute_activity(
@@ -915,7 +915,7 @@ mod tests {
             false,
             false,
         );
-        assert_eq!(label, "Responding…");
+        assert_eq!(label, "正在回复…");
     }
 
     #[test]
@@ -923,9 +923,9 @@ mod tests {
         use crate::acp::tracker::WaitingReason;
         let theme = Theme::current();
         let cases = [
-            (WaitingReason::Model, "Waiting for response…"),
-            (WaitingReason::Subagent, "Waiting on subagent…"),
-            (WaitingReason::task_output(), "Waiting on task output…"),
+            (WaitingReason::Model, "等待模型回复…"),
+            (WaitingReason::Subagent, "等待子代理…"),
+            (WaitingReason::task_output(), "等待任务输出…"),
             (
                 WaitingReason::TaskOutput {
                     task_ids: vec!["t1".into()],
@@ -934,8 +934,8 @@ mod tests {
                 },
                 "compile release…",
             ),
-            (WaitingReason::TasksComplete, "Waiting on tasks…"),
-            (WaitingReason::Sleep, "Sleeping…"),
+            (WaitingReason::TasksComplete, "等待任务完成…"),
+            (WaitingReason::Sleep, "休眠中…"),
         ];
         for (reason, expected) in cases {
             let (_, label, is_tool) = compute_activity(
@@ -953,10 +953,10 @@ mod tests {
     #[test]
     fn bash_turn_still_renders_running_not_waiting() {
         let theme = Theme::current();
-        // A bash (non-inference) turn with no activity keeps its own "Running…"
+        // A bash (non-inference) turn with no activity keeps its own "运行中…"
         // label — the view leaves it as `None` rather than Waiting(Model).
         let (_, label, _) = compute_activity(&theme, &AgentState::TurnRunning, &None, true, false);
-        assert_eq!(label, "Running…");
+        assert_eq!(label, "运行中…");
     }
 
     #[test]
@@ -1061,7 +1061,7 @@ mod tests {
 
     #[test]
     fn should_show_when_starting_session() {
-        // A fresh total == 0 seed shows "Starting session…" above the prompt.
+        // A fresh total == 0 seed shows "正在启动会话…" above the prompt.
         let seed = McpInitProgress {
             total: 0,
             connected: 0,
@@ -1425,7 +1425,7 @@ mod tests {
         );
         let text = buffer_text(&buf, area);
         assert!(
-            text.contains("Waiting on subagent… 5m59s · 1 queued — Enter to send now"),
+            text.contains("等待子代理… 5m59s · 1 queued — Enter 立即发送"),
             "phase timer must sit between the wait label and the queued hint, got: {text:?}"
         );
     }
@@ -1496,7 +1496,7 @@ mod tests {
 
     #[test]
     fn idle_zero_server_seed_renders_starting_session() {
-        // total == 0 seed → "Starting session…" above the prompt.
+        // total == 0 seed → "正在启动会话…" above the prompt.
         let text = render_idle_with_mcp(&McpInitProgress {
             total: 0,
             connected: 0,

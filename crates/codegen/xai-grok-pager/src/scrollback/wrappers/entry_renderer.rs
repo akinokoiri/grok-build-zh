@@ -1366,7 +1366,7 @@ mod tests {
 
         // Blocks that should NOT show timestamps
         let negative_blocks = vec![
-            ("Thinking", RenderBlock::thinking("think")),
+            ("思考中", RenderBlock::thinking("think")),
             ("ToolCall", RenderBlock::tool_call("Read", "file.rs", true)),
             ("System", RenderBlock::system("sys msg")),
             ("Stub", RenderBlock::stub("stub", Color::Blue)),

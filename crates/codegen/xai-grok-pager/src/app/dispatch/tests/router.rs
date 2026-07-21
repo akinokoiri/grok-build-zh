@@ -899,7 +899,7 @@ fn acp_bootstrap_command_appears_in_autocomplete() {
     let mut app = test_app();
     app.bootstrap_acp_commands = vec![acp::AvailableCommand::new(
         "flush".to_string(),
-        "Flush memory".to_string(),
+        "清空记忆".to_string(),
     )];
     dispatch(Action::NewSession, &mut app);
     let id = AgentId(0);
@@ -936,7 +936,7 @@ fn acp_bootstrap_command_executes_as_passthrough() {
     let mut app = test_app();
     app.bootstrap_acp_commands = vec![acp::AvailableCommand::new(
         "flush".to_string(),
-        "Flush memory".to_string(),
+        "清空记忆".to_string(),
     )];
     dispatch(Action::NewSession, &mut app);
     let id = AgentId(0);
@@ -1021,7 +1021,7 @@ fn acp_command_colliding_with_builtin_skipped_in_autocomplete() {
             "exit".to_string(),
             "ACP exit (should be skipped)".to_string(),
         ),
-        acp::AvailableCommand::new("flush".to_string(), "Flush memory".to_string()),
+        acp::AvailableCommand::new("flush".to_string(), "清空记忆".to_string()),
     ];
     dispatch(Action::NewSession, &mut app);
     let id = AgentId(0);

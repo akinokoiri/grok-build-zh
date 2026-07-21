@@ -247,7 +247,7 @@ pub(super) fn handle_queue_changed(notif: &acp::ExtNotification, app: &mut AppVi
         // whose durable `TurnCompleted` already arrived in THIS load's replay
         // (terminal-in-replay — it already ended). Adopting either via
         // `apply_turn_start_shim` would `start_turn()` → `AgentState::TurnRunning`
-        // and strand the pager on "Responding…"/"Waiting…" forever. The agent-aware
+        // and strand the pager on "正在回复…"/"等待中…" forever. The agent-aware
         // check is load-bearing here: `replayed_terminal_prompts` stays populated
         // after a load, so a later `queue/changed` re-reporting the already-ended
         // `running_prompt_id` must NOT re-adopt the turn the `SessionLoaded` /

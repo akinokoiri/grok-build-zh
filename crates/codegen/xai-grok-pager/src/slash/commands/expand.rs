@@ -41,7 +41,7 @@ impl SlashCommand for ExpandCommand {
             );
         }
         if ctx.session_id.is_none() {
-            return CommandResult::Error("No active session".to_string());
+            return CommandResult::Error("无活动会话".to_string());
         }
         CommandResult::Action(Action::MinimalExpandLast)
     }
@@ -106,7 +106,7 @@ mod tests {
         let models = ModelState::default();
         let mut c = ctx(&models, None, crate::app::ScreenMode::Minimal);
         match ExpandCommand.run(&mut c, "") {
-            CommandResult::Error(msg) => assert!(msg.contains("No active session")),
+            CommandResult::Error(msg) => assert!(msg.contains("无活动会话")),
             other => panic!("expected Error, got {other:?}"),
         }
     }

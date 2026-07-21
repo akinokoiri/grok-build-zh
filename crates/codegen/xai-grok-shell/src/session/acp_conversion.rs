@@ -591,7 +591,7 @@ pub fn acp_tool_update(
                 acp::ToolCallId::new(Arc::from(tool_call_id)),
                 acp::ToolCallUpdateFields::new()
                     .status(Some(acp::ToolCallStatus::Completed))
-                    .title(Some("Plan mode entered".to_string()))
+                    .title(Some("已进入计划模式".to_string()))
                     .content(Some(vec![acp::ToolCallContent::from(
                         acp::ContentBlock::Text(acp::TextContent::new(message)),
                     )]))
@@ -611,7 +611,7 @@ pub fn acp_tool_update(
                 acp::ToolCallId::new(Arc::from(tool_call_id)),
                 acp::ToolCallUpdateFields::new()
                     .status(Some(acp::ToolCallStatus::Completed))
-                    .title(Some("Plan mode exited".to_string()))
+                    .title(Some("已退出计划模式".to_string()))
                     .content(Some(vec![acp::ToolCallContent::from(
                         acp::ContentBlock::Text(acp::TextContent::new(message)),
                     )]))

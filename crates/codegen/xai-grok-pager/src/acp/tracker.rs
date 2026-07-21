@@ -46,7 +46,7 @@ fn utc_ms_to_local(ms: i64) -> DateTime<Local> {
 /// (turn started, but no chunks received yet).
 /// Why a turn is open but nothing is streaming right now.
 ///
-/// Replaces the old single, opaque "Waiting…" placeholder: instead of treating
+/// Replaces the old single, opaque "等待中…" placeholder: instead of treating
 /// the absence of activity as one undifferentiated state, the turn-status line
 /// names *what* the agent is blocked on. Resolved partly by the tracker (the
 /// blocking tool waits it suppresses — see [`AcpUpdateTracker::activity`]) and
@@ -105,7 +105,7 @@ pub fn clamp_activity_subject(s: &str) -> String {
 pub fn format_waiting_for_subject(subject: &str) -> String {
     let clamped = clamp_activity_subject(subject);
     if clamped.is_empty() {
-        "Waiting on task output…".to_string()
+        "等待任务输出…".to_string()
     } else {
         format!("{clamped}…")
     }
@@ -123,15 +123,15 @@ impl WaitingReason {
     /// User-facing spinner label.
     pub fn label(&self) -> String {
         match self {
-            Self::Model => "Waiting for response…".to_string(),
-            Self::Subagent => "Waiting on subagent…".to_string(),
+            Self::Model => "等待模型回复…".to_string(),
+            Self::Subagent => "等待子代理…".to_string(),
             Self::TaskOutput {
                 subject: Some(subject),
                 ..
             } => format_waiting_for_subject(subject),
-            Self::TaskOutput { .. } => "Waiting on task output…".to_string(),
-            Self::TasksComplete => "Waiting on tasks…".to_string(),
-            Self::Sleep => "Sleeping…".to_string(),
+            Self::TaskOutput { .. } => "等待任务输出…".to_string(),
+            Self::TasksComplete => "等待任务完成…".to_string(),
+            Self::Sleep => "休眠中…".to_string(),
         }
     }
     /// Short, stable snake_case label for telemetry / phase-transition logs.
@@ -244,7 +244,7 @@ pub struct AcpUpdateTracker {
     /// the turn is waiting. These tools (`get_command_or_subagent_output`,
     /// `wait_tasks`, `Sleep`, …) are kept out of `pending_tools` (so they never
     /// hit scrollback) but the turn *is* blocked on them — without this the
-    /// spinner falls back to a generic "Waiting…". Populated in
+    /// spinner falls back to a generic "等待中…". Populated in
     /// `handle_tool_call`, cleared on the suppressed tool's completion update
     /// and in `finish_turn`.
     blocking_waits: std::collections::HashMap<String, BlockingWait>,
@@ -869,7 +869,7 @@ impl AcpUpdateTracker {
             self.last_thinking_elapsed_ms = None;
         }
     }
-    /// Pre-create a thinking block so "Thinking…" appears immediately
+    /// Pre-create a thinking block so "思考中…" appears immediately
     /// when the turn starts, before the first ThinkingDelta arrives.
     ///
     /// The tracker's `current_thinking` is set so subsequent ThinkingDelta
@@ -1564,7 +1564,7 @@ fn tool_call_to_block(tc: &acp::ToolCall, session_cwd: Option<&Path>) -> RenderB
                     } else if bash.exit_code != 0 {
                         format!("exit code {}", bash.exit_code)
                     } else {
-                        "Command failed".into()
+                        "命令失败".into()
                     };
                     block = block.with_error(error_msg);
                 }
@@ -1579,7 +1579,7 @@ fn tool_call_to_block(tc: &acp::ToolCall, session_cwd: Option<&Path>) -> RenderB
                 if !success {
                     let text = content_text(tc);
                     let error_msg = if text.is_empty() {
-                        "Command failed".to_string()
+                        "命令失败".to_string()
                     } else {
                         text
                     };
@@ -1632,7 +1632,7 @@ fn tool_call_to_block(tc: &acp::ToolCall, session_cwd: Option<&Path>) -> RenderB
             } else if !success {
                 let text = content_text(tc);
                 block = block.with_error(if text.is_empty() {
-                    "Read failed".to_string()
+                    "读取失败".to_string()
                 } else {
                     text
                 });
@@ -1941,7 +1941,7 @@ fn tool_call_to_block(tc: &acp::ToolCall, session_cwd: Option<&Path>) -> RenderB
                         } else if bash.exit_code != 0 {
                             format!("exit code {}", bash.exit_code)
                         } else {
-                            "Command failed".into()
+                            "命令失败".into()
                         };
                         block = block.with_error(error_msg);
                     }
@@ -1955,7 +1955,7 @@ fn tool_call_to_block(tc: &acp::ToolCall, session_cwd: Option<&Path>) -> RenderB
                 if !success {
                     let text = content_text(tc);
                     block = block.with_error(if text.is_empty() {
-                        "Command failed".to_string()
+                        "命令失败".to_string()
                     } else {
                         text
                     });
@@ -2104,7 +2104,7 @@ fn is_bg_plumbing_tool(tc: &acp::ToolCall) -> bool {
 /// waiting on, or `None` for suppressed tools that don't block the turn (e.g.
 /// `kill_*`, todo/goal/scheduler). Mirrors the title/variant matches in
 /// [`is_bg_plumbing_tool`] so the spinner can name the wait instead of falling
-/// back to a generic "Waiting…".
+/// back to a generic "等待中…".
 fn blocking_wait_reason(tc: &acp::ToolCall) -> Option<WaitingReason> {
     let title = tc.title.as_str();
     let variant = tc
@@ -2223,7 +2223,7 @@ fn is_write_variant(variant: Option<&str>) -> bool {
 }
 /// Twin without the optional-toolset spelling.
 fn is_todo_variant(variant: Option<&str>) -> bool {
-    matches!(variant, Some("TodoWrite"))
+    matches!(variant, Some("待办写入"))
 }
 /// Check if a tool call is a todo-related tool.
 ///
@@ -2233,7 +2233,7 @@ fn is_todo_variant(variant: Option<&str>) -> bool {
 fn is_todo_tool(tc: &acp::ToolCall) -> bool {
     matches!(
         tc.title.as_str(),
-        "todo_write" | "TodoWrite" | "Updating plan"
+        "todo_write" | "待办写入" | "Updating plan"
     ) || is_todo_variant(extract_variant(tc))
 }
 /// Check if a tool call is a goal-update tool (update_goal).
@@ -2729,7 +2729,7 @@ mod tests {
         assert!(tracker.handle_update(tool_update_completed("read-1"), &meta(), &mut sb));
         assert_eq!(tracker.agent_output_epoch(), 4);
         assert!(!tracker.handle_update(
-            tool_call("todo-1", acp::ToolKind::Other, "TodoWrite"),
+            tool_call("todo-1", acp::ToolKind::Other, "待办写入"),
             &meta(),
             &mut sb,
         ));
@@ -4897,7 +4897,7 @@ mod tests {
     }
     /// The blocking bg-plumbing tools are kept out of scrollback but the turn
     /// IS blocked on them — `activity()` must name the wait instead of the old
-    /// generic `None` (→ "Waiting…"). Task-output tools only advertise once
+    /// generic `None` (→ "等待中…"). Task-output tools only advertise once
     /// raw_input proves them blocking (`timeout_ms > 0`); before that the
     /// wait is not shown (display mirrors interject eligibility).
     #[test]
@@ -5239,7 +5239,7 @@ mod tests {
         );
         assert_eq!(
             WaitingReason::task_output().label(),
-            "Waiting on task output…"
+            "等待任务输出…"
         );
         assert_eq!(
             WaitingReason::TaskOutput {
@@ -5264,7 +5264,7 @@ mod tests {
     #[test]
     fn format_waiting_for_subject_matches_label_shape() {
         assert_eq!(format_waiting_for_subject("run tests"), "run tests…");
-        assert_eq!(format_waiting_for_subject("   "), "Waiting on task output…");
+        assert_eq!(format_waiting_for_subject("   "), "等待任务输出…");
     }
     /// A `task` ToolCall carrying the shell's `_meta.subagentBackground` flag.
     fn task_call_with_bg(id: &str, background: bool) -> acp::SessionUpdate {
@@ -5285,7 +5285,7 @@ mod tests {
         )
     }
     /// Shell-stamped foreground (`subagentBackground=false`): the subagent wait
-    /// surfaces from frame 1 — no "Waiting for response…" flash.
+    /// surfaces from frame 1 — no "等待模型回复…" flash.
     #[test]
     fn foreground_stamp_waits_on_subagent_from_frame_one() {
         let mut sb = ScrollbackState::new();
@@ -6407,21 +6407,21 @@ mod tests {
     }
     #[test]
     fn cursor_todo_write_suppressed_by_title() {
-        assert!(is_todo_tool(&initial_tool_call("tc1", "TodoWrite")));
+        assert!(is_todo_tool(&initial_tool_call("tc1", "待办写入")));
         assert!(is_todo_tool(&initial_tool_call("tc2", "Updating plan")));
         assert!(is_todo_tool(&initial_tool_call("tc3", "todo_write")));
     }
     #[test]
     fn todo_write_suppressed_by_variant() {
         let mut tc = initial_tool_call("tc1", "anything");
-        tc.raw_input = Some(serde_json::json!({ "variant" : "TodoWrite" }));
+        tc.raw_input = Some(serde_json::json!({ "variant" : "待办写入" }));
         assert!(is_todo_tool(&tc));
     }
     #[test]
     fn pascal_case_todo_write_suppressed_from_scrollback() {
         let mut sb = ScrollbackState::new();
         let mut tracker = AcpUpdateTracker::new();
-        for (i, title) in ["TodoWrite", "Updating plan"].iter().enumerate() {
+        for (i, title) in ["待办写入", "Updating plan"].iter().enumerate() {
             let id = format!("tc-todo-{i}");
             tracker.handle_update(
                 tool_call(&id, acp::ToolKind::Think, title),

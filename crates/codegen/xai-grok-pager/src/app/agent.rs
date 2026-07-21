@@ -137,14 +137,14 @@ pub enum AgentCommand {
     ForkSession,
 }
 impl AgentCommand {
-    /// Human-readable label for the status line (e.g., "Compacting").
+    /// Human-readable label for the status line (e.g., "正在压缩上下文").
     pub fn display_name(&self) -> &'static str {
         match self {
-            Self::Compact => "Compacting",
-            Self::CreateWorktree => "Creating worktree",
-            Self::RestoreWorktree => "Restoring session in worktree",
-            Self::RestoreCode => "Restoring code",
-            Self::ForkSession => "Forking session",
+            Self::Compact => "正在压缩上下文",
+            Self::CreateWorktree => "正在创建 worktree",
+            Self::RestoreWorktree => "正在 worktree 中恢复会话",
+            Self::RestoreCode => "正在恢复代码",
+            Self::ForkSession => "正在分叉会话",
         }
     }
     /// The raw command text (e.g., "/compact").
@@ -212,7 +212,7 @@ pub struct BgTaskState {
     /// When the kill request was sent. Used to auto-clear `pending_kill`
     /// after a timeout so the user can retry if the response is lost.
     pub kill_requested_at: Option<Instant>,
-    /// Scrollback entry ID for the "Task started" block (for finish_running).
+    /// Scrollback entry ID for the "任务已开始" block (for finish_running).
     pub scrollback_entry_id: Option<crate::scrollback::entry::EntryId>,
     /// True when this background task is a monitor (the `monitor` tool). The
     /// tasks pane renders monitors with a blue "Monitor" tag + neutral text

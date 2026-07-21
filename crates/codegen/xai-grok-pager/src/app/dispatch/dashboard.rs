@@ -317,7 +317,7 @@ pub(super) fn dispatch_dashboard_attach(
         DashboardRowId::TopLevel(agent_id) => {
             if !app.agents.contains_key(&agent_id) {
                 if let Some(d) = app.dashboard.as_mut() {
-                    d.set_error_toast("Session no longer exists");
+                    d.set_error_toast("会话已不存在");
                 }
                 return vec![];
             }
@@ -600,7 +600,7 @@ pub(super) fn dispatch_dashboard_toggle_auto_approve(app: &mut AppView) -> Vec<E
     };
     if !app.agents.contains_key(&agent_id) {
         if let Some(d) = app.dashboard.as_mut() {
-            d.set_error_toast("Session no longer exists");
+            d.set_error_toast("会话已不存在");
         }
         return vec![];
     }
@@ -1642,7 +1642,7 @@ pub(super) fn dispatch_dashboard_peek_cycle_mode(app: &mut AppView) -> Vec<Effec
     if !app.agents.contains_key(&agent_id) {
         if let Some(d) = app.dashboard.as_mut() {
             d.set_peek(None);
-            d.set_error_toast("Session no longer exists");
+            d.set_error_toast("会话已不存在");
         }
         return vec![];
     }
@@ -1694,7 +1694,7 @@ pub(super) fn dispatch_dashboard_peek_reply(
     if !app.agents.contains_key(&agent_id) {
         if let Some(d) = app.dashboard.as_mut() {
             d.set_peek(None);
-            d.set_error_toast("Session no longer exists");
+            d.set_error_toast("会话已不存在");
         }
         return vec![];
     }
@@ -1720,7 +1720,7 @@ pub(super) fn dispatch_dashboard_peek_reply(
         let Some(agent) = app.agents.get_mut(&agent_id) else {
             if let Some(d) = app.dashboard.as_mut() {
                 d.set_peek(None);
-                d.set_error_toast("Session no longer exists");
+                d.set_error_toast("会话已不存在");
             }
             return vec![];
         };

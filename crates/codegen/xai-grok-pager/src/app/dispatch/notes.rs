@@ -295,10 +295,10 @@ pub(super) fn dispatch_send_btw(app: &mut AppView, question: String) -> Vec<Effe
                 agent
                     .scrollback
                     .push_block(crate::scrollback::block::RenderBlock::system(
-                        "No active session",
+                        "无活动会话",
                     ));
             } else {
-                agent.show_toast("No active session");
+                agent.show_toast("无活动会话");
             }
             return vec![];
         };
@@ -378,7 +378,7 @@ pub(super) fn dispatch_send_recap(app: &mut AppView, auto: bool) -> Vec<Effect> 
 
     let Some(session_id) = agent.session.session_id.clone() else {
         if !auto {
-            agent.show_toast("No active session");
+            agent.show_toast("无活动会话");
         }
         return vec![];
     };

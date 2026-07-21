@@ -1703,7 +1703,7 @@ pub struct PickerHitAreas {
 
 /// Configuration for picker behavior (non-state, provided per-call).
 pub struct PickerConfig<'a> {
-    /// Title shown in fullscreen mode's title row (e.g. "Resume session").
+    /// Title shown in fullscreen mode's title row (e.g. "恢复会话").
     pub title: Option<&'a str>,
     /// When true, show "/ to search" hint; user must activate search explicitly.
     /// When false, search is always active (cursor always visible).
@@ -2016,7 +2016,7 @@ fn render_picker_content_inner(
 
     // Loading state — centered in the content area.
     if loading {
-        let msg = "Loading...";
+        let msg = "加载中...";
         let msg_style = Style::default().fg(theme.gray);
         let cx = content_area.x + content_area.width.saturating_sub(msg.len() as u16) / 2;
         let cy = content_area.y + content_area.height / 2;

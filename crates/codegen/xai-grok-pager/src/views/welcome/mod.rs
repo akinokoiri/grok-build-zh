@@ -105,7 +105,7 @@ pub struct WelcomeRenderResult {
     pub refresh_rect: Option<Rect>,
     /// Hit-test rect for the gate URL link (click to open in browser).
     pub gate_url_rect: Option<Rect>,
-    /// Whether a "Changelog" menu action was rendered (above Quit), so the
+    /// Whether a "更新日志" menu action was rendered (above Quit), so the
     /// input handler can map the extra menu row to the release-notes action
     /// once markdown is available.
     pub changelog_action_present: bool,
@@ -1564,7 +1564,7 @@ fn render_changelog_section(
             .fg(theme.gray_bright)
             .add_modifier(Modifier::DIM),
     );
-    let title = "Changelog";
+    let title = "更新日志";
     buf.set_span(
         centered.x,
         centered.y,
@@ -1751,10 +1751,10 @@ fn render_welcome_done(
             items.push((key_i_with_x, "Import Claude settings"));
         }
         items.push((key_w, "New worktree"));
-        items.push((key_s, "Resume session"));
-        // "Changelog" above Quit; no shortcut — opened by click (row or block).
+        items.push((key_s, "恢复会话"));
+        // "更新日志" above Quit; no shortcut — opened by click (row or block).
         if show_changelog_action {
-            items.push(("", "Changelog"));
+            items.push(("", "更新日志"));
         }
         items.push((key_q, "Quit"));
         owned_menu = items;
@@ -2382,7 +2382,7 @@ pub(crate) fn render_session_picker(
     }
 
     let config = PickerConfig {
-        title: Some("Resume session"),
+        title: Some("恢复会话"),
         show_search_hint: true,
         expandable: true,
         esc_clears_query: true,
@@ -3052,7 +3052,7 @@ if label == &"aaa"),
 
     fn resume_picker_config() -> crate::views::picker::PickerConfig<'static> {
         crate::views::picker::PickerConfig {
-            title: Some("Resume session"),
+            title: Some("恢复会话"),
             show_search_hint: true,
             expandable: true,
             esc_clears_query: true,

@@ -74,7 +74,7 @@ impl GoalNotifySender {
     }
 
     /// Persist + fire-and-forget a notification to the gateway. Used for
-    /// snapshot-derived payloads and for the "planning…" / "Verifying…"
+    /// snapshot-derived payloads and for the "planning…" / "正在校验…"
     /// latch updates that must not run the `send_xai_notification`
     /// rewind-window-close side effect.
     pub(crate) fn send_update(&self, update: XaiSessionUpdate) {
@@ -386,7 +386,7 @@ mod tests {
     fn build_goal_updated_verifying_flag_reflects_latch() {
         // Regression: a one-shot verifying flag flickered off the moment any
         // mid-verification GoalUpdated fired. Sourced from the latch, every
-        // snapshot-derived update keeps the "Verifying…" badge.
+        // snapshot-derived update keeps the "正在校验…" badge.
         let mut o = make_base_orchestration();
         let verifying = |u: &XaiSessionUpdate| match u {
             XaiSessionUpdate::GoalUpdated {

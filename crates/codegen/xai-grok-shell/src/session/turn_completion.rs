@@ -3,7 +3,7 @@
 //! `TurnCompleted` is the persisted + replayed twin of the fire-and-forget
 //! `x.ai/session/prompt_complete` notification: it rides the
 //! `_x.ai/session/update` rail so a viewer that re-attaches mid-turn finalizes
-//! the turn from replay instead of stranding on "Waiting…". The
+//! the turn from replay instead of stranding on "等待中…". The
 //! `(stop_reason, agent_result)` pair is the SAME pair `prompt_complete`
 //! carries (from [`crate::sampling::error::prompt_complete_fields`]), so the
 //! two signals never disagree.

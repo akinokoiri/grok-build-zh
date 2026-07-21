@@ -146,15 +146,15 @@ impl SessionEvent {
             SessionEvent::TurnCompleted {
                 elapsed: Some(elapsed),
             } => {
-                format!("Worked for {}", format_duration(*elapsed))
+                format!("已工作 {}", format_duration(*elapsed))
             }
-            SessionEvent::TurnCompleted { elapsed: None } => "Turn completed.".to_string(),
+            SessionEvent::TurnCompleted { elapsed: None } => "回合已完成。".to_string(),
             SessionEvent::TurnCancelled { elapsed } => {
-                format!("Turn cancelled by user in {}.", format_duration(*elapsed))
+                format!("用户在 {} 后取消了回合。", format_duration(*elapsed))
             }
             SessionEvent::TurnHalted { elapsed } => {
                 format!(
-                    "Agent was unable to make progress \u{2014} turn ended in {}.",
+                    "代理未能继续推进 \u{2014} 回合在 {} 后结束。",
                     format_duration(*elapsed)
                 )
             }
@@ -162,16 +162,16 @@ impl SessionEvent {
                 error,
                 elapsed: Some(elapsed),
             } => {
-                format!("Turn failed in {}: {error}", format_duration(*elapsed))
+                format!("回合失败（用时 {}）：{error}", format_duration(*elapsed))
             }
             SessionEvent::TurnFailed {
                 error,
                 elapsed: None,
             } => {
-                format!("Turn failed: {error}")
+                format!("回合失败：{error}")
             }
             SessionEvent::CompactionStarted { percentage } => {
-                format!("Context {percentage}% full. Compacting…")
+                format!("上下文已用 {percentage}%，正在压缩…")
             }
             SessionEvent::CompactionCompleted {
                 tokens_before,
@@ -187,7 +187,7 @@ impl SessionEvent {
                             format_tokens(*before)
                         )
                     }
-                    _ => format!("Context compacted → {after} tokens"),
+                    _ => format!("上下文已压缩 → {after} tokens"),
                 };
                 if let Some(ms) = elapsed_ms {
                     let secs = *ms as f64 / 1000.0;
@@ -668,7 +668,7 @@ mod tests {
         let event = SessionEvent::TurnCompleted {
             elapsed: Some(Duration::from_secs(125)),
         };
-        assert_eq!(event.message(), "Worked for 2m5s");
+        assert_eq!(event.message(), "已工作 2m5s");
     }
 
     #[test]
@@ -704,7 +704,7 @@ mod tests {
             error: "connection reset".into(),
             elapsed: Some(Duration::from_secs(3)),
         };
-        assert_eq!(event.message(), "Turn failed in 3.0s: connection reset");
+        assert_eq!(event.message(), "回合失败（用时 3.0s）：connection reset");
     }
 
     #[test]
@@ -713,7 +713,7 @@ mod tests {
             error: "auth error".into(),
             elapsed: None,
         };
-        assert_eq!(event.message(), "Turn failed: auth error");
+        assert_eq!(event.message(), "回合失败：auth error");
     }
 
     #[test]
@@ -1169,7 +1169,7 @@ mod tests {
         assert_eq!(out.lines.len(), 1, "collapsed marker stays a single line");
         let text = plain(&out.lines[0]);
         assert!(
-            text.starts_with("Worked for 5.0s"),
+            text.starts_with("已工作 5.0s"),
             "marker text keeps the left edge: {text}"
         );
         assert!(
@@ -1189,14 +1189,14 @@ mod tests {
         );
         assert_eq!(
             out.lines[0].selection_text.as_deref(),
-            Some("Worked for 5.0s")
+            Some("已工作 5.0s")
         );
     }
 
     #[test]
     fn stop_hooks_summary_wraps_to_own_line_when_narrow() {
         let block = completed_with_stop_hooks();
-        // "Worked for 5.0s" is 15 cols; the summary is 16 — no room
+        // "已工作 5.0s" is 15 cols; the summary is 16 — no room
         // at width 30, so the summary right-justifies on its own line.
         let out = block.output(&BlockContext {
             mode: DisplayMode::Collapsed,
@@ -1307,7 +1307,7 @@ mod tests {
             mode: DisplayMode::Collapsed,
             ..ctx()
         });
-        assert_eq!(plain(&out.lines[0]), "Worked for 5.0s");
+        assert_eq!(plain(&out.lines[0]), "已工作 5.0s");
     }
 
     #[test]
@@ -1381,6 +1381,6 @@ mod tests {
         // transcript suffix.
         let block = parked_marker();
         let out = block.output(&ctx());
-        assert_eq!(plain(&out.lines[0]), "Worked for 24s");
+        assert_eq!(plain(&out.lines[0]), "已工作 24s");
     }
 }

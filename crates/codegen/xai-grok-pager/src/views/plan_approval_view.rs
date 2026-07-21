@@ -24,7 +24,7 @@ The agent exited plan mode without writing a plan.
 
 /// Status-line label while plan approval is parked.
 ///
-/// Empty plans use an active decision prompt instead of "Waiting…", so the
+/// Empty plans use an active decision prompt instead of "等待中…", so the
 /// UI doesn't look stuck when there is no preview body to open.
 pub fn plan_approval_status_label(has_plan: bool) -> &'static str {
     if has_plan {

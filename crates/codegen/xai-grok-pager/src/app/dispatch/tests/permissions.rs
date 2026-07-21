@@ -69,12 +69,12 @@ fn set_yolo_mode_on_drains_permission_queue_with_allow_once() {
         vec![
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new(Arc::from("opt-allow-once")),
-                "Allow once",
+                "仅允许一次",
                 acp::PermissionOptionKind::AllowOnce,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new(Arc::from("opt-reject")),
-                "Reject",
+                "拒绝",
                 acp::PermissionOptionKind::RejectOnce,
             ),
         ],

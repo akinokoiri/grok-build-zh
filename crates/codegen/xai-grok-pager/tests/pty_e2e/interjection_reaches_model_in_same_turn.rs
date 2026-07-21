@@ -38,7 +38,7 @@ async fn interjection_reaches_model_in_same_turn() {
         .expect("turn 1 streaming");
     // Still mid-stream (hold gates completion) — not "Worked for".
     assert!(
-        !harness.contains_text("Worked for"),
+        !harness.contains_text("已工作"),
         "turn must still be open before send-now\nscreen:\n{}",
         harness.screen_contents()
     );

@@ -999,7 +999,7 @@ pub(super) fn handle_session_notification(notif: &acp::ExtNotification, app: &mu
             && let Some(ref mut modal) = agent.extensions_modal
         {
             modal.skills_data =
-                crate::views::extensions_modal::TabDataState::Error("No active session".into());
+                crate::views::extensions_modal::TabDataState::Error("无活动会话".into());
         } else {
             tracing::warn!("PluginsChanged: agent or modal disappeared before skills re-fetch");
         }

@@ -1340,11 +1340,11 @@ mod tests {
     /// promo from a dismissible one.
     #[test]
     fn promo_cta_returns_label_and_pinned_flag() {
-        let mut pinned = promo("p", "msg", Some(("Upgrade Account", "https://x.ai/promo")));
+        let mut pinned = promo("p", "msg", Some(("升级账号", "https://x.ai/promo")));
         pinned.dismissible = Some(false);
         let pinned = [pinned];
         let (owner, label, url) = promo_cta(&pinned, &no_hidden()).expect("usable cta");
-        assert_eq!(label, "Upgrade Account");
+        assert_eq!(label, "升级账号");
         assert_eq!(url, "https://x.ai/promo");
         assert!(
             !is_dismissible(owner),
@@ -1398,7 +1398,7 @@ mod tests {
         // header/dashboard CTA can't overpaint the status group.
         let area = Rect::new(0, 0, 6, 1);
         let mut buf = Buffer::empty(area);
-        let rect = render_cta_button(&mut buf, &theme, 0, 0, 6, "Upgrade Account", None, false)
+        let rect = render_cta_button(&mut buf, &theme, 0, 0, 6, "升级账号", None, false)
             .expect("clipped button still paints");
         assert!(
             rect.width <= 6,

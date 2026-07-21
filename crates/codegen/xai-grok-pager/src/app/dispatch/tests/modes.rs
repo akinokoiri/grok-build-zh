@@ -850,7 +850,7 @@ fn set_yolo_mode_on_drains_multi_item_queue() {
             ),
             vec![acp::PermissionOption::new(
                 acp::PermissionOptionId::new(Arc::from(format!("opt-allow-once-{i}"))),
-                "Allow once",
+                "仅允许一次",
                 acp::PermissionOptionKind::AllowOnce,
             )],
         );
@@ -926,7 +926,7 @@ fn set_yolo_mode_on_duplicate_dispatch_still_drains_queue() {
         ),
         vec![acp::PermissionOption::new(
             acp::PermissionOptionId::new(Arc::from("opt-allow-once")),
-            "Allow once",
+            "仅允许一次",
             acp::PermissionOptionKind::AllowOnce,
         )],
     );
@@ -1836,7 +1836,7 @@ fn dispatch_cycle_mode_plan_to_always_approve_drains_queue_via_inner() {
         ),
         vec![acp::PermissionOption::new(
             acp::PermissionOptionId::new(Arc::from("opt-allow-once")),
-            "Allow once",
+            "仅允许一次",
             acp::PermissionOptionKind::AllowOnce,
         )],
     );

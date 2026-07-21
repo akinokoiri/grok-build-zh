@@ -109,7 +109,7 @@ async fn endline_wakeups_are_markerless() {
             )
         });
     harness
-        .wait_for_text("Worked for", Duration::from_secs(30))
+        .wait_for_text("已工作", Duration::from_secs(30))
         .unwrap_or_else(|_| {
             panic!(
                 "the end marker never appeared; screen:\n{}",
@@ -133,7 +133,7 @@ async fn endline_wakeups_are_markerless() {
         harness.update(Duration::from_millis(100));
         let screen = harness.screen_contents();
         screen.contains("WAKE_REPLY_ONE")
-            && screen.matches("Worked for").count() == 1
+            && screen.matches("已工作").count() == 1
             && screen.contains("watching · 2 commands")
     });
     assert!(
@@ -148,7 +148,7 @@ async fn endline_wakeups_are_markerless() {
         harness.update(Duration::from_millis(100));
         let screen = harness.screen_contents();
         screen.contains("WAKE_REPLY_TWO")
-            && screen.matches("Worked for").count() == 1
+            && screen.matches("已工作").count() == 1
             && screen.contains("watching · 1 command")
     });
     assert!(
@@ -164,7 +164,7 @@ async fn endline_wakeups_are_markerless() {
         harness.update(Duration::from_millis(100));
         let screen = harness.screen_contents();
         screen.contains("WAKE_REPLY_THREE")
-            && screen.matches("Worked for").count() == 1
+            && screen.matches("已工作").count() == 1
             && !screen.contains("watching ·")
     });
     assert!(
@@ -185,7 +185,7 @@ async fn endline_wakeups_are_markerless() {
         TASKS,
         "one completion chip per task; screen:\n{screen}"
     );
-    let markers: Vec<usize> = screen.match_indices("Worked for").map(|(i, _)| i).collect();
+    let markers: Vec<usize> = screen.match_indices("已工作").map(|(i, _)| i).collect();
     assert_eq!(
         markers.len(),
         1,

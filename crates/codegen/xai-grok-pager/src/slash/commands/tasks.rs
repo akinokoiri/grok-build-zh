@@ -31,7 +31,7 @@ impl SlashCommand for TasksCommand {
 
     fn run(&self, ctx: &mut CommandExecCtx, _args: &str) -> CommandResult {
         if ctx.session_id.is_none() {
-            return CommandResult::Error("No active session".to_string());
+            return CommandResult::Error("无活动会话".to_string());
         }
         CommandResult::Action(Action::ShowTasks)
     }
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn no_session_errors() {
         match run_with_session(None) {
-            CommandResult::Error(msg) => assert!(msg.contains("No active session")),
+            CommandResult::Error(msg) => assert!(msg.contains("无活动会话")),
             other => panic!("expected Error, got {other:?}"),
         }
     }

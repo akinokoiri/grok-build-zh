@@ -2653,7 +2653,7 @@ if text == "p3-edited"),
 
     /// T3 regression: a task-tool refinement that OMITS `run_in_background`
     /// means background (the shell's serde default is true) — the provisional
-    /// foreground Subagent wait must clear, not stick as "Waiting on subagent…".
+    /// foreground Subagent wait must clear, not stick as "等待子代理…".
     #[test]
     fn task_refinement_without_background_field_defaults_to_background() {
         use std::sync::Arc;

@@ -479,7 +479,7 @@ fn cancel_turn_when_already_cancelling_resends_cancel() {
     // A cancel that was sent but never resolved (lost notification or
     // lost turn-end response) used to make every further
     // Esc a silent no-op, permanently stranding the pane on
-    // "Cancelling…". Cancelling again must RE-SEND the (idempotent)
+    // "正在取消…". Cancelling again must RE-SEND the (idempotent)
     // cancel instead.
     let mut app = test_app_with_agent();
     let id = AgentId(0);
@@ -1013,7 +1013,7 @@ fn bg_task_killed_not_found_removes_task_from_inactive_agent() {
 }
 
 /// Resume regression: a stale row restored by replay keeps a
-/// running "Task started" scrollback entry. When the ✗ kill resolves
+/// running "任务已开始" scrollback entry. When the ✗ kill resolves
 /// `not_found`, the entry must be finished alongside the row removal so
 /// the started block doesn't keep its running accent forever.
 #[test]

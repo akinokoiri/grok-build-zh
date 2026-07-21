@@ -66,7 +66,7 @@ pub struct SubagentBlock {
     /// Live activity label from the child session's turn tracker.
     ///
     /// Updated on each `SubagentProgress` tick while the subagent is running.
-    /// Shown inline in the collapsed scrollback line (e.g. "Thinking",
+    /// Shown inline in the collapsed scrollback line (e.g. "思考中",
     /// "Running: cargo build") so the user sees interactive progress without
     /// opening the subagent view.
     pub activity_label: Option<String>,

@@ -143,7 +143,7 @@ async fn spinner_reappears_after_wait_resumes() {
     // the status row, and the running chrome (cancel keybar) drops — the
     // session reads as stopped.
     harness
-        .wait_for_text("Worked for", Duration::from_secs(60))
+        .wait_for_text("已工作", Duration::from_secs(60))
         .unwrap_or_else(|_| {
             panic!(
                 "parked marker never appeared; screen:\n{}\n--- non-system messages ---\n{}",

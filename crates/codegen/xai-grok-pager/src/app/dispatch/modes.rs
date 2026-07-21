@@ -54,7 +54,7 @@ pub(super) fn dispatch_enter_plan_mode(
 
     let agent = app.agents.get_mut(&id).unwrap();
     let Some(session_id) = agent.session.session_id.clone() else {
-        agent.show_toast("No active session");
+        agent.show_toast("无活动会话");
         return vec![];
     };
 
@@ -143,7 +143,7 @@ pub(super) fn set_plan_mode(
     };
 
     let Some(session_id) = agent.session.session_id.clone() else {
-        agent.show_toast("No active session");
+        agent.show_toast("无活动会话");
         return vec![];
     };
 

@@ -186,7 +186,7 @@ impl ThinkingBlock {
         let detail_style = theme.muted();
 
         if ctx.is_running {
-            Line::from(Span::styled("Thinking…", label_style))
+            Line::from(Span::styled("思考中…", label_style))
         } else if let Some(time_str) = self.format_time() {
             Line::from(vec![
                 Span::styled("Thought", label_style),
@@ -347,7 +347,7 @@ impl ThinkingBlock {
     }
 
     /// Placeholder for empty thinking block — shows the same header
-    /// as collapsed mode ("Thinking…" or "Thought for Xs").
+    /// as collapsed mode ("思考中…" or "Thought for Xs").
     fn render_empty_placeholder(&self, ctx: &BlockContext) -> BlockOutput {
         self.render_collapsed(ctx)
     }

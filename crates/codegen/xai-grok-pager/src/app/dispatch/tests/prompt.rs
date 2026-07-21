@@ -803,7 +803,7 @@ fn send_prompt_while_running_queues_without_drain() {
 /// Regression (queue reorder race): a plain prompt typed while a turn is
 /// running must NOT jump onto the server queue when an older prompt is still
 /// waiting in the local drip-feed queue — e.g. prompts queued during
-/// "Starting session…" before the turn began, where the first drains to
+/// "正在启动会话…" before the turn began, where the first drains to
 /// start the turn and the rest are stranded locally. If the new prompt
 /// immediate-sent onto the server queue it would render/run AHEAD of the
 /// older local prompt (the merge is server-rows-first), so `[2, 3]` showed

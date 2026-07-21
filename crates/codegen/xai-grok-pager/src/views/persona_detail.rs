@@ -689,7 +689,7 @@ fn build_shortcuts(state: &PersonaDetailState) -> Vec<Shortcut<'static>> {
                 id: 0,
             },
             Shortcut {
-                label: "Esc cancel",
+                label: "Esc 取消",
                 clickable: false,
                 id: 0,
             },

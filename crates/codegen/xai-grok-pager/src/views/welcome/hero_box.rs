@@ -523,7 +523,7 @@ fn render_hero_changelog(
             .fg(theme.gray_bright)
             .add_modifier(Modifier::DIM),
     );
-    let title = "Changelog";
+    let title = "更新日志";
     buf.set_span(
         area.x,
         area.y,
@@ -903,7 +903,7 @@ managed devices and accounts. Report security incidents";
         let mut pinned = ann(None, Some("Grok 4.5 is here. Upgrade now."));
         pinned.dismissible = Some(false);
         pinned.cta = Some(xai_grok_announcements::AnnouncementCta {
-            label: Some("Upgrade Account".into()),
+            label: Some("升级账号".into()),
             url: Some("https://x.ai/grok".into()),
             caption: Some("or use Ctrl+O".into()),
         });
@@ -915,7 +915,7 @@ managed devices and accounts. Report security incidents";
             &pinned,
             false,
             None,
-            Some("Upgrade Account"),
+            Some("升级账号"),
         );
         let rect = cta_rect.expect("CTA returns a button rect");
         assert_eq!(
@@ -944,7 +944,7 @@ managed devices and accounts. Report security incidents";
             &pinned,
             false,
             None,
-            Some("Upgrade Account"),
+            Some("升级账号"),
         );
         let rect = cta_rect.expect("caption-less pinned promo still shows the button");
         let row = extract_text(&buf, area.x, rect.y, area.width);
@@ -953,7 +953,7 @@ managed devices and accounts. Report security incidents";
         // Dismissible promo: bare button even with a configured caption.
         let mut dismissible = ann(None, Some("Grok 4.5 is here. Upgrade now."));
         dismissible.cta = Some(xai_grok_announcements::AnnouncementCta {
-            label: Some("Upgrade Account".into()),
+            label: Some("升级账号".into()),
             url: Some("https://x.ai/grok".into()),
             caption: Some("or use Ctrl+O".into()),
         });
@@ -965,7 +965,7 @@ managed devices and accounts. Report security incidents";
             &dismissible,
             false,
             None,
-            Some("Upgrade Account"),
+            Some("升级账号"),
         );
         let rect = cta_rect.expect("dismissible promo still shows the button");
         let row = extract_text(&buf, area.x, rect.y, area.width);

@@ -524,7 +524,7 @@ pub fn default_palette_entries(sharing_enabled: bool) -> Vec<PaletteEntry> {
             command: PaletteCommand::OpenSettings,
         },
         PaletteEntry {
-            label: "Keyboard Shortcuts".into(),
+            label: "键盘快捷键".into(),
             shortcut: if crate::actions::ctrl_dot_unreliable() {
                 "Ctrl+X".into()
             } else {
@@ -625,7 +625,7 @@ impl ActiveModal {
                 }
             }
             ActiveModal::CommandPalette { .. } => "Commands",
-            ActiveModal::SessionPicker { .. } => "Resume session",
+            ActiveModal::SessionPicker { .. } => "恢复会话",
             ActiveModal::ArgPicker {
                 command,
                 args_query,
@@ -638,7 +638,7 @@ impl ActiveModal {
             },
             ActiveModal::DocPicker { .. } => "How-to Guides",
             ActiveModal::DocViewer { title, .. } => title.as_str(),
-            ActiveModal::ShortcutsHelp { .. } => "Keyboard Shortcuts",
+            ActiveModal::ShortcutsHelp { .. } => "键盘快捷键",
             ActiveModal::MemoryBrowser { .. } => "Memory",
             ActiveModal::Settings { .. } => crate::views::settings_modal::MODAL_TITLE,
             ActiveModal::ResetSettingsConfirm { .. } => "Reset setting?",
@@ -1044,7 +1044,7 @@ pub fn render_doc_picker_overlay(
             id: 0,
         },
         Shortcut {
-            label: "Esc close",
+            label: "Esc 关闭",
             clickable: false,
             id: 0,
         },
@@ -1337,7 +1337,7 @@ mod palette_sharing_tests {
         assert_eq!(state.selected, 0);
         assert_eq!(
             entries.first().map(|e| e.title.as_str()),
-            Some("Getting Started")
+            Some("入门指南")
         );
     }
 }
