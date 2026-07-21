@@ -883,7 +883,7 @@ fn move_pending_to_cancelled_creates_cancelled_entry() {
             color: None,
             cancel_token: CancellationToken::new(),
         });
-    coordinator.move_pending_to_cancelled("sub-killed", "Subagent was cancelled");
+    coordinator.move_pending_to_cancelled("sub-killed", "子代理已取消");
     assert!(! coordinator.pending.contains_key("sub-killed"));
     match coordinator.lookup("sub-killed") {
         Some(SnapshotLookup::Ready(snap)) => {

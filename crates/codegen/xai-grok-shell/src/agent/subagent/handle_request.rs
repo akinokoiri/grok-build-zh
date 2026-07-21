@@ -1406,7 +1406,7 @@ pub(crate) async fn handle_subagent_request(
             SubagentResult {
                 success: false,
                 cancelled: true,
-                error: Some("Subagent was cancelled".to_string()),
+                error: Some("子代理已取消".to_string()),
                 subagent_id: request.id.clone(),
                 child_session_id: child_session_id.0.to_string(),
                 tool_calls,
@@ -1553,7 +1553,7 @@ pub(crate) async fn handle_subagent_request(
                         cancelled: was_cancelled,
                         error: Some(
                             if was_cancelled {
-                                "Subagent was cancelled".to_string()
+                                "子代理已取消".to_string()
                             } else {
                                 format!("Session error: {e}")
                             },
@@ -1575,7 +1575,7 @@ pub(crate) async fn handle_subagent_request(
                         cancelled: was_cancelled,
                         error: Some(
                             if was_cancelled {
-                                "Subagent was cancelled".to_string()
+                                "子代理已取消".to_string()
                             } else {
                                 "Child session dropped unexpectedly".to_string()
                             },

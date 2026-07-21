@@ -44,7 +44,7 @@ pub(in crate::app::dispatch) fn dispatch_sessions_confirm_close(
         return vec![];
     }
     if app.agents.len() == 1 {
-        app.show_toast("Cannot close the only session -- use /home to exit");
+        app.show_toast("无法关闭唯一会话 — 请用 /home 退出");
         return vec![];
     }
     if matches!(app.active_view, ActiveView::Agent(id) if id == closed_id) {

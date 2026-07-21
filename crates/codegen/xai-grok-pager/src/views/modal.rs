@@ -439,7 +439,7 @@ pub fn default_palette_entries(sharing_enabled: bool) -> Vec<PaletteEntry> {
             command: PaletteCommand::SlashCommand("/view-plan".into()),
         },
         PaletteEntry {
-            label: "Memory".into(),
+            label: "记忆".into(),
             shortcut: "/memory".into(),
             command: PaletteCommand::Memory,
         },
@@ -533,7 +533,7 @@ pub fn default_palette_entries(sharing_enabled: bool) -> Vec<PaletteEntry> {
             command: PaletteCommand::KeyboardShortcuts,
         },
         PaletteEntry {
-            label: "How-to Guides".into(),
+            label: "使用指南".into(),
             shortcut: "/docs".into(),
             command: PaletteCommand::HowTo,
         },
@@ -632,14 +632,14 @@ impl ActiveModal {
                 ..
             } => match command.as_str() {
                 "model" | "m" if !args_query.is_empty() => "Pick reasoning effort",
-                "model" | "m" => "Pick model",
+                "model" | "m" => "选择模型",
                 "theme" | "t" => "Pick theme",
                 _ => "Pick option",
             },
-            ActiveModal::DocPicker { .. } => "How-to Guides",
+            ActiveModal::DocPicker { .. } => "使用指南",
             ActiveModal::DocViewer { title, .. } => title.as_str(),
             ActiveModal::ShortcutsHelp { .. } => "键盘快捷键",
-            ActiveModal::MemoryBrowser { .. } => "Memory",
+            ActiveModal::MemoryBrowser { .. } => "记忆",
             ActiveModal::Settings { .. } => crate::views::settings_modal::MODAL_TITLE,
             ActiveModal::ResetSettingsConfirm { .. } => "Reset setting?",
             ActiveModal::RememberNoteReview { .. } => "Memory Note",
@@ -1039,7 +1039,7 @@ pub fn render_doc_picker_overlay(
             id: 0,
         },
         Shortcut {
-            label: "Enter select",
+            label: "Enter 选择",
             clickable: false,
             id: 0,
         },
@@ -1065,7 +1065,7 @@ pub fn render_doc_picker_overlay(
         ..base_sizing
     };
     let modal_config = ModalWindowConfig {
-        title: "How-to Guides",
+        title: "使用指南",
         tabs: None,
         shortcuts: &picker_shortcuts,
         sizing,

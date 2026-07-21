@@ -109,7 +109,7 @@ fn interject_params_omit_content_when_no_blocks() {
 fn picker_keeps_conversation_with_empty_cwd_and_missing_updated_at() {
     let payload = serde_json::json!(
         { "sessions" : [{ "sessionId" : "conv_abc", "cwd" : "", "summary" :
-        "Compare GPU vendors", "source" : "conversation", "_meta" : { "x.ai/session" : {
+        "比较 GPU 厂商", "source" : "conversation", "_meta" : { "x.ai/session" : {
         "kind" : "chat" } } }] }
     );
     let entries = parse_session_picker_entries(&payload);
@@ -2009,26 +2009,26 @@ fn session_picker_summary_preserves_normal_text() {
 fn sanitize_user_error_strips_auth_prefixes() {
     assert_eq!(
         sanitize_user_error("Authentication required: Login timed out after 10 minutes. Please try again."),
-        "Login timed out after 10 minutes. Please try again."
+        "登录超时（10 分钟）。请重试。"
     );
     assert_eq!(
         sanitize_user_error("Authentication failed: something went wrong"),
         "something went wrong"
     );
     assert_eq!(
-        sanitize_user_error("Login timed out after 10 minutes. Please try again."),
-        "Login timed out after 10 minutes. Please try again."
+        sanitize_user_error("登录超时（10 分钟）。请重试。"),
+        "登录超时（10 分钟）。请重试。"
     );
 }
 #[test]
 fn sanitize_user_error_collapses_disk_full() {
     assert_eq!(
         sanitize_user_error("couldn't create worktree: Internal error: \"hub error: Worktree creation failed: not enough free disk space\""),
-        "Out of disk space."
+        "磁盘空间不足。"
     );
     assert_eq!(
         sanitize_user_error("couldn't create worktree: failed to copy index: No space left on device (os error 28)"),
-        "Out of disk space."
+        "磁盘空间不足。"
     );
     assert_eq!(
         sanitize_user_error("couldn't create worktree: failed to get HEAD commit from source"),

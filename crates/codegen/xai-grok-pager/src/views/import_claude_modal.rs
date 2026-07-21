@@ -633,7 +633,7 @@ pub fn render_import_claude_modal(
         },
     ];
     let config = ModalWindowConfig {
-        title: "Import Claude settings",
+        title: "导入 Claude 设置",
         tabs: None,
         shortcuts: &shortcuts,
         sizing: ModalSizing::default().with_compact(compact),

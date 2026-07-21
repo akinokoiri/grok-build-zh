@@ -479,7 +479,7 @@ mod tests {
         svc.notify(NotificationEvent {
             kind: NotificationEventKind::TurnComplete,
             title: "Grok".into(),
-            body: "Turn complete".into(),
+            body: "回合完成".into(),
             session_id: Some("test-session".into()),
         });
     }

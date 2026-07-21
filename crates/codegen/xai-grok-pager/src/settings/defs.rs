@@ -92,7 +92,7 @@ const THEME_CHOICES: &[EnumChoice] = &[
 // ---------------------------------------------------------------------------
 
 // Choice order: safe → classifier → unsafe (Default → Ask → Auto → Always approve).
-// "Always approve" at the end creates a speed bump against
+// "始终批准" at the end creates a speed bump against
 // accidental selection.
 const PERMISSION_MODE_CHOICES: &[EnumChoice] = &[
     // "default" = agent's default behavior. Same as "ask" at runtime;
@@ -114,7 +114,7 @@ const PERMISSION_MODE_CHOICES: &[EnumChoice] = &[
     },
     EnumChoice {
         canonical: "always-approve",
-        display: "Always approve",
+        display: "始终批准",
         description: "自动批准所有工具操作。跳过全部权限提示。",",
     },
 ];

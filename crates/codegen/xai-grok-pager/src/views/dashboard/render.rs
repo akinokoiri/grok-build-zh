@@ -885,7 +885,7 @@ fn render_header(
     // Paint the current location — git branch + cwd (with worktree
     // label) — on the left, mirroring the session surfaces (welcome
     // top bar / agent status bar) so the dashboard shows WHERE a
-    // dispatched session will run. Replaces the old bare "Agents"
+    // dispatched session will run. Replaces the old bare "代理"
     // label.
     //
     // Width budget: from `area.x` up to the leftmost chip's leading
@@ -1032,7 +1032,7 @@ fn render_location_picker(
             id: 1,
         },
         Shortcut {
-            label: "Enter select",
+            label: "Enter 选择",
             clickable: false,
             id: 2,
         },
@@ -1046,7 +1046,7 @@ fn render_location_picker(
     // picker, but Esc drops to nav under vim).
     push_vim_nav_search_hint(&mut shortcuts, modal.picker.search_active);
     let config = ModalWindowConfig {
-        title: "Change directory",
+        title: "更改目录",
         tabs: None,
         shortcuts: &shortcuts,
         sizing: ModalSizing::medium(),
@@ -2912,7 +2912,7 @@ fn render_dispatch(
         // (`paint_dispatch_feedback_badge`), not here, so it stays
         // visible even when the rejected text is still in the box.
         if !input_focused {
-            let msg = "Dispatch a new agent";
+            let msg = "派发新代理";
             let style = Style::default().fg(theme.gray_dim).bg(theme.bg_base);
             let trunc = truncate_str(msg, content.width.saturating_sub(prefix_w) as usize);
             buf.set_string(content.x + prefix_w, content.y, trunc, style);
@@ -3440,7 +3440,7 @@ fn render_footer(
         //   focused + non-empty   → Enter sends
         //   otherwise             → Enter opens / attaches
         // Ctrl+S remains send+open whenever there is a non-empty draft.
-        // Esc: no draft → unselect ("New Agent"); with draft → "back".
+        // Esc: no draft → unselect ("新代理"); with draft → "back".
         let esc = key!(Esc);
         // Pending permission / ask-tool: `1-9` selects even while unfocused
         // (handler focuses the panel). Focused + selected option → answer.
@@ -3454,7 +3454,7 @@ fn render_footer(
             .as_ref()
             .is_some_and(|p| p.selected_option.is_some());
         let reply_empty = state.peek_reply.text().trim().is_empty();
-        let esc_label = if reply_empty { "New Agent" } else { "back" };
+        let esc_label = if reply_empty { "新代理" } else { "back" };
         // Pin Esc when it clears a draft (`back`) so compact doesn't drop it
         // behind stop/help — matches how important it is in handle_peek_key.
         let esc_hint = {
@@ -3557,7 +3557,7 @@ fn render_footer(
             };
             vec![
                 HintItem::new(enter, toggle),
-                HintItem::new(key!(Esc), "New Agent"),
+                HintItem::new(key!(Esc), "新代理"),
             ]
         } else {
             // Typed text dispatches a NEW agent (a section header is
@@ -3582,7 +3582,7 @@ fn render_footer(
             };
             vec![
                 HintItem::new(enter, toggle),
-                HintItem::new(key!(Esc), "New Agent"),
+                HintItem::new(key!(Esc), "新代理"),
             ]
         } else {
             vec![
@@ -4303,7 +4303,7 @@ mod tests {
         let registry = crate::actions::ActionRegistry::defaults();
         let roster = [RosterEntry {
             session_id: "sess-fleet-1".into(),
-            title: Some("Fix fleet dashboard".into()),
+            title: Some("修复集群仪表盘".into()),
             cwd: "/repo/work".into(),
             is_worktree: false,
             model_id: None,
@@ -4328,7 +4328,7 @@ mod tests {
 
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Fix fleet dashboard"),
+            content.contains("修复集群仪表盘"),
             "roster-only working session must paint when local agents are empty, got: {content:?}"
         );
         assert!(
@@ -5854,7 +5854,7 @@ mod tests {
         let _ = render_dispatch(&mut buf, Rect::new(0, 0, 80, 3), &theme, &mut state, None);
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Dispatch a new agent"),
+            content.contains("派发新代理"),
             "unfocused placeholder missing, got: {content:?}",
         );
     }
@@ -5870,7 +5870,7 @@ mod tests {
         let cursor = render_dispatch(&mut buf, Rect::new(0, 0, 80, 3), &theme, &mut state, None);
         let content = buf_to_text(&buf);
         assert!(
-            !content.contains("Dispatch a new agent"),
+            !content.contains("派发新代理"),
             "focused input must not paint the placeholder, got: {content:?}",
         );
         // The `❯` prefix and the caret position survive.
@@ -5899,7 +5899,7 @@ mod tests {
         let _ = render_dispatch(&mut buf, Rect::new(0, 0, 80, 3), &theme, &mut state, None);
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Dispatch a new agent"),
+            content.contains("派发新代理"),
             "placeholder must stay new-session even with a row selected, got: {content:?}",
         );
         assert!(
@@ -5941,7 +5941,7 @@ mod tests {
         // shown inline anymore).
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Dispatch a new agent"),
+            content.contains("派发新代理"),
             "placeholder must remain the new-session text, got: {content:?}",
         );
     }
@@ -6439,7 +6439,7 @@ if *count == 1)),
         render_rows(&mut buf, Rect::new(0, 0, 80, 30), &theme, &rows, &mut state);
         let content = buf_to_text(&buf);
         // Group labels: Awaiting / Working / Idle / Done / Failed.
-        for label in ["Awaiting", "Working", "Idle", "Done", "Failed"] {
+        for label in ["Awaiting", "Working", "Idle", "Done", "失败"] {
             assert!(
                 content.contains(label),
                 "missing group header `{label}`, got: {content:?}",
@@ -6450,7 +6450,7 @@ if *count == 1)),
         let idx_wk = content.find("Working").expect("Working present");
         let idx_id = content.find("Idle").expect("Idle present");
         let idx_dn = content.find("Done").expect("Done present");
-        let idx_fl = content.find("Failed").expect("Failed present");
+        let idx_fl = content.find("失败").expect("Failed present");
         assert!(idx_aw < idx_wk, "Awaiting must precede Working");
         assert!(idx_wk < idx_id, "Working must precede Idle");
         assert!(idx_id < idx_dn, "Idle must precede Done");
@@ -7212,7 +7212,7 @@ if *count == 1)),
         }
         // The old static label and total count are gone.
         assert!(
-            !content.contains("Agents"),
+            !content.contains("代理"),
             "header must not paint the old `Agents` label, got: {content:?}",
         );
         assert!(
@@ -7358,7 +7358,7 @@ if *count == 1)),
         render_location_picker(&mut buf, area, &theme, &mut modal);
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Change directory"),
+            content.contains("更改目录"),
             "modal title missing, got: {content:?}",
         );
         assert!(
@@ -7997,7 +7997,7 @@ if *count == 1)),
             "unfocused peek with draft must show Esc:back, got: {content:?}",
         );
         assert!(
-            !content.contains("New Agent"),
+            !content.contains("新代理"),
             "must not label Esc as New Agent while a draft remains, got: {content:?}",
         );
     }
@@ -8020,7 +8020,7 @@ if *count == 1)),
                     time_ago: String::new(),
                     response_type: "NeedsInput".into(),
                     last_user_message: None,
-                    question: Some("Allow?".into()),
+                    question: Some("允许？".into()),
                     options: vec![
                         ("allow".into(), "Allow".into()),
                         ("deny".into(), "Deny".into()),
@@ -8102,7 +8102,7 @@ if *count == 1)),
                     time_ago: String::new(),
                     response_type: "NeedsInput".into(),
                     last_user_message: None,
-                    question: Some("Allow?".into()),
+                    question: Some("允许？".into()),
                     options: vec![
                         ("allow".into(), "Allow".into()),
                         ("deny".into(), "Deny".into()),
@@ -8332,7 +8332,7 @@ if *count == 1)),
             "expanded section footer must hint Enter:collapse, got: {content:?}",
         );
         assert!(
-            content.contains("New Agent"),
+            content.contains("新代理"),
             "section footer must hint Esc:New Agent, got: {content:?}",
         );
         assert!(

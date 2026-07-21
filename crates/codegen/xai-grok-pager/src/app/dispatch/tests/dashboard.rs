@@ -2966,7 +2966,7 @@ fn insert_second_agent(app: &mut AppView) -> AgentId {
     let id = AgentId(1);
     let session = make_test_agent_session(app, id, "second");
     let mut agent = AgentView::new(session, ScrollbackState::new());
-    agent.generated_session_title = Some("Second".into());
+    agent.generated_session_title = Some("第二".into());
     app.agents.insert(id, agent);
     mark_agent_nonempty(app, id);
     id
@@ -3138,7 +3138,7 @@ fn dashboard_overlay_stop_closes_session_and_returns_to_dashboard() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
     open_dashboard(&mut app);
     let id = AgentId(0);
@@ -3328,7 +3328,7 @@ fn dashboard_overlay_mouse_exit_and_cycle_disarm_pending_stop() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
     open_dashboard(&mut app);
     let _ = dispatch_dashboard_attach(
@@ -3375,7 +3375,7 @@ fn dashboard_overlay_cycle_wraps_through_agents() {
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
     // Non-empty so the dashboard renders it (empty sessions are hidden).
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
     open_dashboard(&mut app);
 
@@ -3581,7 +3581,7 @@ fn dashboard_overlay_cycle_from_non_overlay_agent_attaches_and_switches() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
 
     app.active_view = ActiveView::Agent(id1);
@@ -3625,7 +3625,7 @@ fn dashboard_overlay_cycle_works_through_handle_input_after_dashboard_esc_exit()
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
     app.active_view = ActiveView::Agent(id1);
 
@@ -3687,7 +3687,7 @@ fn dashboard_overlay_cycle_from_unopened_dashboard_configures_state() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
     app.active_view = ActiveView::Agent(id1);
     // Distinguishes a configured dashboard from a bare `DashboardState::new()`.
@@ -3729,7 +3729,7 @@ fn dashboard_overlay_cycle_unopened_respects_auth_gate() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
     app.active_view = ActiveView::Agent(id1);
     app.auth_state = AuthState::Pending { error: None };
@@ -3791,7 +3791,7 @@ fn dashboard_overlay_cycle_non_agent_active_view_is_noop() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
 
     app.active_view = ActiveView::Welcome;
@@ -3820,7 +3820,7 @@ fn dashboard_overlay_cycle_non_overlay_noop_when_dashboard_disabled() {
     let id2 = AgentId(1);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
 
     app.active_view = ActiveView::Agent(id1);
@@ -3846,12 +3846,12 @@ fn dashboard_overlay_cycle_non_overlay_noop_when_current_agent_hidden() {
     let id1 = AgentId(1);
     let session1 = make_test_agent_session(&app, id1, "first");
     let mut agent1 = AgentView::new(session1, ScrollbackState::new());
-    agent1.generated_session_title = Some("First".into());
+    agent1.generated_session_title = Some("第一".into());
     app.agents.insert(id1, agent1);
     let id2 = AgentId(2);
     let session2 = make_test_agent_session(&app, id2, "second");
     let mut agent2 = AgentView::new(session2, ScrollbackState::new());
-    agent2.generated_session_title = Some("Second".into());
+    agent2.generated_session_title = Some("第二".into());
     app.agents.insert(id2, agent2);
 
     app.active_view = ActiveView::Agent(current);

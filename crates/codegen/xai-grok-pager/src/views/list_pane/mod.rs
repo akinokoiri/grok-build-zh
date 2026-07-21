@@ -69,7 +69,7 @@ pub struct ListPaneStyle {
     /// Distinct from `indicator_fg` so it's visible against content.
     pub follow_indicator_fg: Color,
 
-    /// "Copied!" toast foreground color.
+    /// "已复制！" toast foreground color.
     pub toast_fg: Color,
 
     /// When true, the cursor line uses `visual_select_bg` when inside a

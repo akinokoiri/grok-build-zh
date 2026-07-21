@@ -704,7 +704,7 @@ pub(super) fn handle_rewind_points_loaded(
         if let Some(stashed) = stashed {
             agent.prompt.restore(stashed);
         }
-        app.show_toast("No undoable prompts");
+        app.show_toast("没有可撤销的提示");
         return vec![];
     }
 

@@ -531,7 +531,7 @@ impl FeedbackClient {
             let body = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+                .unwrap_or_else(|_| "未知错误".to_string());
             return Err(FeedbackApiError {
                 status,
                 context,
@@ -563,7 +563,7 @@ impl FeedbackClient {
             let body = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+                .unwrap_or_else(|_| "未知错误".to_string());
             return Err(FeedbackApiError {
                 status,
                 context,

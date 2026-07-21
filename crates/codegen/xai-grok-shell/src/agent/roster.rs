@@ -188,10 +188,10 @@ mod merge_roster_tests {
         let now = 9_000;
         let out = merge_roster(
             vec![resident("a", RosterActivity::Idle, now)],
-            vec![summary("a", Some("Fix the roster"), 1_234)],
+            vec![summary("a", Some("修复名册"), 1_234)],
         );
         assert_eq!(out.len(), 1, "resident must not be duplicated as dormant");
-        assert_eq!(out[0].title.as_deref(), Some("Fix the roster"));
+        assert_eq!(out[0].title.as_deref(), Some("修复名册"));
         assert_eq!(out[0].last_change_unix_ms, 1_234, "idle adopts last-active");
         assert!(out[0].resident);
         assert_eq!(out[0].cwd, "/live/a", "live cwd is preserved");
@@ -253,8 +253,8 @@ mod merge_roster_tests {
         let out = merge_roster(
             vec![],
             vec![
-                summary("dup", Some("First"), 1_000),
-                summary("dup", Some("Second"), 2_000),
+                summary("dup", Some("第一"), 1_000),
+                summary("dup", Some("第二"), 2_000),
             ],
         );
         assert_eq!(out.len(), 1, "duplicate ids collapse to one row");

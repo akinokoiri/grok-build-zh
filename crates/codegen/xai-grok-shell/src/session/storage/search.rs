@@ -1671,7 +1671,7 @@ mod tests {
     #[test]
     fn test_build_session_doc_title_change_changes_hash() {
         let old = test_summary("s1", "/workspace", "Old title");
-        let new = test_summary("s1", "/workspace", "New title");
+        let new = test_summary("s1", "/workspace", "新标题");
         let content = "same prompt text".to_string();
 
         let doc_old = build_session_doc(&old, content.clone(), 0);

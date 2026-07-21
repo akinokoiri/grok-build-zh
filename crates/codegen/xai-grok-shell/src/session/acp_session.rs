@@ -1490,7 +1490,7 @@ mod managed_gateway_descriptor_tests {
                             tool_id: "list_issues".to_string(),
                             tool_name: "List".to_string(),
                             call_id: "linear.list_issues".to_string(),
-                            description: "List issues".to_string(),
+                            description: "列出 issues".to_string(),
                             json_schema: serde_json::json!({ "type" : "object" }),
                         },
                         crate::session::managed_mcp::GatewayTool {
@@ -1499,7 +1499,7 @@ mod managed_gateway_descriptor_tests {
                             tool_id: "create_issue".to_string(),
                             tool_name: "Create".to_string(),
                             call_id: "linear.create_issue".to_string(),
-                            description: "Create issue".to_string(),
+                            description: "创建 issue".to_string(),
                             json_schema: serde_json::json!({ "type" : "object" }),
                         },
                         crate::session::managed_mcp::GatewayTool {
@@ -1508,7 +1508,7 @@ mod managed_gateway_descriptor_tests {
                             tool_id: "search".to_string(),
                             tool_name: "Search".to_string(),
                             call_id: "slack.search".to_string(),
-                            description: "Search Slack".to_string(),
+                            description: "搜索 Slack".to_string(),
                             json_schema: serde_json::json!({ "type" : "object" }),
                         },
                     ],
@@ -1973,7 +1973,7 @@ mod managed_gateway_tool_tests {
                             tool_id: "list_issues".to_string(),
                             tool_name: "List".to_string(),
                             call_id: "linear.list_issues".to_string(),
-                            description: "List issues".to_string(),
+                            description: "列出 issues".to_string(),
                             json_schema: serde_json::json!({ "type" : "object" }),
                         },
                         crate::session::managed_mcp::GatewayTool {
@@ -1982,7 +1982,7 @@ mod managed_gateway_tool_tests {
                             tool_id: "create_issue".to_string(),
                             tool_name: "Create".to_string(),
                             call_id: "linear.create_issue".to_string(),
-                            description: "Create issue".to_string(),
+                            description: "创建 issue".to_string(),
                             json_schema: serde_json::json!({ "type" : "object" }),
                         },
                         crate::session::managed_mcp::GatewayTool {
@@ -1991,7 +1991,7 @@ mod managed_gateway_tool_tests {
                             tool_id: "search".to_string(),
                             tool_name: "Search".to_string(),
                             call_id: "slack.search".to_string(),
-                            description: "Search Slack".to_string(),
+                            description: "搜索 Slack".to_string(),
                             json_schema: serde_json::json!({ "type" : "object" }),
                         },
                     ],

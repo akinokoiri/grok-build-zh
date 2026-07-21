@@ -136,7 +136,7 @@ impl<T: ListItem> StatefulWidget for ListPane<'_, T> {
         // Render corner overlay indicators.
         render_corner_indicators(content_area, buf, state, &self.style);
 
-        // Render "Copied!" toast (bottom-right corner, briefly after y-copy).
+        // Render "已复制！" toast (bottom-right corner, briefly after y-copy).
         // Rendered AFTER indicators so we can skip the bottom-right indicator
         // to avoid overlapping.
         if state.copy_toast_active() && content_area.height > 0 && content_area.width > 8 {

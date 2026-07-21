@@ -1904,7 +1904,7 @@ mod tests {
             session_id: "sess-abc".to_string(),
             minimal: false,
             summary: Some(ExitSummary {
-                title: "Fix flaky CI test".to_string(),
+                title: "修复不稳定的 CI 测试".to_string(),
                 last_prompt: Some("make the suite deterministic".to_string()),
                 last_response: Some("Pinned the seed; 200 consecutive green runs.".to_string()),
             }),

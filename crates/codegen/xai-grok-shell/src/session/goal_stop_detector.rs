@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn giving_up_phrases_trigger() {
         for phrase in [
-            "Giving up.",
+            "已放弃。",
             "I'm giving up on this branch.",
             "I am giving up.",
             "The task is not actionable as stated.",

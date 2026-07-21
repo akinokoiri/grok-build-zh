@@ -70,7 +70,7 @@ impl LocalSessionLifecycleContributor for IdlePromptExtension {
             tokio::time::sleep(delay).await;
             notification_event_sink.emit(NotificationEvent {
                 notification_type: "idle_prompt",
-                message: Some("Turn complete".into()),
+                message: Some("回合完成".into()),
                 title: None,
                 level: Some("info".into()),
             });

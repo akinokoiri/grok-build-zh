@@ -935,7 +935,7 @@ fn render_welcome_trust(
     h_margin: u16,
     compact: bool,
 ) -> WelcomeRenderResult {
-    let menu_items = [("y", "Yes, proceed"), ("n", "No, quit")];
+    let menu_items = [("y", "是，继续"), ("n", "No, quit")];
     let lines = vec![
         Line::from(Span::styled(
             "Do you trust the contents of this directory?",
@@ -1748,7 +1748,7 @@ fn render_welcome_done(
             // 3 cells of this row as dismiss instead of open. Keyboard:
             // ctrl-shift-i. The key string is right-aligned by render_menu,
             // so [x] sits at the very end of the row.
-            items.push((key_i_with_x, "Import Claude settings"));
+            items.push((key_i_with_x, "导入 Claude 设置"));
         }
         items.push((key_w, "New worktree"));
         items.push((key_s, "恢复会话"));
@@ -2483,7 +2483,7 @@ fn render_startup_warnings(
     // menu now carries the call-to-action with the same visual weight as
     // every other welcome menu item. Showing the warning text in addition to
     // the menu row would be redundant noise.
-    if w.message.starts_with("Import Claude settings")
+    if w.message.starts_with("导入 Claude 设置")
         || w.message.starts_with("Claude settings detected")
     {
         return None;
@@ -3808,7 +3808,7 @@ if label == &"aaa"),
 
     fn long_ann() -> xai_grok_announcements::RemoteAnnouncement {
         xai_grok_announcements::RemoteAnnouncement {
-            title: Some("Security policy".into()),
+            title: Some("安全策略".into()),
             message: Some(
                 "Report security incidents to the security team promptly through \
 the usual channels. "

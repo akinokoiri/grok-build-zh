@@ -389,7 +389,7 @@ impl AgentView {
     /// inline-image click target, and the Enter-key handler.
     pub(crate) fn open_media_natively(&mut self, path: &std::path::Path) -> bool {
         if crate::app::link_opener::open_path(path) {
-            self.show_toast("Opening in default app\u{2026}");
+            self.show_toast("正在用默认应用打开\u{2026}");
             true
         } else {
             self.show_toast("无法打开文件");
@@ -414,7 +414,7 @@ impl AgentView {
         let path_owned = path.to_path_buf();
         let (tx, rx) = std::sync::mpsc::channel();
         self.video_load_rx = Some(rx);
-        self.show_toast("Loading video\u{2026}");
+        self.show_toast("正在加载视频\u{2026}");
         std::thread::spawn(move || {
             let result =
                 crate::prompt_images::VideoViewerState::open_from_path(&path_owned).map(|viewer| {
@@ -482,7 +482,7 @@ impl AgentView {
                     tracing::debug!("copy image failed: {e}");
                 }
             });
-            self.show_toast("Copied image");
+            self.show_toast("已复制图片");
             return Some(InputOutcome::Changed);
         }
 

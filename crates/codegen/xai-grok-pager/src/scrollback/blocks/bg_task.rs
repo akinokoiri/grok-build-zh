@@ -513,7 +513,7 @@ mod tests {
         let plain = preamble_plain(&block);
         // First, single blank (collapsed from 3 internal blanks), Second,
         // separator blank, command.
-        assert_eq!(plain, vec!["First", "", "Second", "", "$ ls"]);
+        assert_eq!(plain, vec!["第一", "", "第二", "", "$ ls"]);
     }
 
     #[test]

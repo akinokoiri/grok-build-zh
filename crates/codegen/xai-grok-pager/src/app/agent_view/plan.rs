@@ -130,7 +130,7 @@ impl AgentView {
         } else {
             None
         }) else {
-            self.show_toast("No plan written yet.");
+            self.show_toast("尚未写入计划。");
             return;
         };
         viewer.kind = crate::views::file_search::line_viewer::LineViewerKind::PlanPreview;
@@ -259,7 +259,7 @@ impl AgentView {
         self.prompt.restore(pav.stashed_prompt);
         self.line_viewer = None;
         self.prompt.textarea.cancel_undo_group();
-        self.show_toast("Plan revision sent.");
+        self.show_toast("计划修改意见已发送。");
         {
             use xai_grok_telemetry::events::PlanSubmit;
             use xai_grok_telemetry::session_ctx::log_event;
@@ -654,7 +654,7 @@ impl AgentView {
     }
     pub(super) fn send_casual_plan_comments(&mut self) -> InputOutcome {
         if self.plan_comments.is_empty() {
-            self.show_toast("No comments to send.");
+            self.show_toast("没有可发送的评论。");
             return InputOutcome::Changed;
         }
         let plan_content = self.inline_plan_content().map(str::to_owned).or_else(|| {
@@ -669,7 +669,7 @@ impl AgentView {
         self.plan_comments.clear();
         self.plan_next_comment_id = 0;
         self.cancel_line_viewer();
-        self.show_toast("Plan feedback sent.");
+        self.show_toast("计划反馈已发送。");
         InputOutcome::Action(Action::SendPrompt(text))
     }
 }

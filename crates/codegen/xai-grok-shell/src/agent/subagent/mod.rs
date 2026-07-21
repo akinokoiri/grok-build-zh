@@ -2239,7 +2239,7 @@ async fn cancel_pending_subagent_at_promote(
     let result = SubagentResult {
         success: false,
         cancelled: true,
-        error: Some("Subagent was cancelled".to_string()),
+        error: Some("子代理已取消".to_string()),
         subagent_id: subagent_id.to_string(),
         child_session_id: child_session_id.0.to_string(),
         duration_ms,
@@ -2265,7 +2265,7 @@ async fn cancel_pending_subagent_at_promote(
     );
     coordinator
         .borrow_mut()
-        .move_pending_to_cancelled(subagent_id, "Subagent was cancelled");
+        .move_pending_to_cancelled(subagent_id, "子代理已取消");
     let _ = request.result_tx.send(result);
 }
 fn emit_subagent_notification(

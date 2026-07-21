@@ -210,7 +210,7 @@ impl ListPaneState {
         }
     }
 
-    /// Whether the "Copied!" toast should be displayed.
+    /// Whether the "已复制！" toast should be displayed.
     ///
     /// Returns `true` for ~800ms after a successful copy.
     pub fn copy_toast_active(&self) -> bool {

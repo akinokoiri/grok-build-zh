@@ -1894,7 +1894,7 @@ fn tool_call_to_block(tc: &acp::ToolCall, session_cwd: Option<&Path>) -> RenderB
                     block
                         .output
                         .take()
-                        .unwrap_or_else(|| "Tool call failed".into()),
+                        .unwrap_or_else(|| "工具调用失败".into()),
                 );
             }
             RenderBlock::ToolCall(ToolCallBlock::UseTool(block))
@@ -2274,7 +2274,7 @@ fn extract_edit_error(tc: &acp::ToolCall) -> String {
         && let Ok(ToolOutput::SearchReplace(sr)) = serde_json::from_value::<ToolOutput>(raw.clone())
     {
         return match sr {
-            SearchReplaceOutput::InvalidInput(_) => "Invalid input".to_owned(),
+            SearchReplaceOutput::InvalidInput(_) => "输入无效".to_owned(),
             SearchReplaceOutput::FileNotFound(_) => "File not found".to_owned(),
             SearchReplaceOutput::MultipleMatchesFound(_) => "Multiple matches found".to_owned(),
             SearchReplaceOutput::FileAlreadyExists(_) => "File already exists".to_owned(),
@@ -5414,7 +5414,7 @@ mod tests {
             "parameters" : ["stale_param_a", "stale_param_b"], "input_schema" : { "type"
             : "object", "properties" : { "title" : { "type" : "string" }, "team" : {
             "type" : "string" } }, "required" : ["title"] } }, { "tool_name" :
-            "linear__list_issues", "description" : "List issues", "score" : 0.5,
+            "linear__list_issues", "description" : "列出 issues", "score" : 0.5,
             "parameters" : ["stale_query"], "input_schema" : { "type" : "object",
             "properties" : { "query" : { "type" : "string" } } } }] }, { "server" :
             "slack", "tools" : [{ "tool_name" : "slack__send_message", "description" :

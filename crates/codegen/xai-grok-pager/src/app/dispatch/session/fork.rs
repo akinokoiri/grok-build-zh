@@ -55,12 +55,12 @@ pub(in crate::app::dispatch) fn dispatch_fork(
         .map(|a| (a.session.session_id.is_some(), a.current_branch.is_some()))
         .unwrap_or((false, false));
     if !has_session {
-        app.show_toast("Cannot fork: session is still being created");
+        app.show_toast("无法分叉：会话仍在创建中");
         return vec![];
     }
     match args.worktree_override {
         Some(true) if !in_git_repo => {
-            app.show_toast("Cannot create worktree: not in a git repository");
+            app.show_toast("无法创建 worktree：当前不在 git 仓库中");
             vec![]
         }
         Some(worktree) => dispatch_fork_resolved(app, worktree, args.directive),
@@ -127,7 +127,7 @@ fn open_fork_question(app: &mut AppView, directive: Option<String>) -> Vec<Effec
         return vec![];
     };
     if agent.question_view.is_some() {
-        app.show_toast("Finish answering the current question first");
+        app.show_toast("请先回答当前问题");
         return vec![];
     }
     let mut options = vec![
@@ -183,7 +183,7 @@ pub(in crate::app::dispatch) fn dispatch_fork_resolved(
         return vec![];
     };
     let Some(parent_session_id) = parent.session.session_id.clone() else {
-        app.show_toast("Cannot fork: session not yet created");
+        app.show_toast("无法分叉：会话尚未创建");
         return vec![];
     };
     let parent_cwd = parent.session.cwd.clone();
@@ -327,7 +327,7 @@ pub(in crate::app::dispatch) fn dispatch_project_selected(
     let path = if path.is_dir() {
         path
     } else {
-        app.show_toast("Directory not found, continuing in current directory");
+        app.show_toast("目录不存在，继续使用当前目录");
         app.cwd.clone()
     };
     app.cwd = path.clone();

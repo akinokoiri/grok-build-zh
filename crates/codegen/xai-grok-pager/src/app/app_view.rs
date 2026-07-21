@@ -3424,7 +3424,7 @@ fn handle_welcome_input(ev: &Event, ctx: &mut WelcomeInputCtx<'_>) -> InputOutco
                     && let Some(md) = ctx.changelog_markdown.as_deref()
                 {
                     return InputOutcome::Action(Action::ShowReleaseNotes {
-                        title: "Release Notes".to_string(),
+                        title: "发行说明".to_string(),
                         content: md.trim().to_string(),
                     });
                 }
@@ -3623,7 +3623,7 @@ fn dispatch_menu_action(
     if Some(index) == changelog_idx {
         if let Some(md) = changelog_md {
             return InputOutcome::Action(Action::ShowReleaseNotes {
-                title: "Release Notes".to_string(),
+                title: "发行说明".to_string(),
                 content: md.trim().to_string(),
             });
         }
@@ -4932,7 +4932,7 @@ impl AppView {
                     | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                         agent.image_viewer = None;
                         agent.image_load_rx = None;
-                        agent.toast = Some(("Couldn't load image preview".into(), 6));
+                        agent.toast = Some(("无法加载图片预览".into(), 6));
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 }
@@ -9167,7 +9167,7 @@ pub(crate) mod tests {
         let mut app = test_app();
         app.active_view = ActiveView::Welcome;
         app.welcome_doc_viewer = Some(crate::views::modal::ActiveModal::DocViewer {
-            title: "Release Notes".into(),
+            title: "发行说明".into(),
             content: "line\n".repeat(80),
             scroll: 0,
             window: crate::views::modal_window::ModalWindowState::new(),

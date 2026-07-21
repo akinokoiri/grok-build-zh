@@ -873,7 +873,7 @@ mod tests {
 
         let with_title = vec![RemoteAnnouncement {
             severity: Some("critical".into()),
-            title: Some("Outage".into()),
+            title: Some("故障".into()),
             message: Some("Do not deploy".into()),
             ..Default::default()
         }];
@@ -892,7 +892,7 @@ mod tests {
     fn render_banner_title_row_with_hide_button_message_row_with_cta() {
         let anns = [RemoteAnnouncement {
             severity: Some("critical".into()),
-            title: Some("Outage".into()),
+            title: Some("故障".into()),
             message: Some("Do not deploy".into()),
             ..Default::default()
         }];
@@ -954,7 +954,7 @@ mod tests {
     fn render_banner_truncates_message_never_cta() {
         let anns = [RemoteAnnouncement {
             severity: Some("critical".into()),
-            title: Some("Outage".into()),
+            title: Some("故障".into()),
             message: Some("0123456789ABCDEFGHIJ".into()),
             ..Default::default()
         }];
@@ -973,20 +973,20 @@ mod tests {
         let anns = [
             RemoteAnnouncement {
                 severity: Some("info".into()),
-                title: Some("Info".into()),
+                title: Some("信息".into()),
                 message: Some("ignored".into()),
                 ..Default::default()
             },
             RemoteAnnouncement {
                 id: Some("first".into()),
                 severity: Some("critical".into()),
-                title: Some("First".into()),
+                title: Some("第一".into()),
                 message: Some("one".into()),
                 ..Default::default()
             },
             RemoteAnnouncement {
                 severity: Some("critical".into()),
-                title: Some("Second".into()),
+                title: Some("第二".into()),
                 message: Some("two".into()),
                 ..Default::default()
             },
@@ -997,8 +997,8 @@ mod tests {
         render_banner(area, &mut buf, &anns, &no_hidden(), false, false, true);
         let painted = buf_row(&buf, area, 0);
         assert!(painted.starts_with("! First"), "row0={painted:?}");
-        assert!(!painted.contains("Second"));
-        assert!(!painted.contains("Info"));
+        assert!(!painted.contains("第二"));
+        assert!(!painted.contains("信息"));
 
         // Hiding the painted critical must paint the next unhidden one.
         let hide_first: BTreeSet<String> = ["first".to_string()].into_iter().collect();
@@ -1006,7 +1006,7 @@ mod tests {
         render_banner(area, &mut buf, &anns, &hide_first, false, false, true);
         let painted = buf_row(&buf, area, 0);
         assert!(painted.starts_with("! Second"), "row0={painted:?}");
-        assert!(!painted.contains("First"));
+        assert!(!painted.contains("第一"));
     }
 
     #[test]

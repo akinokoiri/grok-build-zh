@@ -782,7 +782,7 @@ async fn goal_resume_reminder_includes_full_rules() {
                 panic!("resumed paused goal must flow through to inference");
             };
             assert!(
-                reminder.contains("Continue working now."),
+                reminder.contains("请继续工作。"),
                 "the resume reminder must close with the continuation directive:\n{reminder}"
             );
             assert_goal_prompt_clauses_new(&reminder, "GoalResume");
@@ -1183,7 +1183,7 @@ fn render_goal_plan_block_rejects_empty_path_in_debug() {
 #[test]
 fn format_goal_pause_message_includes_summary_when_present_and_omits_when_empty() {
     let with = format_goal_pause_message(
-        "Goal auto-paused.",
+        "目标已自动暂停。",
         "Model-fixable gaps:\n- [skeptic 0, high] src/a.rs:1 no test",
         "/tmp/details.md",
     );
@@ -1192,13 +1192,13 @@ fn format_goal_pause_message_includes_summary_when_present_and_omits_when_empty(
         "Goal auto-paused.\nModel-fixable gaps:\n- [skeptic 0, high] src/a.rs:1 no test\n\
              See /tmp/details.md",
     );
-    let without = format_goal_pause_message("Goal auto-paused.", "   ", "/tmp/details.md");
+    let without = format_goal_pause_message("目标已自动暂停。", "   ", "/tmp/details.md");
     assert_eq!(
         without, "Goal auto-paused. See /tmp/details.md",
         "a blank summary must collapse to the headline + pointer",
     );
     let no_path_with_summary = format_goal_pause_message(
-        "Goal auto-paused.",
+        "目标已自动暂停。",
         "Model-fixable gaps:\n- [skeptic 0, high] src/a.rs:1 no test",
         "",
     );
@@ -1207,8 +1207,8 @@ fn format_goal_pause_message_includes_summary_when_present_and_omits_when_empty(
         "Goal auto-paused.\nModel-fixable gaps:\n- [skeptic 0, high] src/a.rs:1 no test",
     );
     assert_eq!(
-        format_goal_pause_message("Goal auto-paused.", "   ", ""),
-        "Goal auto-paused.",
+        format_goal_pause_message("目标已自动暂停。", "   ", ""),
+        "目标已自动暂停。",
     );
 }
 /// The block inlines the bounded gaps checklist directly (the findings the
@@ -1444,7 +1444,7 @@ fn render_goal_continuation_directive_substitutes_all_placeholders() {
         "verifier_gaps slot must inline the gap bullets:\n{body}",
     );
     assert!(
-        body.contains("You appear to be stopping or handing off"),
+        body.contains("你似乎在停止或交接"),
         "a non-empty bail_preface must render before the generic body:\n{body}",
     );
     assert!(body.contains("Plan: /tmp/p.md"));
@@ -1595,7 +1595,7 @@ fn render_goal_continuation_directive_bail_preface_toggles_cleanly() {
         true,
     );
     assert!(
-        !generic.contains("You appear to be stopping or handing off"),
+        !generic.contains("你似乎在停止或交接"),
         "generic flavor must not carry the bail preface:\n{generic}",
     );
     assert!(generic.contains("Goal NOT complete — continue working. Next step:"));

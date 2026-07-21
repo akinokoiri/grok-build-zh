@@ -471,7 +471,7 @@ pub fn render_turn_status(
                 left_spans.push(Span::styled(display, activity_style));
             } else if let Some(query) = title.strip_prefix("Web search: ") {
                 // Web search: "Search " (muted) + query (yellow)
-                let prefix = "Search ";
+                let prefix = "搜索 ";
                 let prefix_width = prefix.width();
                 let query = query.trim_matches('"');
                 let max_query = available_for_label.saturating_sub(prefix_width).max(5);
@@ -480,7 +480,7 @@ pub fn render_turn_status(
                 left_spans.push(Span::styled(display, Style::default().fg(theme.command)));
             } else if let Some(url) = title.strip_prefix("Fetch: ") {
                 // Fetch tools: "Fetch " (muted) + URL (yellow)
-                let prefix = "Fetch ";
+                let prefix = "获取 ";
                 let prefix_width = prefix.width();
                 let max_url = available_for_label.saturating_sub(prefix_width).max(5);
                 let display = truncate_str(url, max_url);
@@ -493,7 +493,7 @@ pub fn render_turn_status(
                 // `(Server) Action` so the spinner doesn't show the ugly
                 // delimiter form. Non-MCP titles (bash commands etc.) are
                 // returned untouched by `mcp_pretty_name_if_qualified`.
-                let prefix = "Run ";
+                let prefix = "运行 ";
                 let pretty = mcp_pretty_name_if_qualified(title.as_str());
                 let detail = pretty.as_str();
                 let prefix_width = prefix.width();

@@ -4234,7 +4234,7 @@ mod toast_fit_tests {
     use super::fit_toast_text;
     #[test]
     fn short_message_is_padded_untouched() {
-        assert_eq!(fit_toast_text("Copied!", 40).as_deref(), Some(" Copied! "));
+        assert_eq!(fit_toast_text("已复制！", 40).as_deref(), Some(" Copied! "));
     }
     #[test]
     fn long_message_truncates_with_ellipsis_instead_of_vanishing() {
@@ -4246,8 +4246,8 @@ mod toast_fit_tests {
     }
     #[test]
     fn zero_width_slot_yields_none() {
-        assert_eq!(fit_toast_text("Copied!", 4), None);
-        assert_eq!(fit_toast_text("Copied!", 0), None);
+        assert_eq!(fit_toast_text("已复制！", 4), None);
+        assert_eq!(fit_toast_text("已复制！", 0), None);
     }
 }
 #[cfg(test)]

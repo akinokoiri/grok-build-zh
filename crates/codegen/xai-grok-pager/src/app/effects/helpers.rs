@@ -172,7 +172,7 @@ pub(crate) fn sanitize_user_error(raw: &str) -> String {
     if raw.contains(xai_fast_worktree::OUT_OF_DISK_CONTEXT)
         || raw.contains(xai_fast_worktree::ENOSPC_OS_MESSAGE)
     {
-        return "Out of disk space.".to_string();
+        return "磁盘空间不足。".to_string();
     }
     static REPLACEMENTS: &[(&str, &str)] = &[
         ("cli-chat-proxy", "server"),

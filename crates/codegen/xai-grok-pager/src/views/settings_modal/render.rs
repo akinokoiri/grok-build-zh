@@ -2785,12 +2785,12 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                 id: 0,
             },
             Shortcut {
-                label: "Enter commit",
+                label: "Enter 确认",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "Esc clear",
+                label: "Esc 清除",
                 clickable: false,
                 id: 0,
             },
@@ -2813,7 +2813,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "Enter commit",
+                    label: "Enter 确认",
                     clickable: false,
                     id: 0,
                 },
@@ -2844,7 +2844,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "Enter commit",
+                    label: "Enter 确认",
                     clickable: false,
                     id: 0,
                 },
@@ -2872,7 +2872,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                 id: 0,
             },
             Shortcut {
-                label: "Enter commit",
+                label: "Enter 确认",
                 clickable: false,
                 id: 0,
             },

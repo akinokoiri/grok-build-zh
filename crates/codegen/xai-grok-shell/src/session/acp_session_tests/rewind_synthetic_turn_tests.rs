@@ -40,7 +40,7 @@ fn seed_conversation(mark_turn_starts: bool) -> Vec<ConversationItem> {
         ConversationItem::user("<user_info>OS: test</user_info>"),
         turn_user("P0", 0),
         ConversationItem::assistant("A0"),
-        auto_wake("Background task abc completed", 1),
+        auto_wake("后台任务 abc 已完成", 1),
         ConversationItem::assistant("A1"),
         turn_user("P2", 2),
         ConversationItem::assistant("A2"),
@@ -61,7 +61,7 @@ async fn run_rewind_over_synthetic_turn(mark_turn_starts: bool) {
     snap.prompt_index = 3;
     snap.prompt_texts = vec![
         "P0".into(),
-        "Background task abc completed".into(),
+        "后台任务 abc 已完成".into(),
         "P2".into(),
     ];
     snap.last_compaction_prompt_index = None;
@@ -94,7 +94,7 @@ async fn run_rewind_over_synthetic_turn(mark_turn_starts: bool) {
             "<user_info>OS: test</user_info>",
             "P0",
             "A0",
-            "Background task abc completed",
+            "后台任务 abc 已完成",
             "A1",
         ],
         "conversation must keep prompts 0..=1 only"
@@ -180,7 +180,7 @@ async fn rewind_to_start_keeps_only_preamble() {
             snap.prompt_index = 3;
             snap.prompt_texts = vec![
                 "P0".into(),
-                "Background task abc completed".into(),
+                "后台任务 abc 已完成".into(),
                 "P2".into(),
             ];
             actor.chat_state_handle.restore_snapshot(snap);
@@ -440,7 +440,7 @@ async fn rewind_to_synthetic_auto_wake_turn_cuts_at_the_wake() {
             snap.prompt_index = 3;
             snap.prompt_texts = vec![
                 "P0".into(),
-                "Background task abc completed".into(),
+                "后台任务 abc 已完成".into(),
                 "P2".into(),
             ];
             actor.chat_state_handle.restore_snapshot(snap);

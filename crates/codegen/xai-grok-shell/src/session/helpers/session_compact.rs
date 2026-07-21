@@ -1055,11 +1055,11 @@ mod compacted_history_shape_tests {
         assert_eq!(compacted[4].role(), Role::Assistant);
         assert_eq!(compacted[4].text_content(), "I'll read the file now.");
         assert_eq!(compacted[5].role(), Role::Tool);
-        assert_eq!(compacted[5].text_content(), "Tool call omitted...");
+        assert_eq!(compacted[5].text_content(), "工具调用已省略...");
         assert_eq!(compacted[6].role(), Role::Assistant);
         assert_eq!(compacted[6].text_content(), "Found the bug, applying fix.");
         assert_eq!(compacted[7].role(), Role::Tool);
-        assert_eq!(compacted[7].text_content(), "Tool call omitted...");
+        assert_eq!(compacted[7].text_content(), "工具调用已省略...");
         assert_eq!(compacted[8].role(), Role::User);
         let msg_summary_text = compacted[8].text_content();
         assert!(
@@ -1169,7 +1169,7 @@ mod compacted_history_shape_tests {
             full.recent_messages
                 .iter()
                 .any(|i| matches!(i, ConversationItem::ToolResult(_))
-                    && i.text_content() == "Tool call omitted..."),
+                    && i.text_content() == "工具调用已省略..."),
             "precondition: build() keeps the working tail as a stubbed tool result",
         );
         let dropped = full.for_compaction();
@@ -1188,7 +1188,7 @@ mod compacted_history_shape_tests {
             !compacted
                 .iter()
                 .any(|i| matches!(i, ConversationItem::ToolResult(_))
-                    || i.text_content() == "Tool call omitted..."),
+                    || i.text_content() == "工具调用已省略..."),
             "no tail (ToolResult or stub) may leak into the grok-build compacted history",
         );
     }
@@ -1217,13 +1217,13 @@ mod compacted_history_shape_tests {
         let raw = vec![
             ConversationItem::system("sys"),
             ConversationItem::user("<user_query>\ntask\n</user_query>"),
-            ConversationItem::tool_result("call_ORPHAN", "Tool call omitted..."),
+            ConversationItem::tool_result("call_ORPHAN", "工具调用已省略..."),
             ConversationItem::assistant_tool_calls(vec![ToolCall {
                 id: "call_OK".into(),
                 name: "edit".to_string(),
                 arguments: "{}".into(),
             }]),
-            ConversationItem::tool_result("call_OK", "Tool call omitted..."),
+            ConversationItem::tool_result("call_OK", "工具调用已省略..."),
             ConversationItem::user("summary"),
         ];
         let sanitized = sanitize_compacted_history(raw);
@@ -1574,7 +1574,7 @@ mod reasoning_compaction_regression_tests {
             ConversationItem::system("You are a helpful assistant."),
             ConversationItem::user("<user_query>\nfix the bug\n</user_query>"),
             ConversationItem::assistant("I fixed it."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let output = generate_session_compact(
             chat_history,
@@ -1663,7 +1663,7 @@ mod reasoning_compaction_regression_tests {
                 status: None,
             }),
             ConversationItem::assistant("I fixed it."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let result = generate_session_compact(
             chat_history,
@@ -1719,7 +1719,7 @@ mod reasoning_compaction_regression_tests {
             ConversationItem::system("You are a helpful assistant."),
             ConversationItem::user("<user_query>\nfix the bug\n</user_query>"),
             ConversationItem::assistant("I fixed it."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let tools = vec![ToolSpec {
             name: "read_file".to_string(),
@@ -1844,7 +1844,7 @@ mod reasoning_compaction_regression_tests {
             ConversationItem::system("You are a helpful assistant."),
             ConversationItem::user("<user_query>\nfix the bug\n</user_query>"),
             ConversationItem::assistant("I fixed it."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let tools = vec![ToolSpec {
             name: "read_file".to_string(),
@@ -1946,7 +1946,7 @@ mod reasoning_compaction_regression_tests {
         let client = Client::new(config.clone()).unwrap();
         let chat_history = vec![
             ConversationItem::system("You are a helpful assistant."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let result = generate_session_compact(
             chat_history,
@@ -2014,7 +2014,7 @@ mod reasoning_compaction_regression_tests {
         let client = Client::new(config.clone()).unwrap();
         let chat_history = vec![
             ConversationItem::system("You are a helpful assistant."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let result = generate_session_compact(
             chat_history,
@@ -2086,7 +2086,7 @@ mod reasoning_compaction_regression_tests {
         let client = Client::new(config.clone()).unwrap();
         let chat_history = vec![
             ConversationItem::system("You are a helpful assistant."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let result = generate_session_compact(
             chat_history,
@@ -2155,7 +2155,7 @@ mod reasoning_compaction_regression_tests {
         let client = Client::new(config.clone()).unwrap();
         let chat_history = vec![
             ConversationItem::system("You are a helpful assistant."),
-            ConversationItem::user("Summarize the conversation so far."),
+            ConversationItem::user("总结到目前为止的对话。"),
         ];
         let result = generate_session_compact(
             chat_history,

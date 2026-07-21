@@ -3053,7 +3053,7 @@ fn picker_visual_smoke_debug() {
         key: "wrap_enum",
         category: SettingCategory::Privacy,
         owner: SettingOwner::Shared,
-        label: "Coding data sharing",
+        label: "编程数据共享",
         description: "Controls whether SpaceXAI may retain and train on coding data.",
         keywords: &["test"],
         kind: SettingKind::Enum {
@@ -3110,7 +3110,7 @@ fn picker_long_description_wraps_to_multiple_lines() {
         key: "wrap_enum",
         category: SettingCategory::Privacy,
         owner: SettingOwner::Shared,
-        label: "Coding data sharing",
+        label: "编程数据共享",
         description: "Controls whether SpaceXAI may retain and train on coding data.",
         keywords: &["test"],
         kind: SettingKind::Enum {
@@ -3380,7 +3380,7 @@ fn picker_multi_line_choice_hit_rect_spans_all_lines() {
         key: "wrap_enum",
         category: SettingCategory::Privacy,
         owner: SettingOwner::Shared,
-        label: "Coding data sharing",
+        label: "编程数据共享",
         description: "Controls whether SpaceXAI may retain coding data.",
         keywords: &["test"],
         kind: SettingKind::Enum {
@@ -4452,7 +4452,7 @@ fn synthetic_enum_chevron_meta() -> SettingMeta {
         key: "test-enum-with-chevron",
         category: SettingCategory::Privacy,
         owner: SettingOwner::Shared,
-        label: "Coding data sharing",
+        label: "编程数据共享",
         description: "Enum row that opens a picker — chevron suffix applies.",
         keywords: &["test"],
         kind: SettingKind::Enum {
@@ -4718,7 +4718,7 @@ if *key == "coding_data_sharing")
     // The row label is on line 1.
     let label_line = buf_row_text(&buf, rect.y, area.x, area.width);
     assert!(
-        label_line.contains("Coding data sharing"),
+        label_line.contains("编程数据共享"),
         "line 1 must contain the row label: {label_line:?}"
     );
     // The value (display: "Opt out" or similar) is on line 2.
@@ -4806,7 +4806,7 @@ if *key == "contextual_hints")
 /// fits picks `OneLine`; one cell narrower picks `TwoLine`.
 #[test]
 fn row_layout_threshold_is_exact() {
-    let label = "Coding data sharing"; // 19 cells
+    let label = "编程数据共享"; // 19 cells
     let value = "Opt out"; // 7 cells
     // chrome (triangle + gap + chevron + right pad) = 2 + 1 + 2 + 1 = 6
     // total = 19 + 7 + 6 = 32 cells (chevron-enabled).
@@ -4975,7 +4975,7 @@ fn footer_has_blank_line_between_tip_and_hints_when_hints_dont_wrap() {
     // Backspace edit | Enter commit | Esc clear`. Verify both
     // ends land on the SAME row (proves no wrap).
     let first_hint_y = find_row_y(&buf, area, "type to filter").expect("first hint must render");
-    let last_hint_y = find_row_y(&buf, area, "Esc clear").expect("last hint must render");
+    let last_hint_y = find_row_y(&buf, area, "Esc 清除").expect("last hint must render");
     assert_eq!(
         first_hint_y, last_hint_y,
         "this test requires the hints to fit on a single line; at width=150 + \
@@ -5048,7 +5048,7 @@ fn footer_total_height_grows_when_hints_wrap() {
     // bug).
     let narrow_first_hint =
         find_row_y(&buf_narrow, narrow_area, "type to filter").expect("first hint");
-    let narrow_last_hint = find_row_y(&buf_narrow, narrow_area, "Esc clear").expect("last hint");
+    let narrow_last_hint = find_row_y(&buf_narrow, narrow_area, "Esc 清除").expect("last hint");
     assert_eq!(
         narrow_last_hint,
         narrow_first_hint + 1,
@@ -5056,7 +5056,7 @@ fn footer_total_height_grows_when_hints_wrap() {
          first={narrow_first_hint} last={narrow_last_hint}"
     );
     let wide_first_hint = find_row_y(&buf_wide, wide_area, "type to filter").expect("first");
-    let wide_last_hint = find_row_y(&buf_wide, wide_area, "Esc clear").expect("last");
+    let wide_last_hint = find_row_y(&buf_wide, wide_area, "Esc 清除").expect("last");
     assert_eq!(
         wide_first_hint, wide_last_hint,
         "wide fixture must NOT wrap the hints; got first={wide_first_hint} \

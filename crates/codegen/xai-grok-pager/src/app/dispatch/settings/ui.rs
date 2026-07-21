@@ -553,7 +553,7 @@ pub(in crate::app::dispatch) fn dispatch_toggle_mouse_capture(app: &mut AppView)
         }
         with_active_agent(app, |agent| {
             toast_applied = true;
-            agent.show_toast("Mouse reporting on");
+            agent.show_toast("鼠标上报已开启");
         });
     } else {
         for agent in app.agents.values_mut() {

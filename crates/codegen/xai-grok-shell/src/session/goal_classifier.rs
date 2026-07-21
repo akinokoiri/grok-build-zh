@@ -387,7 +387,7 @@ pub(crate) fn parse_skeptic_terminal_response(text: &str) -> Option<bool> {
         .collect();
     match lines.as_slice() {
         ["Refuted"] => Some(true),
-        ["Not Refuted"] => Some(false),
+        ["未反驳"] => Some(false),
         _ => None,
     }
 }
@@ -2766,7 +2766,7 @@ mod tests {
 
     #[test]
     fn parse_skeptic_terminal_accepts_not_refuted() {
-        assert_eq!(parse_skeptic_terminal_response("Not Refuted"), Some(false));
+        assert_eq!(parse_skeptic_terminal_response("未反驳"), Some(false));
     }
 
     #[test]
@@ -3601,7 +3601,7 @@ mod tests {
             0,
             details.to_str().unwrap(),
             verdict.to_str().unwrap(),
-            "Not Refuted",
+            "未反驳",
             std::time::Instant::now(),
         )
         .await;
@@ -4493,7 +4493,7 @@ mod tests {
         }
         fn not_refuted() -> Self {
             Self {
-                terminal: Ok("Not Refuted".into()),
+                terminal: Ok("未反驳".into()),
                 verdict_json: Some(
                     "{\"refuted\":false,\"evidence\":\"diff hunk src/foo.rs:1\",\"confidence\":\"medium\",\"details_md\":\"# Skeptic\\n\\nlooks good\"}".into(),
                 ),
@@ -4560,7 +4560,7 @@ mod tests {
         /// details" path.
         fn json_empty_details_md() -> Self {
             Self {
-                terminal: Ok("Not Refuted".into()),
+                terminal: Ok("未反驳".into()),
                 verdict_json: Some(
                     r#"{"refuted":false,"evidence":"src/x.rs:1","confidence":"low","details_md":""}"#
                         .into(),
@@ -5218,7 +5218,7 @@ mod tests {
         // Variant-C outcome: skeptic 0 not-refuted, cold skeptic 1
         // refuted → the cold quorum (skeptic 1 only) fails → NotAchieved.
         let spawner: Arc<dyn GoalClassifierSpawner> = Arc::new(MockSpawner::new([
-            MockResponse::terminal_only("Not Refuted"),
+            MockResponse::terminal_only("未反驳"),
             MockResponse::terminal_only("Refuted"),
         ]));
         let (log, emit) = collect_events();
@@ -5859,7 +5859,7 @@ mod tests {
                     }
                     let _ = req.result_tx.send(SubagentResult {
                         success: true,
-                        output: Arc::from("Not Refuted"),
+                        output: Arc::from("未反驳"),
                         ..Default::default()
                     });
                 }

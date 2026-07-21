@@ -806,7 +806,7 @@ fn enqueue_permission_with_enable_always_approve(
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new(Arc::from("opt-allow-once")),
-                "Yes, proceed",
+                "是，继续",
                 acp::PermissionOptionKind::AllowOnce,
             ),
             acp::PermissionOption::new(

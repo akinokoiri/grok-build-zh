@@ -1274,7 +1274,7 @@ impl AgentView {
                 })
                 .collect();
             let config = PickerConfig {
-                title: Some("How-to Guides"),
+                title: Some("使用指南"),
                 show_search_hint: false,
                 expandable: false,
                 esc_clears_query: true,
@@ -1651,7 +1651,7 @@ impl AgentView {
                     id: 0,
                 },
                 Shortcut {
-                    label: "Enter select",
+                    label: "Enter 选择",
                     clickable: false,
                     id: 0,
                 },
@@ -1707,7 +1707,7 @@ impl AgentView {
                 // Surface `i search` in the footer when vim nav mode is active.
                 mw::push_vim_nav_search_hint(&mut picker_shortcuts, state.search_active);
                 let modal_config = ModalWindowConfig {
-                    title: "Commands",
+                    title: "命令",
                     tabs: None,
                     shortcuts: &picker_shortcuts,
                     sizing: ModalSizing {
@@ -1747,10 +1747,10 @@ impl AgentView {
             {
                 // Arg picker: ModalWindow chrome + picker content.
                 let title = match command.as_str() {
-                    "model" | "m" if !args_query.is_empty() => "Pick reasoning effort",
-                    "model" | "m" => "Pick model",
-                    "theme" | "t" => "Pick theme",
-                    _ => "Pick option",
+                    "model" | "m" if !args_query.is_empty() => "选择推理强度",
+                    "model" | "m" => "选择模型",
+                    "theme" | "t" => "选择主题",
+                    _ => "选择选项",
                 };
                 let picker_entries: Vec<PickerEntry> = items
                     .iter()
@@ -2141,9 +2141,9 @@ impl AgentView {
 
                 let has_enhanced = enhanced_content.is_some();
                 let tab_label = if showing_enhanced {
-                    "Tab raw"
+                    "Tab 原始"
                 } else if has_enhanced {
-                    "Tab enhanced"
+                    "Tab 增强"
                 } else {
                     "enhancing\u{2026}"
                 };
@@ -2155,7 +2155,7 @@ impl AgentView {
                         id: 0,
                     },
                     Shortcut {
-                        label: "Enter save",
+                        label: "Enter 保存",
                         clickable: false,
                         id: 0,
                     },
@@ -2173,7 +2173,7 @@ impl AgentView {
 
                 let compact = self.scrollback.appearance().prompt.compact;
                 let modal_config = mw::ModalWindowConfig {
-                    title: "Memory Note",
+                    title: "记忆笔记",
                     tabs: None,
                     shortcuts: &shortcuts,
                     sizing: mw::ModalSizing {
@@ -2296,9 +2296,9 @@ impl AgentView {
             ) {
                 // Render settings modal with reset-confirm overlay.
                 let prompt = crate::views::modal::reset_confirm_prompt(active_modal)
-                    .unwrap_or_else(|| "Reset setting to default?".to_owned());
+                    .unwrap_or_else(|| "将设置重置为默认？".to_owned());
                 let breadcrumb = crate::views::modal::reset_confirm_breadcrumb(active_modal)
-                    .unwrap_or_else(|| "Reset setting".to_owned());
+                    .unwrap_or_else(|| "重置设置".to_owned());
                 if let modal::ActiveModal::ResetSettingsConfirm { settings_state, .. } =
                     active_modal
                 {

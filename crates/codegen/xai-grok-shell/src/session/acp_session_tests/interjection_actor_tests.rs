@@ -308,7 +308,7 @@ async fn interjection_fallback_prompt_queues_front_with_prefix() {
 /// Interjections that miss the completed turn's final drain are flushed into
 /// fallback prompt turns — front of the queue, original order — instead of
 /// stranding in `pending_interjections` (the queue-jam: pager said
-/// "Interjection sent" but the message was never sent).
+/// "插话已发送" but the message was never sent).
 #[tokio::test]
 async fn flush_stranded_interjections_converts_to_front_prompts_in_order() {
     let local = tokio::task::LocalSet::new();

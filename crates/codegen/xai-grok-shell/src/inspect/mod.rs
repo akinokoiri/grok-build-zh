@@ -1398,7 +1398,7 @@ fn print_human(r: &InspectReport) {
     );
 
     print_columns(
-        "Agents",
+        "代理",
         &r.agents,
         |a| a.name.clone(),
         |a| a.source.display_label(),

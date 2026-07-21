@@ -1006,7 +1006,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                     .and_then(|u| u.to_file_path().ok())
                     .is_some_and(|path| crate::app::link_opener::open_path(&path));
                 app.show_toast(if opened {
-                    "Opening in default app\u{2026}"
+                    "正在用默认应用打开\u{2026}"
                 } else {
                     "无法打开文件"
                 });
@@ -1021,7 +1021,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                 Some(LinkTarget::File(path)) => {
                     let opened = crate::app::link_opener::open_path(&path);
                     app.show_toast(if opened {
-                        "Opening in default app\u{2026}"
+                        "正在用默认应用打开\u{2026}"
                     } else {
                         "无法打开文件"
                     });
@@ -1078,11 +1078,11 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                 return vec![];
             }
             if crate::app::foreign_sessions::is_foreign_picker_source(&source) {
-                app.show_toast("External sessions can't be deleted");
+                app.show_toast("无法删除外部会话");
                 return vec![];
             }
             if source == "conversation" {
-                app.show_toast("Deleting chat conversations isn't supported yet");
+                app.show_toast("暂不支持删除聊天会话");
                 return vec![];
             }
             if !matches!(source.as_str(), "local" | "remote" | "both")
@@ -1090,7 +1090,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
             {
                 return vec![];
             }
-            app.show_toast("Deleting session\u{2026}");
+            app.show_toast("正在删除会话\u{2026}");
             vec![Effect::DeleteSession {
                 source,
                 session_id,

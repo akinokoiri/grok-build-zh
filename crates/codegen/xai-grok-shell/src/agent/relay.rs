@@ -593,7 +593,7 @@ mod tests {
         tokio::spawn(async move {
             let auth_error = json!(
                 { "jsonrpc" : "2.0", "id" : 1, "error" : { "code" : - 32000, "message" :
-                "Authentication required" } }
+                "需要认证" } }
             );
             let _ = server_tx
                 .send(Message::Text(Utf8Bytes::from(auth_error.to_string())))

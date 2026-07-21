@@ -1,9 +1,15 @@
 grok-build-zh
 branch: zh-CN
-phase: P1-docs-and-errors
-- settings + permissions (zh)
-- status bar / session events / shortcuts (zh)
-- user-guide/*.md Chinese
-- toast/error strings (batch)
-- release workflow
+phase: P2-global-ui-sweep
+coverage:
+  - settings (labels/descriptions)
+  - permissions prompts
+  - status bar / waiting reasons
+  - session events
+  - keyboard shortcut bar (defaults.rs)
+  - mode cycle banners
+  - dashboard / modals / toasts (batch)
+  - user-guide full Chinese
+  - error toasts (batch)
+note: not 100% of every string; tracing logs remain English
 upstream: xai-org/grok-build

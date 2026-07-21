@@ -34,7 +34,7 @@ impl AgentsTab {
     /// Display label for the tab bar.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Agents => "Agents",
+            Self::Agents => "代理",
             Self::Personas => "Personas",
         }
     }
@@ -1023,7 +1023,7 @@ pub fn render_agents_modal(
         AgentsTab::Personas => build_personas_tab_shortcuts(state),
     };
     let config = ModalWindowConfig {
-        title: "Agents",
+        title: "代理",
         tabs: Some(&tab_labels),
         shortcuts: &shortcuts,
         sizing: modal_sizing(compact),
@@ -2004,7 +2004,7 @@ pub fn handle_agents_key(state: &mut AgentsModalState, key: &KeyEvent) -> Agents
     }
     let tab_labels: Vec<&str> = AgentsTab::ALL.iter().map(|t| t.label()).collect();
     let config = ModalWindowConfig {
-        title: "Agents",
+        title: "代理",
         tabs: Some(&tab_labels),
         shortcuts: &[],
         sizing: modal_sizing(false),

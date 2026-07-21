@@ -631,7 +631,7 @@ impl RenderBlock {
         if let ToolCallBlock::Other(ref mut b) = block
             && !success
         {
-            b.error = Some("Tool call failed".to_string());
+            b.error = Some("工具调用失败".to_string());
         }
         RenderBlock::ToolCall(block)
     }
@@ -645,7 +645,7 @@ impl RenderBlock {
     ) -> Self {
         let mut block = OtherToolCallBlock::new(kind, summary).with_output(output);
         if !success {
-            block = block.with_error("Tool call failed");
+            block = block.with_error("工具调用失败");
         }
         RenderBlock::ToolCall(ToolCallBlock::Other(block))
     }
@@ -1646,7 +1646,7 @@ mod searchable_text_tests {
         assert!(text.contains("MyTool"), "got: {text:?}");
         assert!(text.contains("do something"), "got: {text:?}");
         assert!(text.contains("the output"), "got: {text:?}");
-        assert!(text.contains("Tool call failed"), "got: {text:?}");
+        assert!(text.contains("工具调用失败"), "got: {text:?}");
     }
 
     #[test]

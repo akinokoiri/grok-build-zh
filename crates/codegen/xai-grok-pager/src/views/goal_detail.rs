@@ -308,7 +308,7 @@ fn humanize_goal_event(event: &str, detail: Option<&str>) -> String {
         // A plain user pause has no extra cause worth showing.
         "goal_paused" => match phrase(detail).filter(|d| d != "user") {
             Some(d) => format!("Paused: {d}"),
-            None => "Paused".into(),
+            None => "已暂停".into(),
         },
         "goal_resumed" => "Resumed".into(),
         "goal_completed" => "Completed".into(),
@@ -1629,11 +1629,11 @@ mod tests {
         assert_eq!(p, "Executing");
 
         for (status, expected_label) in [
-            (GoalDisplayStatus::UserPaused, "Paused"),
-            (GoalDisplayStatus::BackOffPaused, "Paused (back-off)"),
-            (GoalDisplayStatus::NoProgressPaused, "Paused (no progress)"),
-            (GoalDisplayStatus::InfraPaused, "Paused (error)"),
-            (GoalDisplayStatus::Blocked, "Paused (verification blocked)"),
+            (GoalDisplayStatus::UserPaused, "已暂停"),
+            (GoalDisplayStatus::BackOffPaused, "已暂停（退避中）"),
+            (GoalDisplayStatus::NoProgressPaused, "已暂停（无进展）"),
+            (GoalDisplayStatus::InfraPaused, "已暂停（错误）"),
+            (GoalDisplayStatus::Blocked, "已暂停（校验受阻）"),
         ] {
             goal.status = status;
             let (s, c, p) = status_label(&goal);
@@ -1714,13 +1714,13 @@ mod tests {
         let mut buf = ratatui::buffer::Buffer::empty(screen);
         let mut goal = make_goal();
         goal.status = GoalDisplayStatus::InfraPaused;
-        goal.pause_message = Some("Turn failed: upstream unavailable".into());
+        goal.pause_message = Some("回合失败：上游不可用".into());
         let area = goal_detail_area(screen, &goal, &[]);
         render_goal_detail(&mut buf, area, &goal, &[], 0, None, 0, false);
 
         let text = buffer_text(&buf);
         assert!(
-            text.contains("Paused (error)"),
+            text.contains("已暂停（错误）"),
             "modal must show the InfraPaused status label, got:\n{text}"
         );
         assert!(
@@ -1745,7 +1745,7 @@ mod tests {
 
         let text = buffer_text(&buf);
         assert!(
-            text.contains("Paused (verification blocked)"),
+            text.contains("已暂停（校验受阻）"),
             "modal must show the Blocked status label, got:\n{text}"
         );
         assert!(
@@ -2224,8 +2224,8 @@ mod tests {
             "Paused: back off"
         );
         // A plain user pause shows no redundant cause.
-        assert_eq!(humanize_goal_event("goal_paused", Some("user")), "Paused");
-        assert_eq!(humanize_goal_event("goal_paused", None), "Paused");
+        assert_eq!(humanize_goal_event("goal_paused", Some("user")), "已暂停");
+        assert_eq!(humanize_goal_event("goal_paused", None), "已暂停");
         assert_eq!(
             humanize_goal_event("premature_stop_detected", Some("giving_up")),
             "Stopped early: giving up"

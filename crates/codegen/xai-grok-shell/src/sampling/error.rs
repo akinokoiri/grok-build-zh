@@ -492,7 +492,7 @@ mod tests {
     fn rate_limit_error_uses_dedicated_code() {
         let err = SamplingError::Api {
             status: StatusCode::TOO_MANY_REQUESTS,
-            message: "Rate limit exceeded".into(),
+            message: "已超出频率限制".into(),
             model_metadata: None,
             retry_after_secs: None,
             should_retry: None,
@@ -502,7 +502,7 @@ mod tests {
         assert_eq!(acp_err.message, "请求频率受限");
         assert_eq!(
             acp_err.data,
-            Some(serde_json::Value::String("Rate limit exceeded".into()))
+            Some(serde_json::Value::String("已超出频率限制".into()))
         );
     }
 
@@ -510,7 +510,7 @@ mod tests {
     fn rate_limit_mapping_is_stable_with_retry_after() {
         let err = SamplingError::Api {
             status: StatusCode::TOO_MANY_REQUESTS,
-            message: "Rate limit exceeded".into(),
+            message: "已超出频率限制".into(),
             model_metadata: None,
             retry_after_secs: Some(60),
             should_retry: None,
@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn prompt_complete_fields_rate_limit_omits_detail() {
         let err = acp::Error::new(RATE_LIMITED_ERROR_CODE, "请求频率受限".to_string())
-            .data("Rate limit exceeded");
+            .data("已超出频率限制");
         let (stop, agent_result) = prompt_complete_fields(&Err(err));
         assert_eq!(stop, serde_json::json!("rate_limit"));
         assert_eq!(agent_result, serde_json::Value::Null);

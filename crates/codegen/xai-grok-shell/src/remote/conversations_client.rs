@@ -254,7 +254,7 @@ mod tests {
         let json = serde_json::json!({
             "conversations": [{
                 "conversationId": "conv_abc",
-                "title": "Compare GPU vendors",
+                "title": "比较 GPU 厂商",
                 "starred": true,
                 "createTime": "2026-06-18T17:30:00Z",
                 "modifyTime": "2026-06-18T18:02:00Z",
@@ -266,7 +266,7 @@ mod tests {
         assert_eq!(wire.conversations.len(), 1);
         let c = &wire.conversations[0];
         assert_eq!(c.conversation_id, "conv_abc");
-        assert_eq!(c.title, "Compare GPU vendors");
+        assert_eq!(c.title, "比较 GPU 厂商");
         assert!(c.starred);
         assert_eq!(c.modify_time.as_deref(), Some("2026-06-18T18:02:00Z"));
         assert_eq!(c.workspaces[0].workspace_id, "ws_9f3a");
@@ -289,12 +289,12 @@ mod tests {
     #[test]
     fn update_body_serializes_only_set_fields() {
         let title_only = UpdateConversationBody {
-            title: Some("New title".into()),
+            title: Some("新标题".into()),
             starred: None,
         };
         assert_eq!(
             serde_json::to_value(&title_only).unwrap(),
-            serde_json::json!({ "title": "New title" })
+            serde_json::json!({ "title": "新标题" })
         );
 
         let both = UpdateConversationBody {

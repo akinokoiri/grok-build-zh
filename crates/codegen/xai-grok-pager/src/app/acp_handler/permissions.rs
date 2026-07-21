@@ -195,7 +195,7 @@ fn enqueue_permission(
 ///
 /// 2. **Opaque non-root session**: the session_id does not match root and
 ///    is not in the tracked subagent map. Renders as
-///    `Child session (untracked):` to signal reduced confidence.
+///    `子会话（未跟踪）：` to signal reduced confidence.
 ///
 /// Returns `None` for root session (no provenance needed).
 fn resolve_subagent_label(agent: &AgentView, session_id: &acp::SessionId) -> Option<String> {
@@ -214,7 +214,7 @@ fn resolve_subagent_label(agent: &AgentView, session_id: &acp::SessionId) -> Opt
         ));
     }
     // Tier 2: non-root session with no tracked info.
-    Some("Child session (untracked):".to_string())
+    Some("子会话（未跟踪）：".to_string())
 }
 
 /// Build title, description lines, and optional raw command for a permission request.
@@ -258,8 +258,8 @@ fn build_permission_display(
             .map(|t| t.to_string())
             .unwrap_or_else(
                 || match bash_highlights.and_then(|h| h.highlighted_words.first()) {
-                    Some(bin) => format!("Allow `{bin}`?"),
-                    None => "Allow Execute?".to_string(),
+                    Some(bin) => format!("允许 `{bin}`？"),
+                    None => "允许执行？".to_string(),
                 },
             )
     } else if is_edit_permission(req) {
@@ -271,14 +271,14 @@ fn build_permission_display(
             .and_then(|v| v.get("file_path"))
             .and_then(|v| v.as_str());
         if let Some(path) = file_path {
-            format!("Allow Edit to {}?", path)
+            format!("允许编辑 {}？", path)
         } else if let Some(ref t) = req.tool_call.fields.title {
             format!(
                 "Allow {}?",
                 xai_grok_workspace::permission::mcp_pretty_name_if_qualified(t)
             )
         } else {
-            "Allow Edit?".to_string()
+            "允许编辑？".to_string()
         }
     } else if let Some(ref t) = req.tool_call.fields.title {
         format!(
@@ -287,10 +287,10 @@ fn build_permission_display(
         )
     } else {
         match req.tool_call.fields.kind {
-            Some(acp::ToolKind::Edit) => "Allow Edit?".to_string(),
-            Some(acp::ToolKind::Execute) => "Allow Execute?".to_string(),
-            Some(acp::ToolKind::Delete) => "Allow Delete?".to_string(),
-            _ => "Allow?".to_string(),
+            Some(acp::ToolKind::Edit) => "允许编辑？".to_string(),
+            Some(acp::ToolKind::Execute) => "允许执行？".to_string(),
+            Some(acp::ToolKind::Delete) => "允许删除？".to_string(),
+            _ => "允许？".to_string(),
         }
     };
 

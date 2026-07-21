@@ -107,7 +107,7 @@ mod tests {
         use xai_grok_shell::agent::roster as agent;
         agent::RosterEntry {
             session_id: "sess-abc".to_string(),
-            title: Some("Fix the roster".to_string()),
+            title: Some("修复名册".to_string()),
             cwd: "/repo/worktree".to_string(),
             is_worktree: true,
             model_id: Some("grok-4".to_string()),
@@ -169,7 +169,7 @@ mod tests {
         );
         let e = &parsed.sessions[0];
         assert_eq!(e.session_id, "sess-abc");
-        assert_eq!(e.title.as_deref(), Some("Fix the roster"));
+        assert_eq!(e.title.as_deref(), Some("修复名册"));
         assert_eq!(e.cwd, "/repo/worktree");
         assert!(e.is_worktree);
         assert_eq!(e.model_id.as_deref(), Some("grok-4"));

@@ -154,7 +154,7 @@ impl SessionActor {
                 if path.is_empty() {
                     return ActionOutcome {
                         status: OutcomeStatus::ValidationError,
-                        message: "Path is required.".into(),
+                        message: "路径为必填项。".into(),
                         requires_reload: false,
                         requires_restart: false,
                     };
@@ -182,7 +182,7 @@ impl SessionActor {
                 if path.is_empty() {
                     return ActionOutcome {
                         status: OutcomeStatus::ValidationError,
-                        message: "Path is required.".into(),
+                        message: "路径为必填项。".into(),
                         requires_reload: false,
                         requires_restart: false,
                     };
@@ -417,7 +417,7 @@ impl SessionActor {
                 if all_repos.is_empty() {
                     return ActionOutcome {
                         status: OutcomeStatus::NotFound,
-                        message: "No installed plugins to update.".into(),
+                        message: "没有可更新的已安装插件。".into(),
                         requires_reload: false,
                         requires_restart: false,
                     };
@@ -492,7 +492,7 @@ impl SessionActor {
                 if path.is_empty() {
                     return ActionOutcome {
                         status: OutcomeStatus::ValidationError,
-                        message: "Path is required.".into(),
+                        message: "路径为必填项。".into(),
                         requires_reload: false,
                         requires_restart: false,
                     };
@@ -588,7 +588,7 @@ impl SessionActor {
                 if path.is_empty() {
                     return ActionOutcome {
                         status: OutcomeStatus::ValidationError,
-                        message: "Path is required.".into(),
+                        message: "路径为必填项。".into(),
                         requires_reload: false,
                         requires_restart: false,
                     };

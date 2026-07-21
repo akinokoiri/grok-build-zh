@@ -3450,13 +3450,13 @@ mod tests {
     #[test]
     fn build_prefetched_map_duplicate_id_overwrites() {
         let entries = vec![
-            make_entry_config_with_id(Some("grok-build"), "grok-build", Some("First")),
-            make_entry_config_with_id(Some("grok-build"), "grok-build", Some("Second")),
+            make_entry_config_with_id(Some("grok-build"), "grok-build", Some("第一")),
+            make_entry_config_with_id(Some("grok-build"), "grok-build", Some("第二")),
         ];
         let map = build_prefetched_map(entries, None);
 
         assert_eq!(map.len(), 1, "duplicate id: second overwrites first");
-        assert_eq!(map["grok-build"].info.name.as_deref(), Some("Second"));
+        assert_eq!(map["grok-build"].info.name.as_deref(), Some("第二"));
     }
 
     /// Regression: resolve_default_model must match by id before scanning

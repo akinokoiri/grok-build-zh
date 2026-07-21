@@ -328,7 +328,7 @@ impl PromptInputMode {
     pub fn placeholder_override(self, multiline: bool) -> Option<&'static str> {
         match self {
             PromptInputMode::Normal | PromptInputMode::Bash => None,
-            PromptInputMode::Feedback => Some("Type your feedback..."),
+            PromptInputMode::Feedback => Some("输入你的反馈..."),
             PromptInputMode::Remember => {
                 if multiline {
                     Some("Save a memory note... (Enter for newline, Shift+Enter to save)")
@@ -1141,7 +1141,7 @@ pub struct AgentView {
     pub(crate) btw_focused: bool,
     /// Hit area for the [Esc] close button in the /btw panel title.
     pub(crate) hit_btw_close: HitArea,
-    /// Toast message to display briefly (e.g., "Copied!" after y).
+    /// Toast message to display briefly (e.g., "已复制！" after y).
     /// Tuple of (message, remaining_ticks). Decremented each tick, removed at 0.
     /// Does **not** carry sticky status banners — see [`Self::sticky_toast`].
     pub(crate) toast: Option<(String, u8)>,
@@ -3069,7 +3069,7 @@ pub(super) mod test_fixtures {
     #[test]
     fn follow_up_chip_click_maps_to_suggestion_text() {
         let mut agent = make_agent();
-        agent.apply_follow_ups("resp-1".into(), vec!["First".into(), "Second".into()]);
+        agent.apply_follow_ups("resp-1".into(), vec!["第一".into(), "第二".into()]);
         let area = ratatui::layout::Rect::new(0, 0, 60, 1);
         let mut buf = ratatui::buffer::Buffer::empty(area);
         let theme = crate::theme::Theme::current();
@@ -3084,7 +3084,7 @@ pub(super) mod test_fixtures {
         assert_eq!(idx, 1);
         assert_eq!(
             agent.follow_ups.as_ref().unwrap().suggestions[idx],
-            "Second"
+            "第二"
         );
         assert_eq!(agent.follow_up_chip_at(area.width - 1, 0), None);
     }
@@ -3278,11 +3278,11 @@ mod prompt_input_mode_tests {
         assert_eq!(PromptInputMode::Bash.placeholder_override(true), None);
         assert_eq!(
             PromptInputMode::Feedback.placeholder_override(false),
-            Some("Type your feedback...")
+            Some("输入你的反馈...")
         );
         assert_eq!(
             PromptInputMode::Feedback.placeholder_override(true),
-            Some("Type your feedback...")
+            Some("输入你的反馈...")
         );
         assert_eq!(
             PromptInputMode::Remember.placeholder_override(false),

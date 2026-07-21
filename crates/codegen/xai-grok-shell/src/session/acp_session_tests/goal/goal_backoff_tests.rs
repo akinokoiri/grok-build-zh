@@ -267,7 +267,7 @@ async fn handle_turn_end_bail_on_success_with_pending_todos_queues_bail_flavor()
 
                 actor
                     .chat_state_handle
-                    .push_assistant_response(ConversationItem::assistant("Giving up."));
+                    .push_assistant_response(ConversationItem::assistant("已放弃。"));
 
                 actor.handle_turn_end(true).await;
 
@@ -301,7 +301,7 @@ async fn handle_turn_end_bail_on_success_with_pending_todos_queues_bail_flavor()
                         .expect("bail-on-success must queue a continuation reminder")
                 };
                 assert!(
-                    nudge.contains("You appear to be stopping or handing off"),
+                    nudge.contains("你似乎在停止或交接"),
                     "queued nudge must carry the bail preface:\n{nudge}",
                 );
                 assert!(
@@ -380,7 +380,7 @@ async fn handle_turn_end_bail_on_success_without_pending_todos_uses_generic_flav
 
             actor
                 .chat_state_handle
-                .push_assistant_response(ConversationItem::assistant("Giving up."));
+                .push_assistant_response(ConversationItem::assistant("已放弃。"));
 
             actor.handle_turn_end(true).await;
 
@@ -397,7 +397,7 @@ async fn handle_turn_end_bail_on_success_without_pending_todos_uses_generic_flav
                     .expect("success path must still queue a continuation reminder")
             };
             assert!(
-                !nudge.contains("You appear to be stopping or handing off"),
+                !nudge.contains("你似乎在停止或交接"),
                 "no pending todos ⇒ generic flavor, no bail preface:\n{nudge}",
             );
             assert!(
@@ -431,7 +431,7 @@ async fn handle_turn_end_verified_complete_during_drain_skips_bail_nudge() {
             seed_one_pending_todo(&actor).await;
             actor
                 .chat_state_handle
-                .push_assistant_response(ConversationItem::assistant("Giving up."));
+                .push_assistant_response(ConversationItem::assistant("已放弃。"));
 
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             *actor.goal_update_rx.borrow_mut() = Some(rx);
@@ -492,7 +492,7 @@ async fn handle_turn_end_success_skips_when_goal_not_active() {
             actor.goal_continuation_streak.store(7, Ordering::Relaxed);
             actor
                 .chat_state_handle
-                .push_assistant_response(ConversationItem::assistant("Giving up."));
+                .push_assistant_response(ConversationItem::assistant("已放弃。"));
 
             actor.handle_turn_end(true).await;
 
@@ -535,7 +535,7 @@ async fn handle_turn_end_bail_on_success_fails_open_when_todo_resource_missing()
             // None and `has_pending_goal_todos` fails OPEN.
             actor
                 .chat_state_handle
-                .push_assistant_response(ConversationItem::assistant("Giving up."));
+                .push_assistant_response(ConversationItem::assistant("已放弃。"));
 
             actor.handle_turn_end(true).await;
 
@@ -552,7 +552,7 @@ async fn handle_turn_end_bail_on_success_fails_open_when_todo_resource_missing()
                     .expect("fail-open must still queue a continuation reminder")
             };
             assert!(
-                nudge.contains("You appear to be stopping or handing off"),
+                nudge.contains("你似乎在停止或交接"),
                 "missing TodoState must fail OPEN to the bail flavor:\n{nudge}",
             );
             let events = read_events_jsonl(&event_dir.path().join("events.jsonl"));
@@ -604,7 +604,7 @@ async fn handle_turn_end_success_ordinary_text_uses_generic_flavor() {
                     .expect("clean success path must queue a continuation reminder")
             };
             assert!(
-                !nudge.contains("You appear to be stopping or handing off"),
+                !nudge.contains("你似乎在停止或交接"),
                 "ordinary narration must render the generic flavor, no bail preface:\n{nudge}",
             );
             assert!(
@@ -639,7 +639,7 @@ async fn maybe_queue_goal_continuation_emits_premature_stop_at_most_once_across_
             seed_one_pending_todo(&actor).await;
             actor
                 .chat_state_handle
-                .push_assistant_response(ConversationItem::assistant("Giving up."));
+                .push_assistant_response(ConversationItem::assistant("已放弃。"));
 
             actor.maybe_queue_goal_continuation().await;
             actor.maybe_queue_goal_continuation().await;
@@ -693,7 +693,7 @@ async fn handle_turn_end_classifier_nudge_preempts_bail_nudge_and_event() {
             seed_one_pending_todo(&actor).await;
             actor
                 .chat_state_handle
-                .push_assistant_response(ConversationItem::assistant("Giving up."));
+                .push_assistant_response(ConversationItem::assistant("已放弃。"));
             seed_pending_classifier_nudge(&actor).await;
 
             actor.handle_turn_end(true).await;
@@ -741,7 +741,7 @@ async fn handle_turn_end_non_success_increments_streak_regardless_of_text() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
-            for text in ["Giving up.", "Implemented the helper and ran the tests."] {
+            for text in ["已放弃。", "Implemented the helper and ran the tests."] {
                 let mut actor = make_test_actor_with_active_goal().await;
                 let event_dir = redirect_events_to_tempdir(&mut actor);
                 emit_event_sink_sentinel(&actor);
@@ -798,7 +798,7 @@ async fn handle_turn_end_non_success_auto_pauses_at_backoff_threshold() {
 
             for i in 0..GOAL_CONTINUATION_BACKOFF_THRESHOLD {
                 let text = if i % 2 == 0 {
-                    "Giving up."
+                    "已放弃。"
                 } else {
                     "Implemented more of the helper."
                 };
@@ -979,7 +979,7 @@ fn format_turn_error_message_reads_error_data_with_status() {
     ));
     assert_eq!(
         SessionActor::format_turn_error_message(&err),
-        "Turn failed: upstream unavailable"
+        "回合失败：上游不可用"
     );
 }
 
@@ -1114,7 +1114,7 @@ fn format_turn_error_message_prefers_data_message_over_err_message() {
     )));
     assert_eq!(
         SessionActor::format_turn_error_message(&err),
-        "Turn failed: upstream unavailable"
+        "回合失败：上游不可用"
     );
 }
 
@@ -1135,7 +1135,7 @@ async fn infra_err_pauses_active_goal_immediately_with_message() {
                     .lock()
                     .snapshot()
                     .and_then(|o| o.pause_message.clone()),
-                Some("Turn failed: upstream unavailable".into())
+                Some("回合失败：上游不可用".into())
             );
             assert_eq!(actor.goal_continuation_streak.load(Ordering::Relaxed), 0);
         })
@@ -1231,7 +1231,7 @@ async fn infra_auto_pause_noop_when_not_active() {
             let noop = actor
                 .auto_pause_goal_if_active_with_message(
                     crate::session::goal_tracker::GoalPauseReason::Infra,
-                    "Turn failed: upstream unavailable".into(),
+                    "回合失败：上游不可用".into(),
                 )
                 .await;
             assert!(
@@ -1323,7 +1323,7 @@ async fn goal_resume_from_infra_paused_transitions_to_active() {
             actor.goal_continuation_streak.store(2, Ordering::Relaxed);
             actor.goal_tracker.lock().pause_with_message(
                 crate::session::goal_tracker::GoalPauseReason::Infra,
-                "Turn failed: upstream unavailable".into(),
+                "回合失败：上游不可用".into(),
             );
             let actor = Arc::new(actor);
             let _ = actor.resume_goal().await;
@@ -1353,7 +1353,7 @@ async fn goal_resume_from_infra_paused_reminder_uses_infra_copy() {
             let actor = make_test_actor_with_active_goal().await;
             actor.goal_tracker.lock().pause_with_message(
                 crate::session::goal_tracker::GoalPauseReason::Infra,
-                "Turn failed: upstream unavailable".into(),
+                "回合失败：上游不可用".into(),
             );
             let actor = Arc::new(actor);
             let GoalResumeOutcome::Inference { reminder: text, .. } = actor.resume_goal().await
@@ -1361,7 +1361,7 @@ async fn goal_resume_from_infra_paused_reminder_uses_infra_copy() {
                 panic!("resumed infra-paused goal must flow through to inference");
             };
             assert!(
-                text.contains("Continue working now."),
+                text.contains("请继续工作。"),
                 "the located item must be the resume reminder:\n{text}"
             );
             assert!(
@@ -1849,7 +1849,7 @@ async fn goal_resume_reminder_includes_previous_block_reason() {
                     panic!("resumed blocked goal must flow through to inference");
                 };
                 assert!(
-                    text.contains("Continue working now."),
+                    text.contains("请继续工作。"),
                     "the located item must be the resume reminder:\n{text}"
                 );
                 // The block recap leads with `Previous state: Blocked.` so the
@@ -2054,7 +2054,7 @@ async fn goal_resume_paused_flows_through_to_inference_with_reminder() {
                 "resume reminder must carry the objective:\n{reminder}"
             );
             assert!(
-                reminder.contains("Continue working now."),
+                reminder.contains("请继续工作。"),
                 "resume reminder must close with the continuation directive:\n{reminder}"
             );
             assert_eq!(user_msg, "Goal resumed.");
@@ -2281,7 +2281,7 @@ async fn goal_resume_paused_through_handle_prompt_runs_inference() {
                     ))) => {
                         if let acp::SessionUpdate::UserMessageChunk(chunk) = &n.update
                             && let acp::ContentBlock::Text(t) = &chunk.content
-                            && t.text.contains("Continue working now.")
+                            && t.text.contains("请继续工作。")
                         {
                             reminder_persisted = true;
                         }

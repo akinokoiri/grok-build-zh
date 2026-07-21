@@ -21,7 +21,7 @@ pub(super) fn dispatch_import_claude(app: &mut AppView) -> Vec<Effect> {
         }
         app.has_claude_import = false;
         app.startup_warnings
-            .retain(|w| !w.message.contains("Claude settings"));
+            .retain(|w| !w.message.contains("Claude 设置"));
         app.startup_warnings.push(crate::startup::StartupWarning {
             severity: crate::startup::WarningSeverity::Info,
             message: "No Claude settings found to import.".into(),
@@ -83,7 +83,7 @@ pub(super) fn dispatch_import_claude_confirm(app: &mut AppView) -> Vec<Effect> {
     }
     app.has_claude_import = false;
     app.startup_warnings
-        .retain(|w| !w.message.contains("Claude settings"));
+        .retain(|w| !w.message.contains("Claude 设置"));
     app.startup_warnings.push(crate::startup::StartupWarning {
         severity: crate::startup::WarningSeverity::Info,
         message: summary,
@@ -119,6 +119,6 @@ pub(super) fn dispatch_dismiss_claude_import(app: &mut AppView) -> Vec<Effect> {
     // would now point to a different row.
     app.welcome_menu_index = None;
     app.startup_warnings
-        .retain(|w| !w.message.contains("Claude settings"));
+        .retain(|w| !w.message.contains("Claude 设置"));
     vec![]
 }

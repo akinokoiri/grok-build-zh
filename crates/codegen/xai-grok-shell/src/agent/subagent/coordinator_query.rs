@@ -76,7 +76,7 @@ impl SubagentCoordinator {
                             .result
                             .error
                             .clone()
-                            .unwrap_or_else(|| "Unknown error".to_string()),
+                            .unwrap_or_else(|| "未知错误".to_string()),
                     }
             };
             return Some(

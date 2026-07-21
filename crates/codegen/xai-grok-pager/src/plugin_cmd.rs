@@ -565,7 +565,7 @@ fn cmd_update(name: Option<&str>) -> Result<()> {
     let outcomes = plugin::update_plugins(name).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if outcomes.is_empty() {
-        println!("No installed plugins to update.");
+        println!("没有可更新的已安装插件。");
         return Ok(());
     }
 

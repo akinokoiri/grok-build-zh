@@ -2235,7 +2235,7 @@ pub fn derive_source_label(source_dir: &str) -> (String, bool) {
     }
     // Settings under .claude/
     if source_dir.contains("/.claude/") {
-        return ("Claude settings".into(), false);
+        return ("Claude 设置".into(), false);
     }
     // Project hooks
     if source_dir.ends_with("/.grok/hooks") || source_dir.contains("/.grok/hooks/") {

@@ -241,8 +241,8 @@ impl RowState {
             Self::Working => "Working",
             Self::Idle => "Idle",
             Self::Inactive => "Inactive",
-            Self::Completed => "Done",
-            Self::Failed => "Failed",
+            Self::Completed => "完成",
+            Self::Failed => "失败",
             Self::Blocked => "Blocked",
         }
     }
@@ -5858,7 +5858,7 @@ mod tests {
         let mut state = state_with_open_peek();
         if let Some(p) = state.peek.as_mut() {
             p.focused = true;
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
             p.options = vec![("yes".into(), "Yes".into()), ("no".into(), "No".into())];
             p.reject_option = Some(1);
             p.selected_option = Some(1);
@@ -5965,7 +5965,7 @@ mod tests {
         let reg = crate::actions::ActionRegistry::defaults();
         if let Some(p) = state.peek.as_mut() {
             p.focused = true;
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
             p.options = vec![("yes".into(), "Yes".into()), ("no".into(), "No".into())];
             p.reject_option = Some(1);
             p.selected_option = Some(1);
@@ -6020,7 +6020,7 @@ mod tests {
         assert!(state.peek_reply.text().contains("[Image #1]"));
         if let Some(p) = state.peek.as_mut() {
             p.focused = true;
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
             p.options = vec![("yes".into(), "Yes".into()), ("no".into(), "No".into())];
             p.reject_option = Some(1);
             p.selected_option = Some(1);
@@ -6385,7 +6385,7 @@ mod tests {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
         let mut f = peek_fields_for_test("等待你的输入");
-        f.question = Some("Allow Edit?".into());
+        f.question = Some("允许编辑？".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
             ("deny".into(), "Deny".into()),
@@ -6476,7 +6476,7 @@ mod tests {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
         let mut f = peek_fields_for_test("等待你的输入");
-        f.question = Some("Allow Edit?".into());
+        f.question = Some("允许编辑？".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
             ("deny".into(), "Deny".into()),
@@ -6510,7 +6510,7 @@ mod tests {
         use crate::app::actions::Action;
         let mut state = make_state_with_selection();
         let mut f = peek_fields_for_test("等待你的输入");
-        f.question = Some("Allow Edit?".into());
+        f.question = Some("允许编辑？".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
             ("reject".into(), "No".into()),
@@ -6673,7 +6673,7 @@ mod tests {
         let mut state = make_state_with_selection();
         let reg = crate::actions::ActionRegistry::defaults();
         let mut f = peek_fields_for_test("等待你的输入");
-        f.question = Some("Allow Edit?".into());
+        f.question = Some("允许编辑？".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
             ("reject".into(), "No".into()),
@@ -7945,7 +7945,7 @@ mod tests {
         let mut state = DashboardState::new();
         let reg = crate::actions::ActionRegistry::defaults();
         let mut f = peek_fields_for_test("等待你的输入");
-        f.question = Some("Allow Edit?".into());
+        f.question = Some("允许编辑？".into());
         f.options = vec![
             ("allow".into(), "Allow".into()),
             ("no".into(), "No, reject".into()),
@@ -8038,7 +8038,7 @@ mod tests {
         let reg = crate::actions::ActionRegistry::defaults();
         if let Some(p) = state.peek.as_mut() {
             p.focused = true;
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
             p.options = vec![("yes".into(), "Yes".into()), ("no".into(), "No".into())];
             p.reject_option = Some(1);
             p.selected_option = Some(1);
@@ -8538,7 +8538,7 @@ mod tests {
         let mut state = state_with_open_peek();
         state.paste_probe_in_flight = 1;
         if let Some(p) = state.peek.as_mut() {
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
         }
         let completion = state.complete_clipboard_attachment_paste(
             completion_ctx(Some("some caption"), true),
@@ -8658,7 +8658,7 @@ mod tests {
         assert_eq!(state.paste_probe_in_flight, 1);
         // A permission question arrives on the SAME row before completion.
         if let Some(p) = state.peek.as_mut() {
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
         }
         let completion = state.complete_clipboard_attachment_paste(
             ctx,
@@ -8724,7 +8724,7 @@ mod tests {
         let mut state = state_with_open_peek();
         state.paste_probe_in_flight = 1;
         if let Some(p) = state.peek.as_mut() {
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
         }
         state.complete_clipboard_attachment_paste(
             completion_ctx(None, true),
@@ -8755,7 +8755,7 @@ mod tests {
             attach: false,
         });
         if let Some(p) = state.peek.as_mut() {
-            p.question = Some("Allow?".into());
+            p.question = Some("允许？".into());
         }
         let actions = state.take_deferred_sends_after_paste();
         assert!(

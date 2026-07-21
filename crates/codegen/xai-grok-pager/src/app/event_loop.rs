@@ -2548,7 +2548,7 @@ pub(crate) async fn run(
                         presenter.request(false);
                     }
                     ConnectionStatus::Failed { ref error } => {
-                        app.show_toast(&format!("Connection failed: {error}"));
+                        app.show_toast(&format!("连接失败：{error}"));
                         presenter.request(false);
                     }
                     _ => {}
@@ -2614,7 +2614,7 @@ pub(crate) async fn run(
 
                 if pending.agent_ids.is_empty() {
                     // Nothing was reloaded (no open sessions at reconnect).
-                    app.show_toast("Reconnected.");
+                    app.show_toast("已重新连接。");
                 } else if restored {
                     app.show_toast("Session restored. In-progress tools and terminals were lost.");
                 } else {

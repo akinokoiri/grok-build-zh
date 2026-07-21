@@ -131,7 +131,7 @@ impl SubagentCatalogPane {
         let groups: [(&str, &'static str, &[String]); 3] = [
             ("Personas", "persona", &state.personas),
             ("Roles", "role", &state.roles),
-            ("Agents", "agent", &state.agents),
+            ("代理", "agent", &state.agents),
         ];
 
         for (name, kind, items) in &groups {
@@ -337,7 +337,7 @@ mod tests {
         assert!(!pane.entries[4].is_header);
         assert_eq!(pane.entries[4].label, "reviewer");
         assert!(pane.entries[5].is_header);
-        assert_eq!(pane.entries[5].label, "Agents");
+        assert_eq!(pane.entries[5].label, "代理");
         assert!(!pane.entries[6].is_header);
         assert_eq!(pane.entries[6].label, "default");
     }

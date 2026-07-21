@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(parse_permission_mode_canonical(""), PermissionMode::Ask,);
         // Case sensitivity (no normalization — wire format is exact-match).
         assert_eq!(
-            parse_permission_mode_canonical("Always-Approve"),
+            parse_permission_mode_canonical("始终批准"),
             PermissionMode::Ask,
             "wire format is case-sensitive; 'Always-Approve' is unknown",
         );

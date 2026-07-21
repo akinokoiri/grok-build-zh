@@ -25,7 +25,7 @@ pub(super) enum OidcError {
     #[error("OIDC discovery failed: HTTP {status} from {url}")]
     DiscoveryHttp { status: u16, url: String },
     /// Keep the "10 minutes" text in sync with `AUTH_CALLBACK_TIMEOUT` in `login.rs`.
-    #[error("Login timed out after 10 minutes. Please try again.")]
+    #[error("登录超时（10 分钟）。请重试。")]
     CallbackTimeout,
     #[error("OIDC callback channel closed unexpectedly")]
     CallbackChannelClosed,

@@ -633,7 +633,7 @@ impl SessionActor {
 
                 match crate::plugin::update_plugins(name.as_deref()) {
                     Ok(outcomes) if outcomes.is_empty() => {
-                        self.send_slash_command_output("No installed plugins to update.")
+                        self.send_slash_command_output("没有可更新的已安装插件。")
                             .await;
                     }
                     Ok(outcomes) => {

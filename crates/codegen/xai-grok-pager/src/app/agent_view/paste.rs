@@ -82,7 +82,7 @@ impl AgentView {
             return false;
         }
         crate::prompt_images::cleanup_temp_file(pasted);
-        self.show_toast("Images can't be attached when editing a shared queued prompt");
+        self.show_toast("编辑共享排队提示时不能附加图片");
         true
     }
     /// Enqueue attachment probing off-thread so paste-then-send remains ordered.
@@ -188,7 +188,7 @@ impl AgentView {
                 }
             }
             ProbedAttachment::PersistFailed(_) => {
-                self.show_toast("Couldn't save pasted image");
+                self.show_toast("无法保存粘贴的图片");
                 ClipboardPasteCompletion::Failed(ClipboardPasteFailure::AlreadyReported)
             }
             ProbedAttachment::NoRaster => ClipboardPasteCompletion::FullMiss,
@@ -421,7 +421,7 @@ impl AgentView {
         ) && let Err(e) = crate::prompt_images::persist_to_session(&mut pasted, &images_dir)
         {
             tracing::warn!("failed to persist pasted image: {e}");
-            self.show_toast("Couldn't save pasted image");
+            self.show_toast("无法保存粘贴的图片");
             return false;
         }
         if let Err(msg) = self.prompt.insert_image(pasted) {
@@ -1212,7 +1212,7 @@ pub(super) mod paste_key_tests {
     -> crate::views::question_view::QuestionViewState {
         let question =
             xai_grok_tools::implementations::grok_build::ask_user_question::Question {
-                question: "Pick one?".to_string(),
+                question: "请选择一项？".to_string(),
                 options: vec![
                 xai_grok_tools::implementations::grok_build::ask_user_question::QuestionOption
                 { label : "A".to_string(), description : "Option A".to_string(), preview

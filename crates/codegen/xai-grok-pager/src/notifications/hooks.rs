@@ -112,7 +112,7 @@ mod tests {
 
         execute_hook(
             &command,
-            "Turn complete",
+            "回合完成",
             "hello world",
             Some("sess-42"),
             Duration::from_secs(5),
@@ -141,7 +141,7 @@ mod tests {
 
         execute_hook(
             &command,
-            "Turn complete",
+            "回合完成",
             "msg",
             None,
             Duration::from_secs(5),
@@ -159,7 +159,7 @@ mod tests {
         let start = Instant::now();
         execute_hook(
             "sleep 100",
-            "Turn complete",
+            "回合完成",
             "msg",
             None,
             Duration::from_secs(1),
@@ -175,7 +175,7 @@ mod tests {
     fn handles_failed_shell_command_gracefully() {
         execute_hook(
             "/nonexistent/path/binary",
-            "Turn complete",
+            "回合完成",
             "msg",
             None,
             Duration::from_secs(1),
@@ -186,7 +186,7 @@ mod tests {
     fn handles_nonzero_exit_gracefully() {
         execute_hook(
             "exit 1",
-            "Turn complete",
+            "回合完成",
             "msg",
             None,
             Duration::from_secs(5),
@@ -201,7 +201,7 @@ mod tests {
 
         execute_hook(
             &command,
-            "Turn complete",
+            "回合完成",
             "msg",
             None,
             Duration::from_secs(5),

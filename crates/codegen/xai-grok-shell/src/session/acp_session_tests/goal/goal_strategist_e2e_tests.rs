@@ -156,7 +156,7 @@ async fn answer_skeptic(
             "{\"refuted\":true,\"evidence\":\"src/same.rs:1 missing\",\"confidence\":\"high\",\"details_md\":\"# refuted\"}".to_string(),
         ),
         SkepticVerdict::Achieved => (
-            "Not Refuted",
+            "未反驳",
             "{\"refuted\":false,\"evidence\":\"diff ok\",\"confidence\":\"high\",\"details_md\":\"# ok\"}".to_string(),
         ),
         SkepticVerdict::Blocked => (

@@ -107,7 +107,7 @@ pub(super) fn dispatch_open_dashboard(app: &mut AppView) -> Vec<Effect> {
     use crate::views::dashboard::dashboard_enabled;
 
     if !dashboard_enabled() {
-        app.show_toast("Agent dashboard is disabled in this configuration");
+        app.show_toast("当前配置已禁用代理仪表盘");
         return vec![];
     }
     // Gate behind auth. Until login completes, the
@@ -121,7 +121,7 @@ pub(super) fn dispatch_open_dashboard(app: &mut AppView) -> Vec<Effect> {
     // dismiss the trust question with the folder still unanswered. Toast and
     // stay put (mirrors the auth gate above) so the question is resolved first.
     if matches!(app.trust_state, TrustState::Pending { .. }) {
-        app.show_toast("Answer the folder-trust question to open the dashboard");
+        app.show_toast("请先回答目录信任问题再打开仪表盘");
         return vec![];
     }
     // Edge case 24: idempotent toggle — opening from the dashboard view
@@ -786,7 +786,7 @@ pub(super) fn dispatch_dashboard_open_location_picker(app: &mut AppView) -> Vec<
         // Gate on the dashboard being the *foreground* view (not merely
         // `app.dashboard.is_some()`, which stays true for the rest of the
         // session once the dashboard has been opened even once).
-        app.show_toast("Open the dashboard (/dashboard) to change location");
+        app.show_toast("打开仪表盘（/dashboard）以更改位置");
         return vec![];
     }
     // Idempotent — re-triggering while open keeps the current query.
@@ -862,7 +862,7 @@ pub(super) fn dispatch_dashboard_change_location(app: &mut AppView, input: Strin
     // overlay) would otherwise silently change the process cwd, since
     // `app.dashboard` stays `Some` for the rest of the session once opened.
     if !matches!(app.active_view, ActiveView::AgentDashboard) {
-        app.show_toast("Open the dashboard (/dashboard) to change location");
+        app.show_toast("打开仪表盘（/dashboard）以更改位置");
         return vec![];
     }
     let path = match resolve_location_input(&input, &app.cwd).filter(|p| p.is_dir()) {
@@ -2171,7 +2171,7 @@ pub(super) fn dispatch_dashboard_permission_select(
     let Some(agent) = app.agents.get_mut(&target_id) else {
         if let Some(d) = app.dashboard.as_mut() {
             d.set_peek(None);
-            d.set_error_toast("Row no longer exists");
+            d.set_error_toast("该行已不存在");
         }
         return vec![];
     };
@@ -2265,7 +2265,7 @@ pub(super) fn dispatch_dashboard_permission_followup(
     let Some(agent) = app.agents.get_mut(&target_id) else {
         if let Some(d) = app.dashboard.as_mut() {
             d.set_peek(None);
-            d.set_error_toast("Row no longer exists");
+            d.set_error_toast("该行已不存在");
         }
         return vec![];
     };
@@ -2334,7 +2334,7 @@ pub(super) fn dispatch_dashboard_question_answer(
     let Some(agent) = app.agents.get_mut(&target_id) else {
         if let Some(d) = app.dashboard.as_mut() {
             d.set_peek(None);
-            d.set_error_toast("Row no longer exists");
+            d.set_error_toast("该行已不存在");
         }
         return vec![];
     };

@@ -706,7 +706,7 @@ pub fn render_peek_panel(
                         let placeholder_text = if panel.is_ask_question() {
                             "Other (type your own answer)"
                         } else {
-                            "No, reject (type to add feedback)"
+                            "否，拒绝（可输入反馈）"
                         };
                         let placeholder = truncate_str(placeholder_text, avail as usize);
                         buf.set_string(
@@ -1010,7 +1010,7 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
                     ToolCallBlock::WebSearch(_) => Some("Web search"),
                     ToolCallBlock::IntegrationSearch(_) => Some("Tool search"),
                     ToolCallBlock::UseTool(_) => Some("Tool"),
-                    ToolCallBlock::MemorySearch(_) => Some("Memory"),
+                    ToolCallBlock::MemorySearch(_) => Some("记忆"),
                     ToolCallBlock::Skill(_) => Some("Skill"),
                     ToolCallBlock::Other(_) => Some("Tool"),
                     // Lifecycle events aren't real tool calls — keep scanning.
@@ -1787,7 +1787,7 @@ mod tests {
                 time_ago: String::new(),
                 response_type: "等待你的输入".to_string(),
                 last_user_message: None,
-                question: Some("Allow Edit?".to_string()),
+                question: Some("允许编辑？".to_string()),
                 options: vec![
                     ("allow_once".into(), "仅允许一次".into()),
                     ("deny".into(), "Deny".into()),
@@ -1818,7 +1818,7 @@ mod tests {
             }
             content.push('\n');
         }
-        assert!(content.contains("Allow Edit?"));
+        assert!(content.contains("允许编辑？"));
         assert!(content.contains("1. Allow once"));
         assert!(content.contains("2. Deny"));
         // The `❯ reply` row is hidden while a question is pending.
@@ -1841,7 +1841,7 @@ mod tests {
                 time_ago: String::new(),
                 response_type: "等待你的输入".to_string(),
                 last_user_message: None,
-                question: Some("Allow Edit?".to_string()),
+                question: Some("允许编辑？".to_string()),
                 options: vec![
                     ("allow".into(), "Allow".into()),
                     ("deny".into(), "Deny".into()),
@@ -1894,7 +1894,7 @@ mod tests {
                 time_ago: String::new(),
                 response_type: "等待你的输入".to_string(),
                 last_user_message: None,
-                question: Some("Allow Edit?".to_string()),
+                question: Some("允许编辑？".to_string()),
                 options: vec![
                     ("allow".into(), "Allow".into()),
                     ("deny".into(), "Deny".into()),
@@ -1951,7 +1951,7 @@ mod tests {
                 time_ago: String::new(),
                 response_type: "等待你的输入".to_string(),
                 last_user_message: None,
-                question: Some("Allow Edit?".to_string()),
+                question: Some("允许编辑？".to_string()),
                 options: vec![
                     ("allow".into(), "Allow".into()),
                     ("reject".into(), "No".into()),
@@ -2071,7 +2071,7 @@ mod tests {
                 time_ago: String::new(),
                 response_type: "等待你的输入".to_string(),
                 last_user_message: None,
-                question: Some("Allow Edit?".to_string()),
+                question: Some("允许编辑？".to_string()),
                 options: vec![
                     ("allow".into(), "Allow".into()),
                     ("reject".into(), "No".into()),
@@ -2104,7 +2104,7 @@ mod tests {
         }
         // Matches the chat permission panel's placeholder verbatim.
         assert!(
-            content.contains("No, reject (type to add feedback)"),
+            content.contains("否，拒绝（可输入反馈）"),
             "got: {content:?}",
         );
     }

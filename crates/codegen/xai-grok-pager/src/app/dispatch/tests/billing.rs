@@ -1105,7 +1105,7 @@ fn open_url_shows_manual_url_when_browser_unavailable() {
         .toast
         .as_ref()
         .map(|(m, _)| m.as_str());
-    assert_eq!(toast, Some("Browser unavailable - URL shown above"));
+    assert_eq!(toast, Some("浏览器不可用 — 上方已显示 URL"));
 
     // SAFETY: serialized via `serial_test`; restore the env for other tests.
     unsafe { std::env::remove_var("GROK_TEST_OPEN_URL_FILE") };

@@ -136,7 +136,7 @@ async fn answer_skeptic(
     }
     let (token, json) = match verdict {
         SkepticVerdict::Achieved => (
-            "Not Refuted",
+            "未反驳",
             "{\"refuted\":false,\"evidence\":\"diff ok\",\"confidence\":\"high\",\"details_md\":\"# ok\"}".to_string(),
         ),
         SkepticVerdict::Refuted => (

@@ -156,7 +156,7 @@ mod tests {
     fn conversation_row_uses_conversation_id_as_session_id() {
         let c = Conversation {
             conversation_id: "conv_abc123".into(),
-            title: "Compare GPU vendors".into(),
+            title: "比较 GPU 厂商".into(),
             modify_time: Some("2026-06-18T18:02:00Z".into()),
             create_time: Some("2026-06-18T17:30:00Z".into()),
             ..Conversation::default()

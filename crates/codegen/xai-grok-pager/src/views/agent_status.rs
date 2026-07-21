@@ -175,8 +175,8 @@ fn goal_phase_label(goal: &GoalDisplayState) -> String {
         | GoalDisplayStatus::NoProgressPaused
         | GoalDisplayStatus::InfraPaused
         | GoalDisplayStatus::Blocked => goal.status.pause_label().into(),
-        GoalDisplayStatus::BudgetLimited => "Budget".into(),
-        GoalDisplayStatus::Complete => "Done".into(),
+        GoalDisplayStatus::BudgetLimited => "预算".into(),
+        GoalDisplayStatus::Complete => "完成".into(),
         GoalDisplayStatus::Active => active_phase_label(goal),
     }
 }
@@ -201,8 +201,8 @@ pub fn active_phase_label(goal: &GoalDisplayState) -> String {
     }
     match goal.phase {
         GoalDisplayPhase::Idle => "Idle".into(),
-        GoalDisplayPhase::Planning => "Planning".into(),
-        GoalDisplayPhase::Executing => "Executing".into(),
+        GoalDisplayPhase::Planning => "规划中".into(),
+        GoalDisplayPhase::Executing => "执行中".into(),
     }
 }
 
@@ -389,7 +389,7 @@ mod tests {
             total_deliverables: total,
             completed_deliverables: completed,
             current_deliverable_id: idx,
-            current_deliverable_title: Some("Add CSS vars".into()),
+            current_deliverable_title: Some("添加 CSS 变量".into()),
             current_subagent_role: None,
             total_worker_rounds: 3,
             total_verify_rounds: 1,
@@ -444,11 +444,11 @@ mod tests {
     #[test]
     fn phase_label_paused_variants() {
         for (status, expected) in [
-            (GoalDisplayStatus::UserPaused, "Paused"),
-            (GoalDisplayStatus::BackOffPaused, "Paused (back-off)"),
-            (GoalDisplayStatus::NoProgressPaused, "Paused (no progress)"),
-            (GoalDisplayStatus::InfraPaused, "Paused (error)"),
-            (GoalDisplayStatus::Blocked, "Paused (verification blocked)"),
+            (GoalDisplayStatus::UserPaused, "已暂停"),
+            (GoalDisplayStatus::BackOffPaused, "已暂停（退避中）"),
+            (GoalDisplayStatus::NoProgressPaused, "已暂停（无进展）"),
+            (GoalDisplayStatus::InfraPaused, "已暂停（错误）"),
+            (GoalDisplayStatus::Blocked, "已暂停（校验受阻）"),
         ] {
             let g = make_goal(status, GoalDisplayPhase::Executing, Some(0), 2, 0);
             assert_eq!(goal_phase_label(&g), expected, "for {status:?}");
@@ -467,7 +467,7 @@ mod tests {
         let t = Theme::current();
         let line = goal_status_line(&g, &t, false, 0, None, 0);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(text.contains("Paused (error)"));
+        assert!(text.contains("已暂停（错误）"));
     }
 
     #[test]
@@ -616,7 +616,7 @@ mod tests {
             0,
         );
         g.planning = true;
-        assert_eq!(goal_phase_label(&g), "Paused");
+        assert_eq!(goal_phase_label(&g), "已暂停");
     }
 
     #[test]
@@ -633,7 +633,7 @@ mod tests {
             0,
         );
         g.verifying_completion = true;
-        assert_eq!(goal_phase_label(&g), "Paused");
+        assert_eq!(goal_phase_label(&g), "已暂停");
     }
 
     #[test]
@@ -787,7 +787,7 @@ mod tests {
         let line = goal_status_line(&g, &t, false, 0, None, 0);
         let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         // Title should NOT appear in status bar (only in the modal)
-        assert!(!text.contains("Add CSS vars"));
+        assert!(!text.contains("添加 CSS 变量"));
         assert!(!text.contains("Build widget"));
     }
 

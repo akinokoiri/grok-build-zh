@@ -455,7 +455,7 @@ impl AgentView {
     /// shell cancels the running turn and runs this row as the next turn.
     pub(in crate::app) fn force_interject_queue_row(&mut self, id: u64) -> InputOutcome {
         if !self.session.state.is_turn_running() {
-            self.show_toast("No turn running — prompt will send when ready");
+            self.show_toast("当前无运行中的回合 — 就绪后将发送提示");
             return InputOutcome::Changed;
         }
         let row = self.queue.row_ref(id);
@@ -489,7 +489,7 @@ impl AgentView {
         }
         // Local rows: only plain prompts / raw skill rows can re-send (others would send display text, not payload).
         if self.queue_row_prompt_like(id) != Some(true) {
-            self.show_toast("Can't send this now — it runs when the current turn ends");
+            self.show_toast("当前无法发送 — 将在当前回合结束后运行");
             return InputOutcome::Changed;
         }
         if let Some(prompt) = self.remove_local_queue_row(id) {

@@ -348,11 +348,11 @@ impl GoalDisplayStatus {
     /// through their own labels (e.g. `"Budget"`, `"Done"`) elsewhere.
     pub fn pause_label(&self) -> &'static str {
         match self {
-            Self::UserPaused => "Paused",
-            Self::BackOffPaused => "Paused (back-off)",
-            Self::NoProgressPaused => "Paused (no progress)",
-            Self::InfraPaused => "Paused (error)",
-            Self::Blocked => "Paused (verification blocked)",
+            Self::UserPaused => "已暂停",
+            Self::BackOffPaused => "已暂停（退避中）",
+            Self::NoProgressPaused => "已暂停（无进展）",
+            Self::InfraPaused => "已暂停（错误）",
+            Self::Blocked => "已暂停（校验受阻）",
             Self::Active | Self::BudgetLimited | Self::Complete => "",
         }
     }
@@ -1095,22 +1095,22 @@ mod tests {
     }
     #[test]
     fn pause_label_is_consistent_across_renderers() {
-        assert_eq!(GoalDisplayStatus::UserPaused.pause_label(), "Paused");
+        assert_eq!(GoalDisplayStatus::UserPaused.pause_label(), "已暂停");
         assert_eq!(
             GoalDisplayStatus::BackOffPaused.pause_label(),
-            "Paused (back-off)"
+            "已暂停（退避中）"
         );
         assert_eq!(
             GoalDisplayStatus::NoProgressPaused.pause_label(),
-            "Paused (no progress)"
+            "已暂停（无进展）"
         );
         assert_eq!(
             GoalDisplayStatus::InfraPaused.pause_label(),
-            "Paused (error)"
+            "已暂停（错误）"
         );
         assert_eq!(
             GoalDisplayStatus::Blocked.pause_label(),
-            "Paused (verification blocked)"
+            "已暂停（校验受阻）"
         );
         assert_eq!(GoalDisplayStatus::Active.pause_label(), "");
         assert_eq!(GoalDisplayStatus::BudgetLimited.pause_label(), "");

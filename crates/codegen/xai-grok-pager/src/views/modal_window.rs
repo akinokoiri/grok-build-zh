@@ -1914,7 +1914,7 @@ mod tests {
     #[test]
     fn split_shortcut_label_basic_ascii() {
         assert_eq!(split_shortcut_label("Esc 取消"), ("Esc", " cancel"));
-        assert_eq!(split_shortcut_label("Enter select"), ("Enter", " select"));
+        assert_eq!(split_shortcut_label("Enter 选择"), ("Enter", " select"));
     }
 
     #[test]

@@ -149,7 +149,7 @@ pub struct PermissionViewState {
     pub mcp_scope: Option<McpScopeState>,
 
     // -- Display content (precomputed on creation) --
-    /// Title text (e.g. agent-provided bash description, or "Allow Edit?").
+    /// Title text (e.g. agent-provided bash description, or "允许编辑？").
     pub title: String,
 
     /// Planned tool-input lines shown under the title — for MCP tools the
@@ -474,7 +474,7 @@ pub fn render_permission_view(
         y += 1;
     }
 
-    // Title (bold, accent color) — e.g. bash tool description or "Allow Edit?"
+    // Title (bold, accent color) — e.g. bash tool description or "允许编辑？"
     if y < area_bottom {
         let title_style = Style::default()
             .fg(theme.text_primary)
@@ -555,7 +555,7 @@ pub fn render_permission_view(
             .fg(theme.text_secondary)
             .add_modifier(Modifier::DIM);
         let hint_line = Line::from(vec![
-            Span::styled("Use ", hint_style),
+            Span::styled("使用 ", hint_style),
             Span::styled("\u{2190} \u{2192}", hint_style),
             Span::styled(" to choose permission scope", hint_style),
         ]);
@@ -1736,7 +1736,7 @@ fn build_reject_once_line<'a>(
     } else {
         // Placeholder.
         (
-            "No, reject (type to add feedback)".to_string(),
+            "否，拒绝（可输入反馈）".to_string(),
             Style::default().fg(theme.gray).bg(row_bg),
         )
     };
@@ -2304,7 +2304,7 @@ mod tests {
         state.args_expanded = true;
         let text = render_to_text(&state, Rect::new(0, 0, 80, 12));
         assert!(
-            !text.contains("Ctrl-F to expand"),
+            !text.contains("Ctrl-F 展开"),
             "no indicator when expanded:\n{text}"
         );
         assert!(text.contains("Yes"), "options row missing:\n{text}");
@@ -2413,10 +2413,10 @@ mod tests {
 
     #[test]
     fn dynamic_option_label_rebuilds_reject_always_bash_row() {
-        // The "Never allow:" row shares the ←/→ word-scope selection with the
+        // The "永不允许：" row shares the ←/→ word-scope selection with the
         // allow row, so its label must rebuild from selected_words too.
         let bash_perm = BashCommandPermission {
-            prompt_prefix: "Never allow:".to_owned(),
+            prompt_prefix: "永不允许：".to_owned(),
         };
         let opt = acp::PermissionOption::new(
             acp::PermissionOptionId::new(Arc::from("reject-always-command")),
@@ -2444,7 +2444,7 @@ mod tests {
         )
         .meta(
             serde_json::to_value(BashCommandPermission {
-                prompt_prefix: "Never allow:".to_owned(),
+                prompt_prefix: "永不允许：".to_owned(),
             })
             .ok()
             .and_then(|v| v.as_object().cloned()),
@@ -2456,12 +2456,12 @@ mod tests {
         // Options without scope meta keep their static name.
         let plain = acp::PermissionOption::new(
             acp::PermissionOptionId::new(Arc::from("allow-once")),
-            "Yes, proceed".to_owned(),
+            "是，继续".to_owned(),
             acp::PermissionOptionKind::AllowOnce,
         );
         assert_eq!(
             option_label_for_selection(&plain, Some("cargo"), None),
-            "Yes, proceed"
+            "是，继续"
         );
     }
 

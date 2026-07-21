@@ -53,7 +53,7 @@ impl Response {
     /// goal-tracker level, not what a single skeptic emits.
     fn achieved() -> Self {
         Self {
-            text: "Not Refuted".into(),
+            text: "未反驳".into(),
             verdict_json: Some(
                 "{\"refuted\":false,\"evidence\":\"diff hunk src/foo.rs:1\",\"confidence\":\"high\",\"details_md\":\"# mock skeptic\\n\\nnot refuted\"}"
                     .into(),

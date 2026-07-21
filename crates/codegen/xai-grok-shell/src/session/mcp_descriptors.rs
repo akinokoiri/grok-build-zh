@@ -261,7 +261,7 @@ mod tests {
                 GatewayToolDescriptor {
                     connector_id: "linear".into(),
                     tool_id: "list_issues".into(),
-                    description: "List issues".into(),
+                    description: "列出 issues".into(),
                     json_schema: serde_json::json!({
                         "type": "object",
                         "properties": {"limit": {"type": "number"}}
@@ -270,7 +270,7 @@ mod tests {
                 GatewayToolDescriptor {
                     connector_id: "slack/team".into(),
                     tool_id: "search messages".into(),
-                    description: "Search Slack".into(),
+                    description: "搜索 Slack".into(),
                     json_schema: serde_json::json!({
                         "type": "object",
                         "properties": {"query": {"type": "string"}}
@@ -287,7 +287,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(linear["name"], "list_issues");
-        assert_eq!(linear["description"], "List issues");
+        assert_eq!(linear["description"], "列出 issues");
         assert_eq!(
             linear["inputSchema"]["properties"]["limit"]["type"],
             "number"
@@ -299,7 +299,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(slack["name"], "search messages");
-        assert_eq!(slack["description"], "Search Slack");
+        assert_eq!(slack["description"], "搜索 Slack");
         assert_eq!(
             slack["inputSchema"]["properties"]["query"]["type"],
             "string"
@@ -372,13 +372,13 @@ mod tests {
                 GatewayToolDescriptor {
                     connector_id: "linear".into(),
                     tool_id: "list_issues".into(),
-                    description: "List issues".into(),
+                    description: "列出 issues".into(),
                     json_schema: serde_json::json!({"type": "object"}),
                 },
                 GatewayToolDescriptor {
                     connector_id: "slack".into(),
                     tool_id: "search".into(),
-                    description: "Search Slack".into(),
+                    description: "搜索 Slack".into(),
                     json_schema: serde_json::json!({"type": "object"}),
                 },
             ],
@@ -394,7 +394,7 @@ mod tests {
             vec![GatewayToolDescriptor {
                 connector_id: "linear".into(),
                 tool_id: "list_issues".into(),
-                description: "List issues".into(),
+                description: "列出 issues".into(),
                 json_schema: serde_json::json!({"type": "object"}),
             }],
             vec!["linear".into(), "slack".into()],

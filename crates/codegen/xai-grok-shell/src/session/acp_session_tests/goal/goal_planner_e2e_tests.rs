@@ -1124,7 +1124,7 @@ async fn goal_resume_reminder_is_plan_aware_when_planner_enabled() {
             };
 
             assert!(
-                reminder.contains("Continue working now."),
+                reminder.contains("请继续工作。"),
                 "resume reminder must close with the continuation directive:\n{reminder}"
             );
             let expected = format!("\nPlan: {}\n", plan_path.display());

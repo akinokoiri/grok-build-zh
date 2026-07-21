@@ -1098,7 +1098,7 @@ impl AgentView {
                 self.session.session_id.as_ref().map(|s| s.0.as_ref()),
                 Some(serde_json::json!({ "action": action.log_label() })),
             );
-            self.show_toast("Diagram not ready yet");
+            self.show_toast("图表尚未就绪");
             return;
         };
 
@@ -1111,7 +1111,7 @@ impl AgentView {
             .as_ref()
             .is_some_and(|rt| rt.has_pending(&key, action))
         {
-            self.show_toast("Rendering diagram\u{2026}");
+            self.show_toast("正在渲染图表\u{2026}");
             return;
         }
 
@@ -1149,7 +1149,7 @@ impl AgentView {
             if let Some(rt) = self.mermaid.as_mut() {
                 rt.pending.push(PendingMermaidAction { key, action });
             }
-            self.show_toast("Rendering diagram\u{2026}");
+            self.show_toast("正在渲染图表\u{2026}");
         } else {
             tracing::warn!(
                 target: MERMAID_TRACING_TARGET,

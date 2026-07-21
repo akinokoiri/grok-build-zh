@@ -396,7 +396,7 @@ fn set_permission_mode_ask_emits_brand_consistent_toast() {
     assert_eq!(app.current_ui.permission_mode.as_deref(), Some("ask"));
 
     // Toast brands as "Permission mode" not
-    // "Always-approve". Previously the Ask arm reused `yolo_toast(false)`
+    // "始终批准". Previously the Ask arm reused `yolo_toast(false)`
     // which produced "✓ Always-approve: off" — a brand mismatch.
     let toast = app.agents[&AgentId(0)]
         .toast

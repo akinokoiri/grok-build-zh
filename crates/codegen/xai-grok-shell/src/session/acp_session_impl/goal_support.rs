@@ -248,7 +248,7 @@ pub(super) const GOAL_CONTINUATION_BAIL_PREFACE: &str = "You appear to be stoppi
 /// `block_recap` and `goal_state` are inserted verbatim — pass an
 /// empty string to omit either section. The trailing newline of the
 /// template is preserved so callers can append their closing
-/// directive ("Start now." / "Continue working now.") and the
+/// directive ("Start now." / "请继续工作。") and the
 /// closing `</system-reminder>` tag without extra glue.
 ///
 /// `plan_path` `Some` folds the plan-aware preamble into the same block as

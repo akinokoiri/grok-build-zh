@@ -603,7 +603,7 @@ impl AcpPrompter {
                         if let Some(primary_command) = &primary_command {
                             let (id, option) = bash_scope_option(
                                 "reject-always-command",
-                                "Never allow:",
+                                "永不允许：",
                                 acp::PermissionOptionKind::RejectAlways,
                                 primary_command,
                             );

@@ -164,7 +164,7 @@ pub(in crate::app::dispatch) fn open_new_session_question(app: &mut AppView) -> 
         return vec![];
     };
     if agent.question_view.is_some() {
-        app.show_toast("Finish answering the current question first");
+        app.show_toast("请先回答当前问题");
         return vec![];
     }
     let mut options = vec![
@@ -223,7 +223,7 @@ pub(in crate::app::dispatch) fn open_agent_type_mismatch_question(
         return vec![];
     };
     if agent.question_view.is_some() {
-        app.show_toast("Finish answering the current question first");
+        app.show_toast("请先回答当前问题");
         return vec![];
     }
     let question = Question {

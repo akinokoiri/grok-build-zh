@@ -2134,7 +2134,7 @@ mod tests {
         crate::views::modal_window::set_embedded(true);
 
         let theme = Theme::terminal_default();
-        let q = make_question("Pick one?", &["Alpha", "Beta"], false);
+        let q = make_question("请选择一项？", &["Alpha", "Beta"], false);
         let lines = build_flat_option_lines(
             &q,
             80,
@@ -2199,7 +2199,7 @@ mod tests {
     fn full_tui_cursor_row_keeps_bg_visual_band() {
         crate::views::modal_window::set_embedded(false);
         let theme = Theme::default();
-        let q = make_question("Pick one?", &["Alpha", "Beta"], false);
+        let q = make_question("请选择一项？", &["Alpha", "Beta"], false);
         let lines = build_flat_option_lines(
             &q,
             80,
@@ -2232,7 +2232,7 @@ mod tests {
 
     #[test]
     fn new_initializes_vectors_correctly() {
-        let q1 = make_question("Pick one?", &["A", "B", "C"], false);
+        let q1 = make_question("请选择一项？", &["A", "B", "C"], false);
         let q2 = make_question("Pick many?", &["X", "Y"], true);
         let state = QuestionViewState::new(
             "tc-1".into(),

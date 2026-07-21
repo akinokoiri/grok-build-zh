@@ -3363,10 +3363,10 @@ fn mouse_reporting_toggle_off_sticky_persists_after_transient_toast() {
     );
     {
         let agent = app.agents.get_mut(&id).unwrap();
-        agent.show_toast("Copied!");
+        agent.show_toast("已复制！");
         assert_eq!(
             agent.toast.as_ref().map(|(m, _)| m.as_str()),
-            Some("Copied!"),
+            Some("已复制！"),
             "transient wins while active"
         );
         assert_eq!(agent.sticky_toast.as_deref(), Some(MOUSE_OFF_STICKY));
@@ -3390,7 +3390,7 @@ fn mouse_reporting_toggle_off_sticky_persists_after_transient_toast() {
     assert!(parent.sticky_toast.is_none());
     assert_eq!(
         parent.toast.as_ref().map(|(m, _)| m.as_str()),
-        Some("Mouse reporting on"),
+        Some("鼠标上报已开启"),
     );
     reset_mouse_capture_enabled(true);
 }

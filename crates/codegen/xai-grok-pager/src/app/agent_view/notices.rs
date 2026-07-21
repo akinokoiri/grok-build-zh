@@ -10,7 +10,7 @@ use crate::app::actions::Action;
 use std::time::Instant;
 
 impl AgentView {
-    /// Show a brief toast message (e.g., "Copied!").
+    /// Show a brief toast message (e.g., "已复制！").
     ///
     /// Displayed for ~3 seconds (90 ticks at 30fps). Previous transient toast
     /// is replaced; [`Self::sticky_toast`] is preserved and returns after this
@@ -354,7 +354,7 @@ impl AgentView {
                 // Best-effort clipboard so SSH/VM users can paste into a
                 // browser on another machine without selecting TUI text.
                 let _ = crate::clipboard::SystemClipboard::try_set(url);
-                self.show_toast("Browser unavailable - URL shown above");
+                self.show_toast("浏览器不可用 — 上方已显示 URL");
             }
         }
     }
@@ -385,8 +385,8 @@ mod mouse_off_banner_tests {
         );
 
         // A transient toast still wins over the sticky banner, regardless of pane.
-        view.show_toast("Copied!");
-        assert_eq!(view.active_toast_message(), Some("Copied!"));
+        view.show_toast("已复制！");
+        assert_eq!(view.active_toast_message(), Some("已复制！"));
     }
 
     #[test]

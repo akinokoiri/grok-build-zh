@@ -319,7 +319,7 @@ fn clipboard_failure_routes_to_originating_agent_without_duplicate() {
     );
     assert!(app.agents[&active].toast.is_none());
 
-    app.agents[&origin].toast = Some(("Couldn't save pasted image".to_owned(), 90));
+    app.agents[&origin].toast = Some(("无法保存粘贴的图片".to_owned(), 90));
     show_clipboard_failure(
         &target,
         crate::app::actions::ClipboardPasteFailure::AlreadyReported,
@@ -330,7 +330,7 @@ fn clipboard_failure_routes_to_originating_agent_without_duplicate() {
             .toast
             .as_ref()
             .map(|(text, _)| text.as_str()),
-        Some("Couldn't save pasted image")
+        Some("无法保存粘贴的图片")
     );
 }
 

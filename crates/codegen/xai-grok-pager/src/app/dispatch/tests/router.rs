@@ -1675,7 +1675,7 @@ fn pager_registry_default_matches_agent_view_new_initializer() {
         }
     }
 }
-/// If the user picks the regular "Yes, proceed" option (NOT
+/// If the user picks the regular "是，继续" option (NOT
 /// enable-always-approve), the dispatcher must behave exactly as
 /// before — no PersistPermissionMode effect, no YOLO flip. Pins
 /// that the new code path is gated strictly on the id check.

@@ -53,10 +53,10 @@ pub enum GoalPhase {
 /// paused-ness uniformly across all six variants.
 ///
 /// **Backwards-compat serde aliases:** older shells serialized this
-/// enum with the default PascalCase form (`"Active"`, `"Paused"`,
+/// enum with the default PascalCase form (`"Active"`, `"已暂停"`,
 /// `"BudgetLimited"`, `"Complete"`). The `#[serde(alias = ...)]`
 /// attributes preserve in-flight goal snapshots written by older shells
-/// — legacy `"Paused"` maps to `UserPaused` (matches the pager-side
+/// — legacy `"已暂停"` maps to `UserPaused` (matches the pager-side
 /// fallback). New
 /// snapshots emit snake_case per `rename_all`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -64,7 +64,7 @@ pub enum GoalPhase {
 pub enum GoalStatus {
     #[serde(alias = "Active")]
     Active,
-    #[serde(alias = "Paused")]
+    #[serde(alias = "已暂停")]
     UserPaused,
     BackOffPaused,
     /// Verifier flagged the same gaps across consecutive attempts (no
@@ -102,7 +102,7 @@ impl GoalStatus {
     pub fn from_wire_str(s: &str) -> Self {
         match s {
             "active" | "Active" => Self::Active,
-            "user_paused" | "paused" | "Paused" => Self::UserPaused,
+            "user_paused" | "paused" | "已暂停" => Self::UserPaused,
             // Historical status from shells that had doom-loop auto-pause.
             "doom_loop_paused" => Self::UserPaused,
             "back_off_paused" => Self::BackOffPaused,
@@ -2563,7 +2563,7 @@ mod tests {
 
     #[test]
     fn legacy_pascal_case_paused_deserializes_to_user_paused() {
-        let legacy = r#""Paused""#;
+        let legacy = r#""已暂停""#;
         let parsed: GoalStatus = serde_json::from_str(legacy).unwrap();
         assert_eq!(parsed, GoalStatus::UserPaused);
     }
@@ -2651,7 +2651,7 @@ mod tests {
         let mut orchestration = make_base_orchestration();
         orchestration.phase = GoalPhase::Executing;
         orchestration.status = GoalStatus::InfraPaused;
-        orchestration.pause_message = Some("Turn failed: upstream unavailable".into());
+        orchestration.pause_message = Some("回合失败：上游不可用".into());
 
         let t = GoalTracker::from_snapshot(PathBuf::from("/tmp"), orchestration);
         let o = t.snapshot().unwrap();
@@ -2659,7 +2659,7 @@ mod tests {
         assert_eq!(o.status, GoalStatus::InfraPaused);
         assert_eq!(
             o.pause_message.as_deref(),
-            Some("Turn failed: upstream unavailable")
+            Some("回合失败：上游不可用")
         );
     }
 

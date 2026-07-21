@@ -70,7 +70,7 @@ struct TraceEvent<'a> {
     /// "start" | "sample" | "purge" | "threshold".
     kind: &'a str,
     /// macOS `phys_footprint` (resident dirty + compressed + swapped); the
-    /// number that matches Activity Monitor "Memory" and `vmmap`'s
+    /// number that matches Activity Monitor "记忆" and `vmmap`'s
     /// "Physical footprint". `None` where unavailable (Linux).
     #[serde(skip_serializing_if = "Option::is_none")]
     footprint_bytes: Option<u64>,

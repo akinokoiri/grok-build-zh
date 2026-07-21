@@ -581,7 +581,7 @@ pub enum Action {
     /// directly in `handle_agent_action`; this lets a slash command reach the
     /// same modal through dispatch.
     OpenCommandPalette,
-    /// Open the in-TUI How-to Guides doc picker (`/docs`, palette "How-to Guides").
+    /// Open the in-TUI How-to Guides doc picker (`/docs`, palette "使用指南").
     OpenHowtoGuides,
     /// Open the reset-settings confirmation dialog for a specific key.
     /// Moves the Settings modal state into `ResetSettingsConfirm` so
