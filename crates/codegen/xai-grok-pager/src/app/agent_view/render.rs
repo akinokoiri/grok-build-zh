@@ -145,14 +145,14 @@ impl AgentView {
                         }
                         if !perm.description.is_empty() {
                             let label = if perm.args_expanded {
-                                "collapse"
+                                "收起"
                             } else {
-                                "expand"
+                                "展开"
                             };
                             hints.push(HintItem::new(key!('f', CONTROL), label));
                         }
-                        hints.push(HintItem::new(key!('o', CONTROL), "always-approve"));
-                        hints.push(HintItem::new(key!('c', CONTROL), "cancel"));
+                        hints.push(HintItem::new(key!('o', CONTROL), "始终批准"));
+                        hints.push(HintItem::new(key!('c', CONTROL), "取消"));
                         hints
                     }
                 }
@@ -2164,9 +2164,9 @@ impl AgentView {
                 };
                 commenting_label.as_str()
             } else if self.plan_approval_view.is_some() {
-                "plan approval"
+                "计划审批"
             } else {
-                "plan"
+                "计划"
             };
             mode_flags_vec.push(PromptFlag {
                 text: plan_label,
@@ -2176,14 +2176,14 @@ impl AgentView {
         }
         if self.session.is_yolo() && !effective_plan {
             mode_flags_vec.push(PromptFlag {
-                text: "always-approve",
+                text: "始终批准",
                 color: None,
                 bold: false,
             });
         }
         if self.auto_flag_visible(effective_plan) {
             mode_flags_vec.push(PromptFlag {
-                text: "auto",
+                text: "自动",
                 color: Some(theme.accent_system),
                 bold: false,
             });
@@ -3092,14 +3092,14 @@ impl AgentView {
                         }
                         if !perm.description.is_empty() {
                             let label = if perm.args_expanded {
-                                "collapse"
+                                "收起"
                             } else {
-                                "expand"
+                                "展开"
                             };
                             hints.push(HintItem::new(key!('f', CONTROL), label));
                         }
-                        hints.push(HintItem::new(key!('o', CONTROL), "always-approve"));
-                        hints.push(HintItem::new(key!('c', CONTROL), "cancel"));
+                        hints.push(HintItem::new(key!('o', CONTROL), "始终批准"));
+                        hints.push(HintItem::new(key!('c', CONTROL), "取消"));
                         hints
                     }
                 }

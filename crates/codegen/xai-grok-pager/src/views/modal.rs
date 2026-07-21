@@ -369,72 +369,72 @@ pub enum PaletteCommand {
 pub fn default_palette_entries(sharing_enabled: bool) -> Vec<PaletteEntry> {
     let mut entries = vec![
         PaletteEntry {
-            label: "Session".into(),
+            label: "会话".into(),
             shortcut: String::new(),
-            command: PaletteCommand::SectionHeader("Session".into()),
+            command: PaletteCommand::SectionHeader("会话".into()),
         },
         PaletteEntry {
-            label: "New Session".into(),
+            label: "新会话".into(),
             shortcut: "Ctrl+N".into(),
             command: PaletteCommand::NewSession,
         },
         PaletteEntry {
-            label: "New Session in Worktree".into(),
+            label: "在工作树中新建会话".into(),
             shortcut: "Ctrl+P → worktree".into(),
             command: PaletteCommand::NewSessionInWorktree,
         },
         PaletteEntry {
-            label: "Agent Dashboard".into(),
+            label: "代理仪表盘".into(),
             shortcut: "/dashboard".into(),
             command: PaletteCommand::SlashCommand("/dashboard".into()),
         },
         PaletteEntry {
-            label: "Back to Home".into(),
+            label: "返回首页".into(),
             shortcut: "/home".into(),
             command: PaletteCommand::Home,
         },
         PaletteEntry {
-            label: "Resume Session".into(),
+            label: "恢复会话".into(),
             shortcut: "/resume".into(),
             command: PaletteCommand::SlashCommand("/resume".into()),
         },
         PaletteEntry {
-            label: "Share Session".into(),
+            label: "分享会话".into(),
             shortcut: "/share".into(),
             command: PaletteCommand::SlashCommand("/share".into()),
         },
         PaletteEntry {
-            label: "Rename Session".into(),
+            label: "重命名会话".into(),
             shortcut: "/rename ".into(),
             command: PaletteCommand::SlashCommand("/rename ".into()),
         },
         PaletteEntry {
-            label: "Session Info".into(),
+            label: "会话信息".into(),
             shortcut: "/session-info".into(),
             command: PaletteCommand::SlashCommand("/session-info".into()),
         },
         PaletteEntry {
-            label: "Send Feedback".into(),
+            label: "发送反馈".into(),
             shortcut: "/feedback".into(),
             command: PaletteCommand::SlashCommand("/feedback ".into()),
         },
         PaletteEntry {
-            label: "Context".into(),
+            label: "上下文".into(),
             shortcut: String::new(),
-            command: PaletteCommand::SectionHeader("Context".into()),
+            command: PaletteCommand::SectionHeader("上下文".into()),
         },
         PaletteEntry {
-            label: "Compact History".into(),
+            label: "压缩历史".into(),
             shortcut: "/compact".into(),
             command: PaletteCommand::SlashCommand("/compact".into()),
         },
         PaletteEntry {
-            label: "Context Usage".into(),
+            label: "上下文用量".into(),
             shortcut: "/context".into(),
             command: PaletteCommand::SlashCommand("/context".into()),
         },
         PaletteEntry {
-            label: "View Plan".into(),
+            label: "查看计划".into(),
             shortcut: "/view-plan".into(),
             command: PaletteCommand::SlashCommand("/view-plan".into()),
         },
@@ -444,82 +444,82 @@ pub fn default_palette_entries(sharing_enabled: bool) -> Vec<PaletteEntry> {
             command: PaletteCommand::Memory,
         },
         PaletteEntry {
-            label: "Model & Input".into(),
+            label: "模型与输入".into(),
             shortcut: String::new(),
-            command: PaletteCommand::SectionHeader("Model & Input".into()),
+            command: PaletteCommand::SectionHeader("模型与输入".into()),
         },
         PaletteEntry {
-            label: "Switch Model".into(),
+            label: "切换模型".into(),
             shortcut: "/model".into(),
             command: PaletteCommand::SlashCommand("/model ".into()),
         },
         PaletteEntry {
-            label: "Always Approve Mode".into(),
+            label: "始终批准模式".into(),
             shortcut: "/always-approve".into(),
             command: PaletteCommand::SlashCommand("/always-approve".into()),
         },
         PaletteEntry {
-            label: "Multiline Input".into(),
+            label: "多行输入".into(),
             shortcut: "/multiline".into(),
             command: PaletteCommand::SlashCommand("/multiline".into()),
         },
         PaletteEntry {
-            label: "Tools".into(),
+            label: "工具".into(),
             shortcut: String::new(),
-            command: PaletteCommand::SectionHeader("Tools".into()),
+            command: PaletteCommand::SectionHeader("工具".into()),
         },
         PaletteEntry {
-            label: "Hooks".into(),
+            label: "钩子".into(),
             shortcut: "/hooks".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::Hooks,
             ),
         },
         PaletteEntry {
-            label: "Plugins".into(),
+            label: "插件".into(),
             shortcut: "/plugins".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::Plugins,
             ),
         },
         PaletteEntry {
-            label: "Marketplace".into(),
+            label: "市场".into(),
             shortcut: "/marketplace".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::Marketplace,
             ),
         },
         PaletteEntry {
-            label: "Skills".into(),
+            label: "技能".into(),
             shortcut: "/skills".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::Skills,
             ),
         },
         PaletteEntry {
-            label: "MCP Servers".into(),
+            label: "MCP 服务器".into(),
             shortcut: "/mcps".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::McpServers,
             ),
         },
         PaletteEntry {
-            label: "Manage Agents".into(),
+            label: "管理代理".into(),
             shortcut: "/config-agents".into(),
             command: PaletteCommand::OpenAgentsModal,
         },
         PaletteEntry {
-            label: "Other".into(),
+            label: "其他".into(),
             shortcut: String::new(),
-            command: PaletteCommand::SectionHeader("Other".into()),
+            command: PaletteCommand::SectionHeader("其他".into()),
         },
         PaletteEntry {
-            label: "Switch Theme".into(),
+            label: "切换主题".into(),
             shortcut: "/theme".into(),
             command: PaletteCommand::SlashCommand("/theme ".into()),
         },
         PaletteEntry {
-            label: "Settings".into(),
+            label: "设置".into(),
             shortcut: "F2".into(),
             command: PaletteCommand::OpenSettings,
         },
@@ -538,7 +538,7 @@ pub fn default_palette_entries(sharing_enabled: bool) -> Vec<PaletteEntry> {
             command: PaletteCommand::HowTo,
         },
         PaletteEntry {
-            label: "Quit".into(),
+            label: "退出".into(),
             shortcut: "Ctrl+Q".into(),
             command: PaletteCommand::Quit,
         },

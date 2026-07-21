@@ -99,17 +99,17 @@ const PERMISSION_MODE_CHOICES: &[EnumChoice] = &[
     // distinct on disk and in the modal indicator.
     EnumChoice {
         canonical: "default",
-        display: "Default",
-        description: "使用代理默认权限行为（当前等同于 Ask）。",
+        display: "默认",
+        description: "使用代理默认权限行为（当前等同于「询问」）。",
     },
     EnumChoice {
         canonical: "ask",
-        display: "Ask",
+        display: "询问",
         description: "在工具操作前请求权限确认。",
     },
     EnumChoice {
         canonical: "auto",
-        display: "Auto",
+        display: "自动",
         description: "由模型分类器批准安全工具；危险操作仍可能询问或拒绝。",
     },
     EnumChoice {

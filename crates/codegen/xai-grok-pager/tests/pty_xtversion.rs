@@ -8,7 +8,7 @@ use xai_grok_pager_pty_harness::{PtyHarness, pager_binary};
 const ROWS: u16 = 50;
 const COLS: u16 = 120;
 const WELCOME_TIMEOUT: Duration = Duration::from_secs(20);
-const WELCOME_SCREEN_SENTINEL: &str = "Quit";
+const WELCOME_SCREEN_SENTINEL: &str = "退出";
 
 /// The XTVERSION query bytes the pager emits at startup.
 const XTVERSION_QUERY: &[u8] = b"\x1b[>0q";

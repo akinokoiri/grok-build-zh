@@ -27,10 +27,35 @@ pub fn tips_from_toml(root: &TomlValue) -> Option<TipsOverride> {
     root.get("tips")?.clone().try_into::<TipsOverride>().ok()
 }
 
+/// 汉化版内置中文 tips（替代远程英文 tip-of-the-day）。
+pub fn chinese_default_tips() -> Vec<String> {
+    [
+        "可以让 Agent 搜索 X 或网页。",
+        "用 /model 切换模型与推理强度。",
+        "用 /settings 或 F2 打开设置。",
+        "用 Ctrl+S 恢复历史会话。",
+        "用 Ctrl+W 在 git 工作树中开新会话。",
+        "用 /compact 压缩上下文以腾出空间。",
+        "用 /plan 进入计划模式，先想清楚再改代码。",
+        "用 Ctrl+. 查看键盘快捷键。",
+        "用 /docs 打开应用内使用指南。",
+        "权限模式可选：询问 / 自动 / 始终批准。",
+        "多行输入可用 /multiline 切换。",
+        "用 /memory 浏览跨会话记忆。",
+        "用 /dashboard 管理并行代理。",
+        "粘贴图片时，可让 Agent 结合截图分析。",
+        "用 @ 引用文件或路径作为上下文。",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 /// Merge tip sources in priority order.
 ///
-/// If any local source sets `exclude_default = true`, remote tips are dropped entirely.
-/// Otherwise remote tips are inserted after requirements and before user/managed config.
+/// 汉化版：默认使用内置中文 tips，而不是远程英文 tips。
+/// If any local source sets `exclude_default = true`, built-in/remote tips are dropped.
+/// User/managed/requirements tips are still appended.
 pub fn merge_tips(
     requirements: Option<TipsOverride>,
     user: Option<TipsOverride>,
@@ -46,8 +71,14 @@ pub fn merge_tips(
     if let Some(src) = requirements.as_ref() {
         out.extend(src.tips.iter().cloned());
     }
-    if !exclude && let Some(remote) = remote_tips {
-        out.extend(remote.iter().cloned());
+    if !exclude {
+        // Prefer Chinese defaults over remote English tips (zh-CN fork).
+        let zh = chinese_default_tips();
+        if !zh.is_empty() {
+            out.extend(zh);
+        } else if let Some(remote) = remote_tips {
+            out.extend(remote.iter().cloned());
+        }
     }
     if let Some(src) = user.as_ref() {
         out.extend(src.tips.iter().cloned());

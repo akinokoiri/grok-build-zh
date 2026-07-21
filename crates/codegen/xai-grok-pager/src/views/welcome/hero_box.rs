@@ -442,6 +442,34 @@ pub(super) fn render_announcement_with_upgrade_cta(
     (text_area, truncated, cta_rect)
 }
 
+/// Best-effort Chinese overlay for remote (server-pushed) announcement copy.
+/// Only maps common English phrases; unknown strings pass through unchanged.
+fn localize_announcement_text(s: &str) -> String {
+    let t = s.trim();
+    match t {
+        "Grok 4.5 is here!" => "Grok 4.5 现已推出！".into(),
+        "Grok 4.5 is here. Upgrade now." => "Grok 4.5 现已推出，欢迎升级体验。".into(),
+        "Grok 4.5 is now available. Try it out in the /model picker." => {
+            "Grok 4.5 现已可用。可在 /model 中切换体验。".into()
+        }
+        other if other.starts_with("Grok 4.5 is now available") => {
+            "Grok 4.5 现已可用。可在 /model 中切换体验。".into()
+        }
+        other if other.contains("Try it out in the /model picker") => {
+            other
+                .replace(
+                    "Grok 4.5 is now available. Try it out in the /model picker.",
+                    "Grok 4.5 现已可用。可在 /model 中切换体验。",
+                )
+                .replace(
+                    "Try it out in the /model picker.",
+                    "可在 /model 中切换体验。",
+                )
+        }
+        other => other.to_string(),
+    }
+}
+
 /// Render the announcement (title + message) into `area`, used by both welcome
 /// layouts. Collapsed wraps to 2 lines + a `…`; expanded shows what fits; the
 /// block brightens while hovered, but only when it's interactive (overflowing
@@ -458,7 +486,15 @@ pub(super) fn render_announcement_block(
     let over = mouse_pos.is_some_and(|(mx, my)| area.contains(Position::new(mx, my)));
     let mut row = area.y;
     let max_w = area.width as usize;
-    if let Some(title) = ann.title.as_deref() {
+    let title_owned = ann
+        .title
+        .as_deref()
+        .map(localize_announcement_text);
+    let msg_owned = ann
+        .message
+        .as_deref()
+        .map(localize_announcement_text);
+    if let Some(title) = title_owned.as_deref() {
         let title_color = match ann.severity.as_deref() {
             Some("critical") => theme.accent_error,
             _ => theme.warning,
@@ -470,7 +506,7 @@ pub(super) fn render_announcement_block(
         buf.set_span(area.x, row, &Span::styled(display, title_style), area.width);
         row += 1;
     }
-    if let Some(msg) = ann.message.as_deref() {
+    if let Some(msg) = msg_owned.as_deref() {
         let remaining_rows = (area.y + area.height).saturating_sub(row) as usize;
         let max_lines = if expanded {
             remaining_rows
@@ -591,7 +627,8 @@ pub(super) fn announcement_text_rows(
 ) -> u16 {
     let title_rows = if ann.title.is_some() { 1u16 } else { 0 };
     let msg_rows = ann.message.as_deref().map_or(0, |msg| {
-        let wrapped = wrapped_line_count(msg, width);
+        let msg = localize_announcement_text(msg);
+        let wrapped = wrapped_line_count(&msg, width);
         if expanded { wrapped } else { wrapped.min(2) }
     });
     title_rows + msg_rows

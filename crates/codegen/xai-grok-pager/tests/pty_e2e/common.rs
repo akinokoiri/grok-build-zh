@@ -22,10 +22,10 @@ pub(crate) const DEFAULT_COLS: u16 = 120;
 /// which can take a few seconds on cold build directories.
 pub(crate) const WELCOME_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Substring we wait for on the welcome screen. Matches the menu label `"Quit"`
+/// Substring we wait for on the welcome screen. Matches the menu label `"退出"`
 /// (`render_welcome_done` / gate menus); case-sensitive, so it does **not**
 /// match the lowercase `"quit"` hint line during `AuthState::Authenticating`.
-pub(crate) const WELCOME_SCREEN_SENTINEL: &str = "Quit";
+pub(crate) const WELCOME_SCREEN_SENTINEL: &str = "退出";
 
 /// Prompt sent to the agent in content-driven tests. Short so it submits
 /// quickly and doesn't wrap.

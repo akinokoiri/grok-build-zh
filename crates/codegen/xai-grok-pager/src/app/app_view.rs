@@ -3924,7 +3924,7 @@ impl AppView {
                             Vec::new();
                         if self.default_yolo {
                             flags_vec.push(crate::views::prompt_widget::PromptFlag {
-                                text: "always-approve",
+                                text: "始终批准",
                                 color: None,
                                 bold: false,
                             });

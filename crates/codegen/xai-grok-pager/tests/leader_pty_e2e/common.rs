@@ -18,7 +18,7 @@ pub(crate) const DEFAULT_ROWS: u16 = 50;
 pub(crate) const DEFAULT_COLS: u16 = 120;
 
 /// Substring we wait for on the welcome screen (matches the menu label).
-pub(crate) const WELCOME_SCREEN_SENTINEL: &str = "Quit";
+pub(crate) const WELCOME_SCREEN_SENTINEL: &str = "退出";
 
 /// Prompt sent to the agent in content-driven tests.
 pub(crate) const PROMPT: &str = "go";

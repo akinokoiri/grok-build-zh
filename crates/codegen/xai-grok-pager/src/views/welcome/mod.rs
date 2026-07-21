@@ -421,14 +421,14 @@ pub(super) fn render_version_badge(
         } = &mode
     {
         spans.push(Span::styled(
-            format!("Tier: {tier}"),
+            format!("套餐：{tier}"),
             Style::default().fg(theme.gray),
         ));
         spans.push(sep.clone());
     }
     if show_api_key && is_api_key_auth {
         spans.push(Span::styled(
-            "Logged in with API key",
+            "已使用 API 密钥登录",
             Style::default().fg(theme.gray),
         ));
         spans.push(sep);
@@ -688,8 +688,8 @@ pub fn render_welcome(
     let mut result = match params.auth_state {
         AuthState::Pending { error } => {
             let label = params.login_label.unwrap_or("grok.com");
-            let login_text = format!("Login with {}", label);
-            let menu = [("l", login_text.as_str()), ("q", "Quit")];
+            let login_text = format!("使用 {} 登录", label);
+            let menu = [("l", login_text.as_str()), ("q", "退出")];
             let msg = error.as_deref().map(|e| (e, theme.accent_error));
             let info = PromptInfo {
                 model_name: params.model_name,
@@ -759,12 +759,12 @@ pub fn render_welcome(
             }
         }
         AuthState::Done if params.is_zdr_blocked => {
-            let menu = [("l", "Switch account"), ("q", "Quit")];
+            let menu = [("l", "切换账号"), ("q", "退出")];
             let (menu_rects, post_flush_escapes) = render_welcome_blocked(
                 content_area,
                 buf,
                 Some((
-                    "Grok Build is not yet available for this account.",
+                    "此账号暂不可用 Grok Build。",
                     theme.gray_bright,
                 )),
                 &menu,
@@ -935,10 +935,10 @@ fn render_welcome_trust(
     h_margin: u16,
     compact: bool,
 ) -> WelcomeRenderResult {
-    let menu_items = [("y", "是，继续"), ("n", "No, quit")];
+    let menu_items = [("y", "是，继续"), ("n", "否，退出")];
     let lines = vec![
         Line::from(Span::styled(
-            "Do you trust the contents of this directory?",
+            "是否信任此目录中的内容？",
             Style::default().fg(theme.gray_bright),
         ))
         .alignment(Alignment::Center),
@@ -951,7 +951,7 @@ fn render_welcome_trust(
         // Two lines so the warning never clips at narrow / compact widths
         // (a single ~78-char line would truncate "...posing security risks").
         Line::from(Span::styled(
-            "Grok Build may run or modify contents in this directory,",
+            "Grok Build 可能在此目录中运行或修改内容，",
             Style::default().fg(theme.gray),
         ))
         .alignment(Alignment::Center),
@@ -1003,11 +1003,11 @@ fn render_welcome_trust(
 }
 
 /// Header text shared by Loopback and Command auth modes.
-const AUTH_HEADER: &str = "A browser window will open for authentication.";
+const AUTH_HEADER: &str = "将打开浏览器窗口以完成身份验证。";
 /// Header text for the device-flow auth mode.
-const DEVICE_AUTH_HEADER: &str = "Approve in your browser to finish signing in.";
+const DEVICE_AUTH_HEADER: &str = "请在浏览器中批准以完成登录。";
 /// Caption beneath the device code.
-const DEVICE_CODE_CAPTION: &str = "Make sure your browser shows this code.";
+const DEVICE_CODE_CAPTION: &str = "请确认浏览器显示的代码与此一致。";
 
 /// Extract `user_code` from a device verification URL (`None` if absent or
 /// malformed). Shown on-screen so the user can confirm it matches the browser
@@ -1022,7 +1022,7 @@ fn extract_user_code(url: &str) -> Option<&str> {
     valid.then_some(code)
 }
 /// Clickable copy prompt shared by Loopback and Command auth modes.
-const AUTH_COPY_PREFIX: &str = "If it doesn't open, click ";
+const AUTH_COPY_PREFIX: &str = "若未自动打开，请点击 ";
 const AUTH_COPY_HERE: &str = "here";
 const AUTH_COPY_SUFFIX: &str = " to copy.";
 
@@ -1053,7 +1053,7 @@ fn auth_copy_line_rows(inner_width: u16) -> u16 {
     (copy_len as u16).div_ceil(inner_width)
 }
 
-const AUTH_FALLBACK_TEXT: &str = "Copying not working? Click here to show full URL.";
+const AUTH_FALLBACK_TEXT: &str = "无法复制？点击此处显示完整 URL。";
 
 /// Build the fallback "show full URL" link line.
 fn auth_fallback_line(theme: &Theme) -> Line<'static> {
@@ -1160,7 +1160,7 @@ fn render_raw_url_mode(
 
     // Render hint above the URL.
     let hint = Line::from(Span::styled(
-        "Select the URL below with your mouse and copy manually.",
+        "请用鼠标选中下方 URL 并手动复制。",
         Style::default().fg(theme.gray),
     ))
     .alignment(Alignment::Center);
@@ -1259,10 +1259,10 @@ fn render_browser_status_arm(
 
     // Device also parses the user code from the verification URL.
     let (header, waiting_text, user_code) = match kind {
-        BrowserStatusKind::Command => (AUTH_HEADER, "Waiting for login to complete...", None),
+        BrowserStatusKind::Command => (AUTH_HEADER, "等待登录完成…", None),
         BrowserStatusKind::Device => (
             DEVICE_AUTH_HEADER,
-            "Waiting for approval...",
+            "等待批准…",
             auth_url.and_then(extract_user_code),
         ),
     };
@@ -1411,7 +1411,7 @@ fn render_welcome_authenticating(
             } else {
                 lines.push(
                     Line::from(Span::styled(
-                        "Waiting for auth URL...",
+                        "正在获取认证链接…",
                         Style::default().fg(theme.gray),
                     ))
                     .alignment(Alignment::Center),
@@ -1502,7 +1502,7 @@ fn render_welcome_authenticating(
             render_logo(logo_area, buf, theme, content_area.height);
 
             let msg = Line::from(Span::styled(
-                "Connecting...",
+                "连接中…",
                 Style::default().fg(theme.gray_bright),
             ))
             .alignment(Alignment::Center);
@@ -1686,7 +1686,7 @@ fn render_welcome_done(
     let cta = p
         .gate
         .and_then(|g| g.label.as_deref())
-        .unwrap_or("Upgrade Subscription");
+        .unwrap_or("升级订阅");
     let in_vscode_family = welcome_in_vscode_family();
     let (key_g, key_l, key_q) = (
         "ctrl+g",
@@ -1730,7 +1730,7 @@ fn render_welcome_done(
     let gate_menu;
     let owned_menu;
     let menu_items: &[(&str, &str)] = if !p.has_access {
-        gate_menu = [(key_g, cta), (key_l, "Logout"), (key_q, "Quit")];
+        gate_menu = [(key_g, cta), (key_l, "退出登录"), (key_q, "退出")];
         &gate_menu
     } else {
         let (key_w, key_s, key_q, key_i_with_x) = (
@@ -1750,13 +1750,13 @@ fn render_welcome_done(
             // so [x] sits at the very end of the row.
             items.push((key_i_with_x, "导入 Claude 设置"));
         }
-        items.push((key_w, "New worktree"));
+        items.push((key_w, "新建工作树"));
         items.push((key_s, "恢复会话"));
         // "更新日志" above Quit; no shortcut — opened by click (row or block).
         if show_changelog_action {
             items.push(("", "更新日志"));
         }
-        items.push((key_q, "Quit"));
+        items.push((key_q, "退出"));
         owned_menu = items;
         owned_menu.as_slice()
     };
@@ -1924,11 +1924,11 @@ fn render_welcome_done(
         .areas(layout.prompt);
         // Show the user's current tier + clickable refresh button above the gate message.
         let tier_label = p.subscription_tier.unwrap_or("Free");
-        let tier_prefix = format!("Tier: {tier_label}  ");
+        let tier_prefix = format!("套餐：{tier_label}  ");
         let refresh_text = "[Refresh]";
         let total_width = tier_prefix.len() + refresh_text.len();
         let tier_line = Line::from(vec![
-            Span::styled("Tier: ", Style::default().fg(theme.gray)),
+            Span::styled("套餐：", Style::default().fg(theme.gray)),
             Span::styled(
                 tier_label,
                 Style::default()
@@ -1962,7 +1962,7 @@ fn render_welcome_done(
         let gate_text = p
             .gate
             .map(|g| g.message.as_str())
-            .unwrap_or("SuperGrok subscription required");
+            .unwrap_or("需要 SuperGrok 订阅");
         let msg = Line::from(Span::styled(
             gate_text,
             Style::default().fg(theme.gray_bright),
@@ -2044,7 +2044,7 @@ fn render_welcome_done(
             let key_name = "ctrl+u";
             let line = Line::from(vec![
                 Span::styled(
-                    "Update: ",
+                    "更新： ",
                     Style::default()
                         .fg(theme.accent_user)
                         .add_modifier(Modifier::BOLD),
@@ -2089,7 +2089,7 @@ fn render_welcome_done(
             let accent_bold = accent.add_modifier(Modifier::BOLD);
             let tool = crate::app::foreign_tool_display_label(hint.tool);
             let line = Line::from(vec![
-                Span::styled("Coming from ", accent),
+                Span::styled("来自 ", accent),
                 Span::styled(tool, accent_bold),
                 Span::styled(format!("? Resume your session from {when} using "), accent),
                 Span::styled("ctrl+u", accent_bold),
@@ -2539,7 +2539,7 @@ fn build_masked_auth_token(input: &str, cursor_byte: usize) -> MaskedAuthToken {
 
 fn masked_auth_token_view(input: &str, cursor_byte: usize, width: usize) -> (String, usize) {
     if input.is_empty() {
-        return ("Paste your token here...".to_string(), 0);
+        return ("在此粘贴你的令牌…".to_string(), 0);
     }
     let masked = build_masked_auth_token(input, cursor_byte);
     let buffer =
@@ -2584,7 +2584,7 @@ mod tests {
     fn masked_auth_token_preserves_reveal_policy() {
         assert_eq!(
             masked_auth_token_view("", 0, 24),
-            ("Paste your token here...".to_string(), 0)
+            ("在此粘贴你的令牌…".to_string(), 0)
         );
         assert_eq!(build_masked_auth_token("12345678", 8).display, "12345678");
         assert_eq!(build_masked_auth_token("123456789", 9).display, "•••••6789");
@@ -2751,7 +2751,7 @@ mod tests {
             let mut params = render_params(&auth, &trust, None);
             params.foreign_resume_hint = Some(&hint);
             let text = render_done_text(&params);
-            assert!(text.contains(&format!("Coming from {label}?")), "{text}");
+            assert!(text.contains(&format!("来自 {label}?")), "{text}");
             assert!(text.contains("2m ago"), "{text}");
             assert!(text.contains("ctrl+u"), "{text}");
         }
@@ -2772,7 +2772,7 @@ mod tests {
 
         let text = render_done_text(&params);
         assert!(text.contains("v9.9.9 available"), "{text}");
-        assert!(!text.contains("Coming from Cursor?"), "{text}");
+        assert!(!text.contains("来自 Cursor?"), "{text}");
     }
 
     fn png() -> [u8; 8] {
@@ -3618,7 +3618,7 @@ if label == &"aaa"),
 
         let text = buffer_text(&buf);
         assert!(
-            text.contains("Approve in your browser"),
+            text.contains("请在浏览器中批准"),
             "device arm must show the approval header, got:\n{text}"
         );
         // Device code shown for the browser-match check (anti-phishing).
@@ -3627,7 +3627,7 @@ if label == &"aaa"),
             "device arm must show the device code, got:\n{text}"
         );
         assert!(
-            text.contains("Make sure your browser shows this code"),
+            text.contains("请确认浏览器显示的代码"),
             "device arm must show the code caption, got:\n{text}"
         );
         // Copy affordance (click-to-copy line) is present.
@@ -3637,7 +3637,7 @@ if label == &"aaa"),
         );
         // No manual-paste affordance in device mode.
         assert!(
-            !text.contains("Paste your token"),
+            !text.contains("在此粘贴你的令牌"),
             "device arm must NOT render the token paste box, got:\n{text}"
         );
         // Copy + fallback links are clickable.
@@ -3778,21 +3778,21 @@ if label == &"aaa"),
 
         let text = buffer_text(&buf);
         assert!(
-            text.contains("A browser window will open"),
+            text.contains("将打开浏览器窗口"),
             "command arm must show the auth header, got:\n{text}"
         );
         assert!(
-            text.contains("Waiting for login to complete"),
+            text.contains("等待登录完成"),
             "command arm must show the waiting status, got:\n{text}"
         );
         // No device code — that's device-flow only.
         assert!(
-            !text.contains("Make sure your browser shows this code"),
+            !text.contains("请确认浏览器显示的代码"),
             "command arm must NOT show the device-code caption, got:\n{text}"
         );
         // No manual-paste affordance in command mode.
         assert!(
-            !text.contains("Paste your token"),
+            !text.contains("在此粘贴你的令牌"),
             "command arm must NOT render the token paste box, got:\n{text}"
         );
         // Copy + fallback links are clickable.

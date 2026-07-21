@@ -489,7 +489,7 @@ fn paint_peek_config_badge(
         });
     } else if panel.auto_approve {
         flags.push(PromptFlag {
-            text: "always-approve",
+            text: "始终批准",
             color: None,
             bold: false,
         });
@@ -1382,8 +1382,8 @@ mod tests {
             "model on bottom border: {bottom:?}"
         );
         assert!(
-            bottom.contains("always-approve"),
-            "always-approve flag: {bottom:?}"
+            bottom.contains("始终批准"),
+            "始终批准 flag: {bottom:?}"
         );
 
         // Pending-question (approval) mode → badge still painted.
@@ -1409,7 +1409,7 @@ mod tests {
         plain.auto_approve = false;
         let plain_bottom = badge_row(&plain, 6);
         assert!(
-            !plain_bottom.contains("always-approve"),
+            !plain_bottom.contains("始终批准"),
             "no flag without yolo: {plain_bottom:?}",
         );
 
@@ -1436,7 +1436,7 @@ mod tests {
             "plan flag must show in plan+yolo: {plan_yolo_bottom:?}",
         );
         assert!(
-            !plan_yolo_bottom.contains("always-approve") && !plan_yolo_bottom.contains("auto"),
+            !plan_yolo_bottom.contains("始终批准") && !plan_yolo_bottom.contains("auto"),
             "plan suppresses always-approve and auto: {plan_yolo_bottom:?}",
         );
 
@@ -1444,7 +1444,7 @@ mod tests {
         planp.plan_mode = false;
         let yolo_bottom = badge_row(&planp, 6);
         assert!(
-            yolo_bottom.contains("always-approve") && !yolo_bottom.contains("auto"),
+            yolo_bottom.contains("始终批准") && !yolo_bottom.contains("auto"),
             "always-approve shows once plan is off and wins over auto: {yolo_bottom:?}",
         );
     }

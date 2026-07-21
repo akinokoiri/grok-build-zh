@@ -33,7 +33,7 @@ fn tip_line(tip: &str) -> Line<'_> {
     let theme = Theme::current();
     Line::from(vec![
         Span::styled(
-            "Tip: ",
+            "提示：",
             Style::default().fg(theme.gray).add_modifier(Modifier::BOLD),
         ),
         Span::styled(tip, Style::default().fg(theme.gray)),
@@ -59,7 +59,7 @@ pub fn render_tip(area: Rect, buf: &mut Buffer, tip: &str) {
 /// Modifiers MUST be reset here: ratatui's `Cell::set_style` only *merges*
 /// modifiers (`insert(add)` / `remove(sub)`), so a later paint whose style
 /// carries no `sub_modifier` inherits whatever BOLD/ITALIC/… an earlier
-/// same-frame paint left behind (e.g. the welcome tip's bold `Tip: ` prefix
+/// same-frame paint left behind (e.g. the welcome tip's bold `提示：` prefix
 /// bleeding into the ephemeral tip as "**Queue**d · Enter to send now").
 fn clear_rect(buf: &mut Buffer, area: Rect, color: Color) {
     for row in 0..area.height {
@@ -125,7 +125,7 @@ mod tests {
     }
 
     /// Regression: a bold underpaint in the banner rect (e.g. the welcome
-    /// tip's `Tip: ` prefix painted the same frame) must not bleed BOLD into
+    /// tip's `提示：` prefix painted the same frame) must not bleed BOLD into
     /// the ephemeral tip. `Cell::set_style` merges modifiers, so the clear
     /// pass has to reset them explicitly — otherwise `Queued · Enter …`
     /// rendered as bold `Queue` + regular `d` (5 leaked bold cells).

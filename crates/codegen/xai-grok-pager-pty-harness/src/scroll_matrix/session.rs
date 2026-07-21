@@ -53,7 +53,7 @@ pub const WHEEL_COL: u16 = 39;
 
 /// Welcome-screen sentinel: the menu label `Quit` (case-sensitive, so the
 /// lowercase authenticating hint can't match early).
-const WELCOME_SCREEN_SENTINEL: &str = "Quit";
+const WELCOME_SCREEN_SENTINEL: &str = "退出";
 const WELCOME_TIMEOUT: Duration = Duration::from_secs(20);
 /// Prompt submitted to the agent — short enough never to wrap.
 const PROMPT: &str = "go";

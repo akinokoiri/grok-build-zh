@@ -21,7 +21,7 @@ use xai_grok_pager_pty_harness::{PtyHarness, pager_binary};
 const ROWS: u16 = 40;
 const COLS: u16 = 120;
 const WELCOME_TIMEOUT: Duration = Duration::from_secs(25);
-const WELCOME_SCREEN_SENTINEL: &str = "Quit";
+const WELCOME_SCREEN_SENTINEL: &str = "退出";
 
 /// Back-tab / Shift+Tab (CSI Z) — pager binds this to CycleMode.
 const SHIFT_TAB: &[u8] = b"\x1b[Z";
