@@ -195,7 +195,7 @@ impl WebSearchToolCallBlock {
         let shown = unique.len().min(MAX_INLINE_SOURCES);
         for (i, domain) in unique.iter().take(shown).enumerate() {
             if i > 0 {
-                spans.push(Span::styled(", label_style));
+                spans.push(Span::styled(", ", label_style));
             }
             spans.push(Span::styled(domain.clone(), value_style));
         }

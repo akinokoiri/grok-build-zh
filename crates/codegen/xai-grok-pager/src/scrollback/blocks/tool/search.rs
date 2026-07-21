@@ -387,7 +387,7 @@ impl SearchToolCallBlock {
         let mut spans: Vec<Span<'static>> = vec![Span::styled(indent.to_string(), label_style)];
         for (i, part) in parts.into_iter().enumerate() {
             if i > 0 {
-                spans.push(Span::styled(", label_style));
+                spans.push(Span::styled(", ", label_style));
             }
             spans.extend(part);
         }
