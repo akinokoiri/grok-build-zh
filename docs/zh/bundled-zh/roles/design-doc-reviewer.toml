@@ -1,0 +1,5 @@
+# Design doc reviewer role — read-write with high reasoning, fork context
+description = "评审系统设计文档的完整性、可行性与技术合理性。"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

@@ -1,0 +1,4 @@
+# Explore role — fast, read-only codebase exploration
+description = "快速只读代码库探索，支持并行搜索。"
+default_capability_mode = "read-only"
+reasoning_effort = "medium"

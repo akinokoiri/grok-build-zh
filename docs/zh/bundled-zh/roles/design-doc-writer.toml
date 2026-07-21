@@ -1,0 +1,5 @@
+# Design doc writer role — read-write with high reasoning, fork context
+description = "撰写结构化设计文档（RFC、ADR 等）的系统架构角色。"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

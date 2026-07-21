@@ -1,0 +1,5 @@
+# Security auditor role — full access to explore code and write findings, high reasoning
+description = "审查代码漏洞并输出结构化发现的安全审计角色。"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

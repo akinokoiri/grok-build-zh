@@ -1,0 +1,5 @@
+# Implementer role — full access, reads review notes, implements fixes
+description = "阅读审查意见并落实修复的实现角色。"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

@@ -110,7 +110,7 @@ pub fn render_dashboard(
     roster: &[crate::app::roster::RosterEntry],
     // Whether the local on-disk session roster is still being fetched
     // (non-leader mode). When true and there's nothing to show yet, the
-    // empty body reads "Loading sessions…" instead of the "no agents
+    // empty body reads "正在加载会话…" instead of the "no agents
     // yet" hint so a fresh open doesn't flash an empty-looking screen.
     dashboard_sessions_loading: bool,
     // Promo upgrade CTA to paint in the header after the location label
@@ -342,7 +342,7 @@ pub fn render_dashboard(
                     .get(parent)
                     .is_some_and(|p| p.subagent_views.contains_key(child_session_id));
                 if parent_ok && !loaded {
-                    (Some("Subagent not loaded"), false)
+                    (Some("子代理未加载"), false)
                 } else {
                     (None, loaded)
                 }
@@ -608,14 +608,13 @@ fn render_dashboard_banner(
             needs_input += 1;
         }
     }
-    let agent_word = if total == 1 { "agent" } else { "agents" };
-    let mut title_parts: Vec<String> = vec!["Dashboard".to_string()];
-    title_parts.push(format!("{total} {agent_word}"));
+    let mut title_parts: Vec<String> = vec!["仪表盘".to_string()];
+    title_parts.push(format!("{total} 个代理"));
     if working > 0 {
-        title_parts.push(format!("{working} working"));
+        title_parts.push(format!("{working} 工作中"));
     }
     if needs_input > 0 {
-        title_parts.push(format!("{needs_input} awaiting"));
+        title_parts.push(format!("{needs_input} 等待输入"));
     }
     let title = format!(" {} ", title_parts.join(" · "));
 
@@ -1027,7 +1026,7 @@ fn render_location_picker(
             id: 0,
         },
         Shortcut {
-            label: "Tab complete",
+            label: "Tab 补全",
             clickable: false,
             id: 1,
         },
@@ -1679,7 +1678,7 @@ fn render_rows(
                 let selected = state.selected_section == Some(key);
                 let hovered = state.hovered_section == Some(key);
                 render_group_header(
-                    buf, line_rect, theme, "Pinned", *count, collapsed, selected, hovered,
+                    buf, line_rect, theme, "已固定", *count, collapsed, selected, hovered,
                 );
                 state
                     .section_rects
@@ -2411,7 +2410,7 @@ fn render_narrow_rows(
                 let selected = state.selected_section == Some(key);
                 let hovered = state.hovered_section == Some(key);
                 render_group_header_narrow(
-                    buf, line_rect, theme, "Pinned", *count, collapsed, selected, hovered,
+                    buf, line_rect, theme, "已固定", *count, collapsed, selected, hovered,
                 );
                 state
                     .section_rects
@@ -2545,9 +2544,9 @@ fn render_no_match(buf: &mut Buffer, area: Rect, theme: &Theme, filter: &Filter)
     }
     let hint = match filter {
         Filter::None => "No matching rows.".to_string(),
-        Filter::Agent(n) => format!("No agents match `a:{n}` — press Esc to clear the filter."),
+        Filter::Agent(n) => format!("无匹配 `a:{n}` 的代理 — 按 Esc 清除筛选。"),
         Filter::State(s) => format!(
-            "No agents in state `{}` — press Esc to clear the filter.",
+            "状态 `{}` 下无代理 — 按 Esc 清除筛选。",
             s.group_label()
         ),
         Filter::Substring(n) => format!("No rows match `{n}` — press Esc to clear the filter."),
@@ -2575,9 +2574,9 @@ fn render_empty_state(buf: &mut Buffer, area: Rect, theme: &Theme, loading: bool
     // session roster is still being fetched we show a loading hint so a
     // fresh open doesn't flash the "no agents" copy before rows land.
     let line = if loading {
-        "Loading sessions…"
+        "正在加载会话…"
     } else {
-        "No agents yet, type a prompt to start one."
+        "暂无代理，输入提示以启动一个。"
     };
     let truncated = truncate_str(line, area.width.saturating_sub(2) as usize);
     // See `render_no_match` for the precedence rationale.
@@ -4287,7 +4286,7 @@ mod tests {
         render_empty_state(&mut buf, Rect::new(0, 0, 80, 10), &theme, false);
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("No agents yet, type a prompt to start one."),
+            content.contains("暂无代理，输入提示以启动一个。"),
             "expected empty-state hint, got: {content:?}"
         );
     }
@@ -4332,7 +4331,7 @@ mod tests {
             "roster-only working session must paint when local agents are empty, got: {content:?}"
         );
         assert!(
-            !content.contains("No agents yet"),
+            !content.contains("暂无代理"),
             "must not show empty-state while roster rows exist, got: {content:?}"
         );
     }
@@ -4350,7 +4349,7 @@ mod tests {
             "expected loading hint while sessions load, got: {content:?}"
         );
         assert!(
-            !content.contains("No agents yet"),
+            !content.contains("暂无代理"),
             "loading state must not show the empty-state copy, got: {content:?}"
         );
     }
@@ -4364,7 +4363,7 @@ mod tests {
         render_empty_state(&mut buf, Rect::new(0, 0, 80, 1), &theme, false);
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("No agents yet"),
+            content.contains("暂无代理"),
             "expected empty-state hint on 1-row area, got: {content:?}"
         );
     }

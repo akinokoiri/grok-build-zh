@@ -150,3 +150,11 @@ A: 请自行阅读上游与本仓库源码及官方安全说明；构建与运�
 
 **Q: Windows？**  
 A: 请使用 WSL2，或在 Linux/macOS 上安装。暂无原生 Windows 预编译包。
+
+---
+
+## 下一步
+
+- 使用教程：[USAGE.md](USAGE.md)
+- 内置人设中文描述：[bundled-zh/README.md](bundled-zh/README.md)
+- 翻译贡献：[TRANSLATING.md](TRANSLATING.md)

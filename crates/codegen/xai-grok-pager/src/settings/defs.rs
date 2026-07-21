@@ -41,7 +41,7 @@ pub(crate) const MAX_THOUGHTS_WIDTH_KEY: &str = "max_thoughts_width";
 const THEME_CHOICES: &[EnumChoice] = &[
     EnumChoice {
         canonical: "auto",
-        display: "Auto",
+        display: "自动",
         description: "跟随系统深色/浅色外观。",
     },
     EnumChoice {
@@ -133,12 +133,12 @@ const PERMISSION_MODE_CHOICES: &[EnumChoice] = &[
 const CODING_DATA_SHARING_CHOICES: &[EnumChoice] = &[
     EnumChoice {
         canonical: "opt-in",
-        display: "Opt in",
+        display: "加入",
         description: "允许 SpaceXAI 保留编程会话数据用于模型训练与产品改进。",
     },
     EnumChoice {
         canonical: "opt-out",
-        display: "Opt out",
+        display: "退出",
         description: "不保留编程会话数据用于训练。不会关闭产品分析。",
     },
 ];
@@ -205,12 +205,12 @@ const DEFAULT_SELECTED_PERMISSION_CHOICES: &[EnumChoice] = &[
 const PLAN_MODE_CHOICES: &[EnumChoice] = &[
     EnumChoice {
         canonical: "off",
-        display: "Off",
+        display: "关",
         description: "代理直接运行工具并编辑文件（默认）。",
     },
     EnumChoice {
         canonical: "on",
-        display: "On",
+        display: "开",
         description: "代理先总结计划，获批后再运行工具。",
     },
 ];
@@ -226,17 +226,17 @@ const PLAN_MODE_CHOICES: &[EnumChoice] = &[
 const RENDER_MERMAID_CHOICES: &[EnumChoice] = &[
     EnumChoice {
         canonical: "auto",
-        display: "Auto",
+        display: "自动",
         description: "以可点击行展示图表，可打开/复制渲染图。",
     },
     EnumChoice {
         canonical: "on",
-        display: "On",
+        display: "开",
         description: "与 auto 相同：始终显示可点击操作行。",
     },
     EnumChoice {
         canonical: "off",
-        display: "Off",
+        display: "关",
         description: "始终以代码块显示 Mermaid 源码。",
     },
 ];
@@ -246,17 +246,17 @@ const RENDER_MERMAID_CHOICES: &[EnumChoice] = &[
 const SCROLL_MODE_CHOICES: &[EnumChoice] = &[
     EnumChoice {
         canonical: ScrollMode::Auto.as_canonical(),
-        display: "Auto-detect",
+        display: "自动检测",
         description: "根据事件时序自动区分滚轮与触控板（默认）。",
     },
     EnumChoice {
         canonical: ScrollMode::Wheel.as_canonical(),
-        display: "Mouse wheel",
+        display: "鼠标滚轮",
         description: "始终按滚轮刻度滚动（每次固定行数）。",
     },
     EnumChoice {
         canonical: ScrollMode::Trackpad.as_canonical(),
-        display: "Trackpad",
+        display: "触控板",
         description: "始终按触控板方式滚动（小数累计）。",
     },
 ];
@@ -264,17 +264,17 @@ const SCROLL_MODE_CHOICES: &[EnumChoice] = &[
 const TEXT_SELECTION_CHOICES: &[EnumChoice] = &[
     EnumChoice {
         canonical: TextSelection::Flash.as_canonical(),
-        display: "Flash after copy",
+        display: "复制后闪烁",
         description: "鼠标松开后短暂高亮再清除。双击切换折叠。默认。",
     },
     EnumChoice {
         canonical: TextSelection::Hold.as_canonical(),
-        display: "Hold until dismissed",
+        display: "保持到关闭",
         description: "选区保持到 Esc、点击或滚动。双击切换折叠。",
     },
     EnumChoice {
         canonical: TextSelection::WordSelect.as_canonical(),
-        display: "Word select (terminal-like)",
+        display: "选词（类终端）",
         description: "双击选词并复制，三击选行；选区保持到关闭。",
     },
 ];
@@ -295,7 +295,7 @@ const HUNK_TRACKER_MODE_CHOICES: &[EnumChoice] = &[
     },
     EnumChoice {
         canonical: "off",
-        display: "Off",
+        display: "关",
         description: "完全关闭变更块跟踪，并关闭 LOC 统计。",
     },
 ];

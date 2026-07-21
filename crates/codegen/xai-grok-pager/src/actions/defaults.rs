@@ -687,7 +687,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
         },
         ActionDef {
             id: ActionId::BashMode,
-            label: "Shell",
+            label: "Shell 模式",
             description: "Shell 模式（空输入时键入 !）",
             default_key: key!('!'),
             alt_keys: vec![],

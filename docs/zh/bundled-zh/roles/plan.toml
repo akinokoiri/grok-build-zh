@@ -1,0 +1,4 @@
+# Plan role — read-only architect with high reasoning
+description = "设计实现方案并识别关键文件的软件架构角色。"
+default_capability_mode = "read-only"
+reasoning_effort = "high"

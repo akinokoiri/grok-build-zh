@@ -1,0 +1,4 @@
+# Quick search role
+description = "快速只读检索，适合短查询。"
+default_capability_mode = "read-only"
+reasoning_effort = "low"
