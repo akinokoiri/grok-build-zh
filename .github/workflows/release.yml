@@ -217,52 +217,59 @@ jobs:
             git push origin "refs/tags/$TAG" --force
           fi
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          name: Grok Build 汉化版 ${{ steps.tag.outputs.name }}
-          prerelease: true
-          draft: false
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          body: |
-            ## 社区汉化构建（非官方）
-
-            基于 [xai-org/grok-build](https://github.com/xai-org/grok-build)。**与 SpaceXAI / xAI 无官方隶属关系。**
-
-            ### 一键安装（推荐）
-
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
-            ```
-
-            指定本版本：
-
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- ${{ steps.tag.outputs.name }}
-            ```
-
-            安装完成后执行：
-
-            ```bash
-            grok-zh
-            ```
-
-            ### 手动安装
-
-            1. 下载下方对应平台的 `grok-zh-*.tar.gz`
-            2. 解压后将 `grok-zh` 放到 `~/.local/bin/`
-            3. 确保 `~/.local/bin` 在 `PATH` 中
-
-            | 平台 | 资产名 |
-            |------|--------|
-            | macOS Apple Silicon | `grok-zh-aarch64-apple-darwin.tar.gz` |
-            | macOS Intel | `grok-zh-x86_64-apple-darwin.tar.gz` |
-            | Linux x64 | `grok-zh-x86_64-unknown-linux-gnu.tar.gz` |
-            | Linux ARM64 | `grok-zh-aarch64-unknown-linux-gnu.tar.gz` |
-
-            官方英文版请使用：`curl -fsSL https://x.ai/cli/install.sh | bash`
-          files: release-assets/*
+      - name: Create / update GitHub Release and upload assets
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          NOTES="$(cat <<EOF
+          ## 社区汉化构建（非官方）
+
+          基于 [xai-org/grok-build](https://github.com/xai-org/grok-build)。**与 SpaceXAI / xAI 无官方隶属关系。**
+
+          ### 一键安装（推荐）
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+          \`\`\`
+
+          指定本版本：
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- ${TAG}
+          \`\`\`
+
+          安装完成后执行：\`grok-zh\`
+
+          ### 手动安装
+
+          下载下方对应平台的 \`grok-zh-*.tar.gz\`，解压后将 \`grok-zh\` 放到 \`~/.local/bin/\` 并加入 PATH。
+
+          | 平台 | 资产名 |
+          |------|--------|
+          | macOS Apple Silicon | \`grok-zh-aarch64-apple-darwin.tar.gz\` |
+          | macOS Intel | \`grok-zh-x86_64-apple-darwin.tar.gz\` |
+          | Linux x64 | \`grok-zh-x86_64-unknown-linux-gnu.tar.gz\` |
+          | Linux ARM64 | \`grok-zh-aarch64-unknown-linux-gnu.tar.gz\` |
+
+          官方英文版请使用：\`curl -fsSL https://x.ai/cli/install.sh | bash\`
+          EOF
+          )"
+          # strip leading spaces from heredoc indent
+          NOTES="$(printf '%s\n' "$NOTES" | sed 's/^          //')"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — updating notes & assets"
+            gh release edit "$TAG" --title "Grok Build 汉化版 ${TAG}" --prerelease --notes "$NOTES" || true
+          else
+            gh release create "$TAG" \
+              --title "Grok Build 汉化版 ${TAG}" \
+              --prerelease \
+              --notes "$NOTES"
+          fi
+
+          # --clobber so re-runs / pre-seeded assets can be replaced
+          gh release upload "$TAG" release-assets/* --clobber
+          gh release view "$TAG"
