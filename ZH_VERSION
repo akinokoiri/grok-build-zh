@@ -1,0 +1,4 @@
+grok-build-zh
+branch: zh-CN
+phase: P0-settings-and-permissions
+upstream: xai-org/grok-build

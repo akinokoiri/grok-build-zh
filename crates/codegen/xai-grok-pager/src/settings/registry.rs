@@ -60,14 +60,14 @@ impl SettingCategory {
     /// Section-header label as rendered in the modal.
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Appearance => "Appearance",
-            Self::Mouse => "Mouse",
-            Self::Editor => "Editor & Input",
-            Self::Agent => "Agent & Approval",
-            Self::Privacy => "Privacy",
-            Self::Models => "Models",
-            Self::Session => "Session",
-            Self::Advanced => "Advanced",
+            Self::Appearance => "外观",
+            Self::Mouse => "鼠标",
+            Self::Editor => "编辑与输入",
+            Self::Agent => "代理与授权",
+            Self::Privacy => "隐私",
+            Self::Models => "模型",
+            Self::Session => "会话",
+            Self::Advanced => "高级",
         }
     }
 }

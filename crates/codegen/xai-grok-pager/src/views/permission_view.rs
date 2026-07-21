@@ -1838,13 +1838,13 @@ mod tests {
 
     fn allow_always_mcp_option(tool: &str, server: Option<&str>) -> acp::PermissionOption {
         let perm = McpToolPermission {
-            prompt_prefix: "Always allow:".to_owned(),
+            prompt_prefix: "始终允许：".to_owned(),
             tool_name: tool.to_owned(),
             server_prefix: server.map(|s| s.to_owned()),
         };
         acp::PermissionOption::new(
             acp::PermissionOptionId::new(Arc::from("allow-always-mcp")),
-            format!("Always allow: {}", tool),
+            format!("始终允许：{}", tool),
             acp::PermissionOptionKind::AllowAlways,
         )
         .meta(
@@ -2000,7 +2000,7 @@ mod tests {
         let opt = allow_always_mcp_option("linear__list", Some("linear"));
         let scope = mcp_state("linear__list", Some("linear"), McpScope::Server);
         let (prefix, scope_text) = dynamic_option_label(&opt, None, Some(&scope));
-        assert_eq!(prefix, "Always allow: ");
+        assert_eq!(prefix, "始终允许：");
         assert_eq!(scope_text.as_deref(), Some("all tools from Linear"));
     }
 
@@ -2011,7 +2011,7 @@ mod tests {
         let opt = allow_always_mcp_option("linear__list_issues", Some("linear"));
         let scope = mcp_state("linear__list_issues", Some("linear"), McpScope::Tool);
         let (prefix, scope_text) = dynamic_option_label(&opt, None, Some(&scope));
-        assert_eq!(prefix, "Always allow: ");
+        assert_eq!(prefix, "始终允许：");
         assert_eq!(scope_text.as_deref(), Some("(Linear) List Issues"));
     }
 
@@ -2365,7 +2365,7 @@ mod tests {
         let opt = allow_always_mcp_option("linear__list", Some("linear"));
         let scope = mcp_state("linear__list", Some("linear"), McpScope::Tool);
         let (prefix, scope_text) = dynamic_option_label(&opt, None, Some(&scope));
-        assert_eq!(prefix, "Always allow: ");
+        assert_eq!(prefix, "始终允许：");
         assert_eq!(scope_text.as_deref(), Some("(Linear) List"));
     }
 
@@ -2374,7 +2374,7 @@ mod tests {
         let opt = allow_always_mcp_option("linear__list", Some("linear"));
         let scope = mcp_state("linear__list", Some("linear"), McpScope::Server);
         let (prefix, scope_text) = dynamic_option_label(&opt, None, Some(&scope));
-        assert_eq!(prefix, "Always allow: ");
+        assert_eq!(prefix, "始终允许：");
         assert_eq!(scope_text.as_deref(), Some("all tools from Linear"));
     }
 
@@ -2394,11 +2394,11 @@ mod tests {
         // When mcp_scope is None but selected_words is Some and the meta
         // is BashCommandPermission, the bash branch still works.
         let bash_perm = BashCommandPermission {
-            prompt_prefix: "Always allow:".to_owned(),
+            prompt_prefix: "始终允许：".to_owned(),
         };
         let opt = acp::PermissionOption::new(
             acp::PermissionOptionId::new(Arc::from("allow-always-command")),
-            "Always allow: cargo test".to_owned(),
+            "始终允许：cargo test".to_owned(),
             acp::PermissionOptionKind::AllowAlways,
         )
         .meta(
@@ -2407,7 +2407,7 @@ mod tests {
                 .and_then(|v| v.as_object().cloned()),
         );
         let (prefix, scope_text) = dynamic_option_label(&opt, Some("cargo test"), None);
-        assert_eq!(prefix, "Always allow: ");
+        assert_eq!(prefix, "始终允许：");
         assert_eq!(scope_text.as_deref(), Some("cargo test"));
     }
 
