@@ -35,7 +35,7 @@ impl AgentsTab {
     pub fn label(self) -> &'static str {
         match self {
             Self::Agents => "代理",
-            Self::Personas => "Personas",
+            Self::Personas => "人设",
         }
     }
     /// Next tab (wraps around).
@@ -135,8 +135,8 @@ pub enum ConfigFileScope {
 impl ConfigFileScope {
     pub fn label(self) -> &'static str {
         match self {
-            Self::User => "user",
-            Self::Project => "project",
+            Self::User => "用户",
+            Self::Project => "项目",
         }
     }
     pub fn toggle(self) -> Self {
@@ -685,7 +685,7 @@ pub fn delete_persona_file(path: &Path) -> Result<(), String> {
             c.components()
                 .any(|comp| matches!(comp, std::path::Component::Normal(s) if s == "内置"))
         }) {
-            return Err("Cannot delete bundled personas".to_string());
+            return Err("无法删除内置人设".to_string());
         }
         return Err("Persona file is not in a known personas directory".to_string());
     }
@@ -777,15 +777,15 @@ pub fn toggle_agent(name: &str, enabled: bool) -> Result<(), String> {
 pub fn format_agent_detail(entry: &AgentListEntry) -> Vec<String> {
     let def = &entry.definition;
     let mut lines = Vec::new();
-    lines.push(format!("  Model: {}", def.model));
+    lines.push(format!("  模型：{}", def.model));
     let mode_label = match def.prompt_mode {
-        xai_grok_agent::config::PromptMode::Extend => "extend",
-        xai_grok_agent::config::PromptMode::Full => "full",
+        xai_grok_agent::config::PromptMode::Extend => "扩展",
+        xai_grok_agent::config::PromptMode::Full => "完整",
     };
-    lines.push(format!("  Prompt mode: {mode_label}"));
+    lines.push(format!("  提示模式：{mode_label}"));
     let tools = &def.tool_config.tools;
     if tools.is_empty() {
-        lines.push("  Tools: (none)".to_string());
+        lines.push("  工具：（无）".to_string());
     } else {
         lines.push(format!("  Tools ({}): ", tools.len()));
         for tool in tools {
@@ -798,26 +798,26 @@ pub fn format_agent_detail(entry: &AgentListEntry) -> Vec<String> {
         }
     }
     if !def.skills.is_empty() {
-        lines.push(format!("  Skills: {}", def.skills.join(", ")));
+        lines.push(format!("  技能：{}", def.skills.join(", ")));
     }
     if let Some(ref path) = entry.source_path {
-        lines.push(format!("  Source: {}", path.display()));
+        lines.push(format!("  来源：{}", path.display()));
     }
-    lines.push(format!("  Scope: {}", entry.scope.label()));
+    lines.push(format!("  范围：{}", entry.scope.label()));
     if let Some(ref body) = def.prompt_body {
         let rendered = render_prompt_body(body, &def.tool_config);
         let char_count = rendered.chars().count();
         let truncated: String = rendered.chars().take(120).collect::<String>();
         if char_count > 120 {
-            lines.push(format!("  Prompt extension: {truncated}..."));
-            lines.push("  (Enter to view full)".to_string());
+            lines.push(format!("  提示扩展：{truncated}..."));
+            lines.push("  （Enter 查看全文）".to_string());
         } else {
-            lines.push(format!("  Prompt extension: {truncated}"));
+            lines.push(format!("  提示扩展：{truncated}"));
         }
     } else if entry.source_path.is_some() {
-        lines.push("  Prompt extension: (in file — Enter to view)".to_string());
+        lines.push("  提示扩展：（在文件中 — Enter 查看）".to_string());
     } else {
-        lines.push("  Prompt extension: (none)".to_string());
+        lines.push("  提示扩展：（无）".to_string());
     }
     lines
 }
@@ -991,10 +991,10 @@ fn modal_sizing(compact: bool) -> ModalSizing {
 }
 fn scope_badge(scope: AgentScope, theme: &Theme) -> (String, Style) {
     let label = match scope {
-        AgentScope::BuiltIn => " built-in ",
-        AgentScope::Project => " project ",
-        AgentScope::User => " user ",
-        AgentScope::Bundled => " bundled ",
+        AgentScope::BuiltIn => " 内置 ",
+        AgentScope::Project => " 项目 ",
+        AgentScope::User => " 用户 ",
+        AgentScope::Bundled => " 内置 ",
     };
     let fg = match scope {
         AgentScope::BuiltIn => theme.accent_assistant,
@@ -1069,12 +1069,12 @@ fn build_agents_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a>>
             id: 0,
         },
         Shortcut {
-            label: "/ search",
+            label: "/ 搜索",
             clickable: false,
             id: 0,
         },
         Shortcut {
-            label: "t toggle",
+            label: "t 切换",
             clickable: false,
             id: 0,
         },
@@ -1084,7 +1084,7 @@ fn build_agents_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a>>
             id: 0,
         },
         Shortcut {
-            label: "Tab switch tab",
+            label: "Tab 切换标签",
             clickable: false,
             id: 0,
         },
@@ -1102,7 +1102,7 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
     if state.persona_input.is_some() {
         vec![
             Shortcut {
-                label: "Tab switch field",
+                label: "Tab 切换字段",
                 clickable: false,
                 id: 0,
             },
@@ -1153,7 +1153,7 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
                 id: 0,
             },
             Shortcut {
-                label: "/ search",
+                label: "/ 搜索",
                 clickable: false,
                 id: 0,
             },
@@ -1168,7 +1168,7 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
                 id: 0,
             },
             Shortcut {
-                label: "Tab switch tab",
+                label: "Tab 切换标签",
                 clickable: false,
                 id: 0,
             },
@@ -1264,9 +1264,9 @@ fn render_agents_tab(
     let filtered = state.filtered_indices();
     if filtered.is_empty() {
         let msg = if state.search_query().is_empty() {
-            "No agents found"
+            "未找到代理"
         } else {
-            "No matching agents"
+            "无匹配代理"
         };
         buf.set_string(content_area.x, y, msg, Style::default().fg(theme.gray_dim));
         return;
@@ -1333,10 +1333,10 @@ fn render_agents_tab(
         match &rows[ri] {
             FlatRow::ScopeHeader(scope) => {
                 let label = match scope {
-                    AgentScope::BuiltIn => "\u{2500}\u{2500} Built-in \u{2500}\u{2500}",
-                    AgentScope::Project => "\u{2500}\u{2500} Project \u{2500}\u{2500}",
-                    AgentScope::User => "\u{2500}\u{2500} User \u{2500}\u{2500}",
-                    AgentScope::Bundled => "\u{2500}\u{2500} Bundled \u{2500}\u{2500}",
+                    AgentScope::BuiltIn => "\u{2500}\u{2500} 内置 \u{2500}\u{2500}",
+                    AgentScope::Project => "\u{2500}\u{2500} 项目 \u{2500}\u{2500}",
+                    AgentScope::User => "\u{2500}\u{2500} 用户 \u{2500}\u{2500}",
+                    AgentScope::Bundled => "\u{2500}\u{2500} 内置包 \u{2500}\u{2500}",
                 };
                 let style = Style::default()
                     .fg(theme.gray_dim)
@@ -1515,11 +1515,11 @@ fn render_personas_tab(
     if let Some(ref msg) = state.message {
         y = render_modal_message_line(buf, content_area.x, y, w, msg, theme);
     }
-    let blurb = "Personas shape subagent behavior via the persona parameter on spawn_subagent.";
+    let blurb = "人设通过 spawn_subagent 的 persona 参数塑造子代理行为。";
     let blurb_style = Style::default().fg(theme.gray_dim);
     buf.set_string(content_area.x, y, blurb, blurb_style);
     y += 1;
-    let blurb2 = "Used by skills (e.g. /implement) and by the model when spawning subagents.";
+    let blurb2 = "技能（如 /implement）与模型在派发子代理时会使用人设。";
     buf.set_string(content_area.x, y, blurb2, blurb_style);
     y += 2;
     if state.search_active || !state.search_query().is_empty() {
@@ -1540,9 +1540,9 @@ fn render_personas_tab(
     let filtered = state.filtered_persona_indices();
     if filtered.is_empty() {
         let msg = if state.personas.is_empty() {
-            "No personas available"
+            "暂无人设"
         } else {
-            "No matching personas"
+            "无匹配人设"
         };
         buf.set_string(content_area.x, y, msg, Style::default().fg(theme.gray_dim));
         return;
@@ -1567,16 +1567,16 @@ fn render_personas_tab(
             if persona.has_inputs || persona.has_outputs {
                 let mut tags = Vec::new();
                 if persona.has_inputs {
-                    tags.push("accepts structured inputs");
+                    tags.push("接受结构化输入");
                 }
                 if persona.has_outputs {
-                    tags.push("produces structured outputs");
+                    tags.push("产生结构化输出");
                 }
                 rows.push(PersonaFlatRow::Tags(idx, tags.join(" \u{00b7} ")));
             }
             rows.push(PersonaFlatRow::Hint(
                 idx,
-                "Enter to view full definition".to_string(),
+                "Enter 查看完整定义".to_string(),
             ));
         }
     }
@@ -2263,7 +2263,7 @@ fn handle_personas_tab_key(state: &mut AgentsModalState, key: &KeyEvent) -> Agen
             if let Some(persona) = state.personas.get(state.persona_selected) {
                 if !persona_is_deletable(persona) {
                     state.message =
-                        Some(AgentsModalMessage::error("Cannot delete bundled personas"));
+                        Some(AgentsModalMessage::error("无法删除内置人设"));
                     return AgentsModalOutcome::Changed;
                 }
                 if let Some(ref path_str) = persona.source_path {
@@ -2974,8 +2974,8 @@ mod tests {
         assert!(
             build_personas_tab_shortcuts(&s)
                 .iter()
-                .any(|sc| sc.label == "/ search"),
-            "Personas browse footer must advertise `/ search`"
+                .any(|sc| sc.label == "/ 搜索"),
+            "Personas browse footer must advertise `/ 搜索`"
         );
         crate::appearance::cache::set_vim_mode(false);
     }
