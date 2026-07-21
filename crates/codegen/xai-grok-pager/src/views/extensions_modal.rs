@@ -183,9 +183,9 @@ type GroupedPlugins<'a> = std::collections::BTreeMap<
 /// Header count suffix: `1 plugin`, `2 plugins`.
 fn plugin_count_label(n: usize) -> String {
     if n == 1 {
-        "1 plugin".to_string()
+        "1 个插件".to_string()
     } else {
-        format!("{n} plugins")
+        format!("{n} 个插件")
     }
 }
 
@@ -199,14 +199,14 @@ pub fn plugin_group(plugin: &xai_hooks_plugins_types::PluginInfo) -> PluginGroup
     use xai_hooks_plugins_types::{PluginOrigin, PluginScope};
 
     match &plugin.origin {
-        Some(PluginOrigin::ProjectGrok) => PluginGroup::new(0, "origin:project", "Project"),
+        Some(PluginOrigin::ProjectGrok) => PluginGroup::new(0, "origin:project", "项目"),
         Some(PluginOrigin::ProjectClaude) => {
-            PluginGroup::new(1, "origin:project-claude", "Project (Claude)")
+            PluginGroup::new(1, "origin:project-claude", "项目 (Claude)")
         }
-        Some(PluginOrigin::UserGrok) => PluginGroup::new(2, "origin:user", "User"),
+        Some(PluginOrigin::UserGrok) => PluginGroup::new(2, "origin:user", "用户"),
         Some(PluginOrigin::UserClaude)
         | Some(PluginOrigin::ClaudeInstalled { marketplace: None }) => {
-            PluginGroup::new(3, "origin:user-claude", "User (Claude)")
+            PluginGroup::new(3, "origin:user-claude", "用户 (Claude)")
         }
         Some(PluginOrigin::ClaudeMarketplace { marketplace })
         | Some(PluginOrigin::ClaudeInstalled {
@@ -226,21 +226,21 @@ pub fn plugin_group(plugin: &xai_hooks_plugins_types::PluginInfo) -> PluginGroup
         },
         Some(PluginOrigin::MarketplaceInstall {
             source_name: None, ..
-        }) => PluginGroup::new(6, "origin:direct", "Direct installs"),
+        }) => PluginGroup::new(6, "origin:direct", "直接安装"),
         Some(PluginOrigin::CliOverride) => PluginGroup::new(7, "origin:cli", "CLI override"),
         Some(PluginOrigin::ConfigPath) => PluginGroup::new(8, "origin:config", "Custom paths"),
         Some(PluginOrigin::Unknown) | None => match plugin.scope {
-            PluginScope::Project => PluginGroup::new(0, "origin:project", "Project"),
+            PluginScope::Project => PluginGroup::new(0, "origin:project", "项目"),
             PluginScope::User => match plugin.marketplace_source.as_deref() {
                 Some(source) if source.starts_with("git: ") => {
-                    PluginGroup::new(6, "origin:direct", "Direct installs")
+                    PluginGroup::new(6, "origin:direct", "直接安装")
                 }
                 Some(source) => PluginGroup {
                     rank: 5,
                     key: format!("grok-mp:{source}"),
                     label: source.to_string(),
                 },
-                None => PluginGroup::new(2, "origin:user", "User"),
+                None => PluginGroup::new(2, "origin:user", "用户"),
             },
             PluginScope::Cli => PluginGroup::new(7, "origin:cli", "CLI override"),
             PluginScope::Config => PluginGroup::new(8, "origin:config", "Custom paths"),
@@ -1066,15 +1066,15 @@ pub const RESULT_NOTICE_TICKS: u16 = 75;
 /// the renderer (hint bar), the picker (`PickerConfig::action_keys`), and
 /// `resolve_key` (must have a matching arm for every entry).
 pub const MCP_SERVERS_ACTION_KEYS: &[(char, &str)] = &[
-    ('r', "refresh"),
-    ('a', "add"),
-    ('i', "auth"),
-    (' ', "toggle"),
-    ('x', "remove"),
+    ('r', "刷新"),
+    ('a', "添加"),
+    ('i', "认证"),
+    (' ', "切换"),
+    ('x', "移除"),
 ];
 
 /// Footer label for the MCP tab Ctrl+O shortcut (not in [`MCP_SERVERS_ACTION_KEYS`]).
-pub const MCP_SERVERS_OPEN_CONNECTORS_FOOTER: &str = "ctrl-o open";
+pub const MCP_SERVERS_OPEN_CONNECTORS_FOOTER: &str = "ctrl-o 打开";
 
 /// Map an action key character to its display string for shortcut hints.
 ///
@@ -1083,7 +1083,7 @@ pub const MCP_SERVERS_OPEN_CONNECTORS_FOOTER: &str = "ctrl-o open";
 /// Returns `""` for unmapped characters.
 pub fn action_key_display(ch: char) -> &'static str {
     match ch {
-        ' ' => "space",
+        ' ' => "空格",
         'a' => "a",
         'd' => "d",
         'e' => "e",
@@ -1105,27 +1105,27 @@ pub fn action_key_display(ch: char) -> &'static str {
 pub fn extensions_action_keys(tab: ExtensionsTab) -> Vec<(char, &'static str)> {
     match tab {
         ExtensionsTab::Hooks => vec![
-            ('r', "reload"),
-            ('a', "add"),
-            (' ', "toggle"),
-            ('x', "remove"),
+            ('r', "重载"),
+            ('a', "添加"),
+            (' ', "切换"),
+            ('x', "移除"),
         ],
         ExtensionsTab::Plugins => vec![
-            ('r', "reload"),
-            ('u', "update"),
-            ('a', "install"),
-            (' ', "toggle"),
-            ('x', "uninstall"),
+            ('r', "重载"),
+            ('u', "更新"),
+            ('a', "安装"),
+            (' ', "切换"),
+            ('x', "卸载"),
         ],
         ExtensionsTab::Marketplace => vec![
-            ('i', "install"),
-            ('r', "refresh"),
-            ('u', "update"),
-            ('a', "add source"),
-            ('d', "uninstall"),
-            ('x', "remove source"),
+            ('i', "安装"),
+            ('r', "刷新"),
+            ('u', "更新"),
+            ('a', "添加源"),
+            ('d', "卸载"),
+            ('x', "移除源"),
         ],
-        ExtensionsTab::Skills => vec![(' ', "toggle"), ('f', "filter"), ('r', "reload")],
+        ExtensionsTab::Skills => vec![(' ', "切换"), ('f', "筛选"), ('r', "重载")],
         ExtensionsTab::McpServers => MCP_SERVERS_ACTION_KEYS.to_vec(),
     }
 }
@@ -1158,11 +1158,11 @@ fn action_key_footer_desc_for_mapping(
     entry_group_keys: &[Option<String>],
     selected: usize,
 ) -> &'static str {
-    if ch == ' ' && desc == "toggle" {
+    if ch == ' ' && (desc == "toggle" || desc == "切换") {
         match selected_item_enabled_at(state, entry_data_indices, entry_group_keys, selected) {
-            Some(true) => "disable",
-            Some(false) => "enable",
-            None => "enable/disable",
+            Some(true) => "禁用",
+            Some(false) => "启用",
+            None => "启用/禁用",
         }
     } else {
         desc
@@ -1170,8 +1170,8 @@ fn action_key_footer_desc_for_mapping(
 }
 
 pub fn action_key_cheatsheet_desc(ch: char, desc: &'static str) -> &'static str {
-    if ch == ' ' && desc == "toggle" {
-        "enable/disable"
+    if ch == ' ' && (desc == "toggle" || desc == "切换") {
+        "启用/禁用"
     } else {
         desc
     }
@@ -1309,9 +1309,9 @@ pub fn resolve_key(tab: ExtensionsTab, ch: char) -> Option<ButtonAction> {
         (ExtensionsTab::Plugins, 'a') => Some(ButtonAction::StartInput {
             command_prefix: "plugins_install".into(),
             fields: vec![FieldSpec {
-                label: "Source".into(),
+                label: "来源".into(),
                 required: true,
-                placeholder: Some("owner/repo, URL, or local path".into()),
+                placeholder: Some("owner/repo、URL 或本地路径".into()),
             }],
         }),
         // Toggle enable/disable on the selected plugin.
@@ -1342,9 +1342,9 @@ pub fn resolve_key(tab: ExtensionsTab, ch: char) -> Option<ButtonAction> {
         (ExtensionsTab::Marketplace, 'a') => Some(ButtonAction::StartInput {
             command_prefix: "marketplace_add_source".into(),
             fields: vec![FieldSpec {
-                label: "Source".into(),
+                label: "来源".into(),
                 required: true,
-                placeholder: Some("owner/repo, git URL, or local path".into()),
+                placeholder: Some("owner/repo、git URL 或本地路径".into()),
             }],
         }),
         (ExtensionsTab::Marketplace, 'x') => Some(ButtonAction::RemoveSelectedMarketplaceSource),
@@ -1358,9 +1358,9 @@ pub fn resolve_key(tab: ExtensionsTab, ch: char) -> Option<ButtonAction> {
             // `build_action_from_input` reads matching indices.
             fields: vec![
                 FieldSpec {
-                    label: "URL / Command".into(),
+                    label: "URL / 命令".into(),
                     required: true,
-                    placeholder: Some("https://... or command [args...]".into()),
+                    placeholder: Some("https://... 或命令 [参数...]".into()),
                 },
                 FieldSpec {
                     label: "名称".into(),
@@ -2225,13 +2225,13 @@ pub fn derive_source_label(source_dir: &str) -> (String, bool) {
             .map(|w| w[2].clone())
     };
     if let Some(name) = plugin_name("plugins").or_else(|| plugin_name("installed-plugins")) {
-        return (format!("Plugin: {name}"), false);
+        return (format!("插件：{name}"), false);
     }
     // Global hooks under $GROK_HOME/hooks
     let global_hooks = grok.join("hooks");
     let global_str = global_hooks.display().to_string();
     if source_dir == global_str || source_dir.starts_with(&format!("{global_str}/")) {
-        return ("Global hooks".into(), false);
+        return ("全局钩子".into(), false);
     }
     // Settings under .claude/
     if source_dir.contains("/.claude/") {
@@ -2239,7 +2239,7 @@ pub fn derive_source_label(source_dir: &str) -> (String, bool) {
     }
     // Project hooks
     if source_dir.ends_with("/.grok/hooks") || source_dir.contains("/.grok/hooks/") {
-        return ("Project hooks".into(), false);
+        return ("项目钩子".into(), false);
     }
     // Custom directory — removable
     let display = {
@@ -2253,9 +2253,9 @@ pub fn derive_source_label(source_dir: &str) -> (String, bool) {
             source_dir
                 .strip_prefix(&home_str)
                 .map(|rest| format!("Custom: ~{rest}"))
-                .unwrap_or_else(|| format!("Custom: {source_dir}"))
+                .unwrap_or_else(|| format!("自定义：{source_dir}"))
         } else {
-            format!("Custom: {source_dir}")
+            format!("自定义：{source_dir}")
         }
     };
     (display, true)
@@ -2330,7 +2330,7 @@ fn skill_source_str(skill: &SkillInfo) -> String {
                 }
             }
             xai_grok_tools::types::config_source::ConfigSource::Plugin { plugin_name, .. } => {
-                format!("plugin: {}", plugin_name)
+                format!("插件：{}", plugin_name)
             }
             _ => format!("{:?}", skill.scope).to_lowercase(),
         }
@@ -2339,29 +2339,42 @@ fn skill_source_str(skill: &SkillInfo) -> String {
     }
 }
 
+
+/// Map skill scope / source keys to Chinese for the skills list badge.
+fn localize_skill_source(source: &str) -> String {
+    match source {
+        "local" | "user" => "本地".into(),
+        "bundled" | "builtin" => "内置".into(),
+        "project" => "项目".into(),
+        "managed" => "托管".into(),
+        s if s.starts_with("plugin:") || s.starts_with("插件：") => s.replace("plugin:", "插件："),
+        other => other.to_string(),
+    }
+}
+
 /// Build picker fields for an expanded plugin.
 fn build_plugin_fields(plugin: &xai_hooks_plugins_types::PluginInfo) -> Vec<String> {
     use xai_hooks_plugins_types::McpStatus;
     let mut components = Vec::new();
     if !plugin.skill_names.is_empty() {
-        components.push(format!("skills: {}", plugin.skill_names.join(", ")));
+        components.push(format!("技能：{}", plugin.skill_names.join(", ")));
     } else if plugin.skill_count > 0 {
-        components.push(format!("{} skills", plugin.skill_count));
+        components.push(format!("{} 个技能", plugin.skill_count));
     }
     if !plugin.agent_names.is_empty() {
-        components.push(format!("agents: {}", plugin.agent_names.join(", ")));
+        components.push(format!("代理：{}", plugin.agent_names.join(", ")));
     } else if plugin.agent_count > 0 {
-        components.push(format!("{} agents", plugin.agent_count));
+        components.push(format!("{} 个代理", plugin.agent_count));
     }
     if plugin.hook_count > 0 {
-        components.push(format!("{} hooks", plugin.hook_count));
+        components.push(format!("{} 个钩子", plugin.hook_count));
     }
     match plugin.mcp_status {
         McpStatus::Active | McpStatus::ActiveInline => {
-            components.push(format!("{} MCP servers", plugin.mcp_server_count));
+            components.push(format!("{} 个 MCP 服务器", plugin.mcp_server_count));
         }
         McpStatus::Blocked => {
-            components.push(format!("{} MCP: blocked", plugin.mcp_server_count));
+            components.push(format!("{} 个 MCP：已阻止", plugin.mcp_server_count));
         }
         McpStatus::None => {}
     }
@@ -2372,7 +2385,7 @@ fn build_plugin_fields(plugin: &xai_hooks_plugins_types::PluginInfo) -> Vec<Stri
 const COMPONENT_ITEMS_CAP: usize = 8;
 
 /// Copy for a catalog entry verified to provide nothing detectable.
-const NO_DETECTABLE_COMPONENTS: &str = "no detectable components";
+const NO_DETECTABLE_COMPONENTS: &str = "未检测到组件";
 
 fn component_categories(
     components: &xai_hooks_plugins_types::PluginComponents,
@@ -2380,12 +2393,12 @@ fn component_categories(
     use xai_hooks_plugins_types::ComponentCategory;
     components.categories().map(|(category, items)| {
         let label = match category {
-            ComponentCategory::Skills => "skills",
-            ComponentCategory::Commands => "commands",
-            ComponentCategory::Agents => "agents",
-            ComponentCategory::McpServers => "mcp servers",
-            ComponentCategory::Hooks => "hooks",
-            ComponentCategory::LspServers => "lsp servers",
+            ComponentCategory::Skills => "技能",
+            ComponentCategory::Commands => "命令",
+            ComponentCategory::Agents => "代理",
+            ComponentCategory::McpServers => "MCP 服务器",
+            ComponentCategory::Hooks => "钩子",
+            ComponentCategory::LspServers => "LSP 服务器",
         };
         (label, items)
     })
@@ -2408,7 +2421,7 @@ pub(crate) fn render_components_fields(
             .collect();
         let mut value = names.join(", ");
         if items.len() > COMPONENT_ITEMS_CAP {
-            value.push_str(&format!(" +{} more", items.len() - COMPONENT_ITEMS_CAP));
+            value.push_str(&format!(" +{} 项", items.len() - COMPONENT_ITEMS_CAP));
         }
         fields.push((label.to_string(), value));
     }
@@ -2531,9 +2544,10 @@ pub fn render_extensions_modal(
                         let skill = &skills[si];
                         let source = skill_source_str(skill);
                         entry_labels.push(skill.label().to_string());
+                        let source_zh = localize_skill_source(&source);
                         let right = match &skill.author {
-                            Some(a) if !a.is_empty() => format!("({} · {})", source, a),
-                            _ => format!("({})", source),
+                            Some(a) if !a.is_empty() => format!("({} · {})", source_zh, a),
+                            _ => format!("({})", source_zh),
                         };
                         entry_right_labels.push(right);
                         // Short description as description_lines.
@@ -2548,11 +2562,11 @@ pub fn render_extensions_modal(
                         }
                         entry_summary_lines.push(vec![]);
                         // Fields for expanded view.
-                        let mut fields = vec![("path".to_string(), skill.path.clone())];
+                        let mut fields = vec![("路径".to_string(), skill.path.clone())];
                         if let Some(ref a) = skill.author
                             && !a.is_empty()
                         {
-                            fields.push(("author".to_string(), a.clone()));
+                            fields.push(("作者".to_string(), a.clone()));
                         }
                         if let Some(ref tools) = skill.allowed_tools
                             && !tools.is_empty()
@@ -2566,7 +2580,7 @@ pub fn render_extensions_modal(
                         entry_data_indices.push(Some(si));
                         entry_group_keys.push(None);
                         if !skill.enabled {
-                            entry_badge_text.push("[disabled]".into());
+                            entry_badge_text.push("[已禁用]".into());
                             entry_badge_color.push(Some(theme.accent_error));
                         } else {
                             entry_badge_text.push(String::new());
@@ -2574,7 +2588,7 @@ pub fn render_extensions_modal(
                         }
                     }
                 } else if let TabDataState::Error(ref msg) = state.skills_data {
-                    entry_labels.push(format!("Error: {}", msg));
+                    entry_labels.push(format!("错误：{}", msg));
                     entry_right_labels.push(String::new());
                     entry_desc_lines.push(vec![]);
                     entry_summary_lines.push(vec![]);
@@ -2653,7 +2667,7 @@ pub fn render_extensions_modal(
                             {
                                 fields.push(("description".to_string(), desc.clone()));
                             }
-                            fields.push(("path".to_string(), plugin.root.clone()));
+                            fields.push(("路径".to_string(), plugin.root.clone()));
                             entry_fields.push(fields);
                             entry_is_header.push(false);
                             entry_dimmed.push(!plugin.enabled);
@@ -2661,7 +2675,7 @@ pub fn render_extensions_modal(
                             entry_data_indices.push(Some(pi));
                             entry_group_keys.push(None);
                             entry_badge_text.push(if !plugin.enabled {
-                                "[disabled]".into()
+                                "[已禁用]".into()
                             } else {
                                 String::new()
                             });
@@ -2673,7 +2687,7 @@ pub fn render_extensions_modal(
                         }
                     }
                 } else if let TabDataState::Error(ref msg) = state.plugins_data {
-                    entry_labels.push(format!("Error: {}", msg));
+                    entry_labels.push(format!("错误：{}", msg));
                     entry_right_labels.push(String::new());
                     entry_desc_lines.push(vec![]);
                     entry_summary_lines.push(vec![]);
@@ -2713,7 +2727,7 @@ pub fn render_extensions_modal(
                         let searching = !state.picker_state.query().is_empty();
                         let collapsed =
                             !searching && state.hooks_collapsed_groups.contains(source_dir);
-                        entry_labels.push(format!("{} ({} hooks)", label, hooks.len()));
+                        entry_labels.push(format!("{}（{} 个钩子）", label, hooks.len()));
                         entry_right_labels.push(String::new());
                         entry_desc_lines.push(vec![]);
                         entry_summary_lines.push(vec![]);
@@ -2750,7 +2764,7 @@ pub fn render_extensions_modal(
                             entry_data_indices.push(Some(hi));
                             entry_group_keys.push(None);
                             entry_badge_text.push(if hook.disabled {
-                                "[disabled]".into()
+                                "[已禁用]".into()
                             } else {
                                 String::new()
                             });
@@ -2762,7 +2776,7 @@ pub fn render_extensions_modal(
                         }
                     }
                 } else if let TabDataState::Error(ref msg) = state.hooks_data {
-                    entry_labels.push(format!("Error: {}", msg));
+                    entry_labels.push(format!("错误：{}", msg));
                     entry_right_labels.push(String::new());
                     entry_desc_lines.push(vec![]);
                     entry_summary_lines.push(vec![]);
@@ -2793,7 +2807,7 @@ pub fn render_extensions_modal(
                         entry_desc_lines.push(vec![]);
                         entry_summary_lines.push(vec![]);
                         if let Some(ref err) = source.error {
-                            entry_fields.push(vec![("error".to_string(), err.clone())]);
+                            entry_fields.push(vec![("错误".to_string(), err.clone())]);
                         } else {
                             entry_fields.push(vec![]);
                         }
@@ -2803,7 +2817,7 @@ pub fn render_extensions_modal(
                         entry_data_indices.push(None);
                         entry_group_keys.push(Some(si.to_string()));
                         if source.error.is_some() {
-                            entry_badge_text.push("[error]".into());
+                            entry_badge_text.push("[错误]".into());
                             entry_badge_color.push(Some(theme.accent_error));
                         } else {
                             entry_badge_text.push(String::new());
@@ -2817,16 +2831,16 @@ pub fn render_extensions_modal(
                                 continue;
                             }
                             let status_label = match plugin.install_status.as_str() {
-                                "installed" => "[installed]",
-                                "update_available" => "[update available]",
+                                "installed" => "[已安装]",
+                                "update_available" => "[有更新]",
                                 _ => "",
                             };
                             entry_labels.push(plugin.name.clone());
                             let right = match (plugin.version.as_deref(), plugin.author.as_deref())
                             {
-                                (Some(v), Some(a)) => format!("v{v} by {a}"),
+                                (Some(v), Some(a)) => format!("v{v} · {a}"),
                                 (Some(v), None) => format!("v{v}"),
-                                (None, Some(a)) => format!("by {a}"),
+                                (None, Some(a)) => format!("作者 {a}"),
                                 (None, None) => String::new(),
                             };
                             entry_right_labels.push(right);
@@ -2843,16 +2857,16 @@ pub fn render_extensions_modal(
                             // Fields for expanded view.
                             let mut fields = Vec::new();
                             if let Some(ref version) = plugin.version {
-                                fields.push(("version".to_string(), version.clone()));
+                                fields.push(("版本".to_string(), version.clone()));
                             }
                             if let Some(ref author) = plugin.author {
-                                fields.push(("author".to_string(), author.clone()));
+                                fields.push(("作者".to_string(), author.clone()));
                             }
                             if let Some(ref category) = plugin.category {
-                                fields.push(("category".to_string(), category.clone()));
+                                fields.push(("分类".to_string(), category.clone()));
                             }
                             if !plugin.tags.is_empty() {
-                                fields.push(("tags".to_string(), plugin.tags.join(", ")));
+                                fields.push(("标签".to_string(), plugin.tags.join(", ")));
                             }
                             match &plugin.components {
                                 Some(components) if !components.is_empty() => {
@@ -2868,15 +2882,15 @@ pub fn render_extensions_modal(
                                     if plugin.remote_url.is_some() {
                                         fields.push((
                                             "provides".to_string(),
-                                            "contents shown after install".to_string(),
+                                            "安装后显示内容".to_string(),
                                         ));
                                     }
                                 }
                             }
                             if plugin.install_status != "not_installed" {
-                                fields.push(("status".to_string(), plugin.install_status.clone()));
+                                fields.push(("状态".to_string(), plugin.install_status.clone()));
                                 if let Some(ref iv) = plugin.installed_version {
-                                    fields.push(("installed".to_string(), iv.clone()));
+                                    fields.push(("已安装版本".to_string(), iv.clone()));
                                 }
                             }
                             entry_fields.push(fields);
@@ -2894,7 +2908,7 @@ pub fn render_extensions_modal(
                         }
                     }
                 } else if let TabDataState::Error(ref msg) = state.marketplace_data {
-                    entry_labels.push(format!("Error: {}", msg));
+                    entry_labels.push(format!("错误：{}", msg));
                     entry_right_labels.push(String::new());
                     entry_desc_lines.push(vec![]);
                     entry_summary_lines.push(vec![]);
@@ -2972,21 +2986,24 @@ pub fn render_extensions_modal(
                                     .clone()
                                     .unwrap_or_else(|| server.name.clone()),
                             );
-                            entry_right_labels.push(format!("({})", server.source));
+                            entry_right_labels.push(format!(
+                                "({})",
+                                localize_skill_source(&server.source)
+                            ));
                             // Summary line: tools count + enabled count.
                             if server.tools.is_empty() {
                                 entry_desc_lines.push(vec![
-                                    "no tools (server may not be connected)".to_string(),
+                                    "无工具（服务器可能未连接）".to_string(),
                                 ]);
                             } else {
                                 let enabled_count =
                                     server.tools.iter().filter(|t| t.enabled).count();
                                 if enabled_count == server.tools.len() {
                                     entry_desc_lines
-                                        .push(vec![format!("{} tools", server.tools.len())]);
+                                        .push(vec![format!("{} 个工具", server.tools.len())]);
                                 } else {
                                     entry_desc_lines.push(vec![format!(
-                                        "{} tools ({} enabled)",
+                                        "{} 个工具（{} 已启用）",
                                         server.tools.len(),
                                         enabled_count
                                     )]);
@@ -3001,7 +3018,7 @@ pub fn render_extensions_modal(
                             entry_data_indices.push(Some(si));
                             entry_group_keys.push(Some(tools_group_key));
                             let (badge_text, badge_col) = if !server.enabled {
-                                ("[disabled]".to_string(), Some(theme.accent_error))
+                                ("[已禁用]".to_string(), Some(theme.accent_error))
                             } else {
                                 (
                                     format!("[{}]", server.status.label()),
@@ -3030,7 +3047,7 @@ pub fn render_extensions_modal(
                                     entry_data_indices.push(Some(si));
                                     entry_group_keys.push(None);
                                     let tool_badge = if !t.enabled {
-                                        ("[disabled]".to_string(), Some(theme.accent_error))
+                                        ("[已禁用]".to_string(), Some(theme.accent_error))
                                     } else {
                                         (String::new(), None)
                                     };
@@ -3041,7 +3058,7 @@ pub fn render_extensions_modal(
                         }
                     }
                 } else if let TabDataState::Error(ref msg) = state.mcps_data {
-                    entry_labels.push(format!("Error: {}", msg));
+                    entry_labels.push(format!("错误：{}", msg));
                     entry_right_labels.push(String::new());
                     entry_desc_lines.push(vec![]);
                     entry_summary_lines.push(vec![]);
@@ -3208,9 +3225,9 @@ pub fn render_extensions_modal(
         });
         shortcuts.push(Shortcut {
             label: if input.is_multi_field() {
-                "Tab/Shift+Tab field"
+                "Tab/Shift+Tab 字段"
             } else {
-                "Tab complete"
+                "Tab 补全"
             },
             clickable: false,
             id: 0,
@@ -3228,7 +3245,7 @@ pub fn render_extensions_modal(
         // cycles forward; `Shift+Tab` is still listed in the
         // cheatsheet (`?` shortcut help).
         shortcuts.push(Shortcut {
-            label: "Tab tabs",
+            label: "Tab 切换标签",
             clickable: true,
             id: 98,
         });
@@ -3920,12 +3937,12 @@ mod tests {
         // a (non-removable) plugin, not a removable "Custom" source. The user
         // grok-home branch is GROK_HOME-aware; this covers the project fallback.
         let (label, is_custom) = derive_source_label("/repo/work/.grok/plugins/my-plugin/hooks");
-        assert_eq!(label, "Plugin: my-plugin");
+        assert_eq!(label, "插件：my-plugin");
         assert!(!is_custom);
 
         let (label, is_custom) =
             derive_source_label("/repo/work/.grok/installed-plugins/vendor-abc123/skills");
-        assert_eq!(label, "Plugin: vendor-abc123");
+        assert_eq!(label, "插件：vendor-abc123");
         assert!(!is_custom);
     }
 
@@ -3980,45 +3997,45 @@ mod tests {
             (
                 ExtensionsTab::Hooks,
                 &[
-                    ('r', "reload"),
-                    ('a', "add"),
-                    (' ', "toggle"),
-                    ('x', "remove"),
+                    ('r', "重载"),
+                    ('a', "添加"),
+                    (' ', "切换"),
+                    ('x', "移除"),
                 ],
             ),
             (
                 ExtensionsTab::Plugins,
                 &[
-                    ('r', "reload"),
-                    ('u', "update"),
-                    ('a', "install"),
-                    (' ', "toggle"),
-                    ('x', "uninstall"),
+                    ('r', "重载"),
+                    ('u', "更新"),
+                    ('a', "安装"),
+                    (' ', "切换"),
+                    ('x', "卸载"),
                 ],
             ),
             (
                 ExtensionsTab::Marketplace,
                 &[
-                    ('i', "install"),
-                    ('r', "refresh"),
-                    ('u', "update"),
+                    ('i', "安装"),
+                    ('r', "刷新"),
+                    ('u', "更新"),
                     ('a', "add_source"),
-                    ('d', "uninstall"),
+                    ('d', "卸载"),
                     ('x', "remove_source"),
                 ],
             ),
             (
                 ExtensionsTab::Skills,
-                &[(' ', "toggle"), ('f', "filter"), ('r', "reload")],
+                &[(' ', "切换"), ('f', "筛选"), ('r', "重载")],
             ),
             (
                 ExtensionsTab::McpServers,
                 &[
-                    ('r', "refresh"),
-                    ('a', "add"),
-                    ('i', "auth"),
-                    (' ', "toggle"),
-                    ('x', "remove"),
+                    ('r', "刷新"),
+                    ('a', "添加"),
+                    ('i', "认证"),
+                    (' ', "切换"),
+                    ('x', "移除"),
                 ],
             ),
         ];
@@ -4275,7 +4292,7 @@ mod tests {
         assert!(
             rows.labels
                 .iter()
-                .any(|l| l.starts_with("Managed by grok.com")),
+                .any(|l| l.starts_with("由 grok.com 管理")),
             "managed section header must appear"
         );
         assert!(
@@ -4780,9 +4797,9 @@ mod tests {
         let mut state = ExtensionsModalState::new(ExtensionsTab::Plugins);
         assert_eq!(
             action_key_footer_desc(' ', "toggle", &state),
-            "enable/disable"
+            "启用/禁用"
         );
-        assert_eq!(action_key_cheatsheet_desc(' ', "toggle"), "enable/disable");
+        assert_eq!(action_key_cheatsheet_desc(' ', "切换"), "启用/禁用");
 
         state.entry_data_indices = vec![Some(0), Some(1)];
         state.picker_state.selected = 0;
@@ -4794,15 +4811,15 @@ mod tests {
         });
 
         assert_eq!(state.selected_item_enabled(), Some(true));
-        assert_eq!(action_key_footer_desc(' ', "toggle", &state), "disable");
+        assert_eq!(action_key_footer_desc(' ', "toggle", &state), "禁用");
 
         state.picker_state.selected = 1;
         assert_eq!(state.selected_item_enabled(), Some(false));
-        assert_eq!(action_key_footer_desc(' ', "toggle", &state), "enable");
+        assert_eq!(action_key_footer_desc(' ', "toggle", &state), "启用");
 
         assert_eq!(action_key_footer_desc('a', "install", &state), "install");
         assert_eq!(action_key_footer_desc('r', "reload", &state), "reload");
-        assert_eq!(action_key_cheatsheet_desc('a', "install"), "install");
+        assert_eq!(action_key_cheatsheet_desc('a', "安装"), "install");
     }
 
     /// Regression: footer Space verb must follow the *current*
@@ -4844,7 +4861,7 @@ mod tests {
         // state.entry_data_indices is set explicitly.
         state.entry_data_indices = filtered;
         assert_eq!(state.selected_item_enabled(), Some(false));
-        assert_eq!(action_key_footer_desc(' ', "toggle", &state), "enable");
+        assert_eq!(action_key_footer_desc(' ', "toggle", &state), "启用");
     }
 
     #[test]
@@ -4865,7 +4882,7 @@ mod tests {
                 );
             }
             assert!(
-                !hints.iter().any(|h| h.label == "toggle"),
+                !hints.iter().any(|h| h.label == "切换"),
                 "tab_all_hints({tab:?}) must not show raw toggle"
             );
         }
@@ -4888,7 +4905,7 @@ mod tests {
         );
         assert_eq!(
             action_telemetry_label(ExtensionsTab::Plugins, ' ').as_deref(),
-            Some("toggle")
+            Some("切换")
         );
     }
 
@@ -4954,7 +4971,7 @@ mod tests {
             "mcp_add".into(),
             vec![
                 FieldSpec {
-                    label: "URL / Command".into(),
+                    label: "URL / 命令".into(),
                     required: true,
                     placeholder: None,
                 },
@@ -6294,7 +6311,7 @@ mod tests {
         .build();
         assert_eq!(
             marketplace_components_summary(&plugin).as_deref(),
-            Some("2 skills \u{b7} 1 command \u{b7} 1 hook")
+            Some("2 个技能 \u{b7} 1 条命令 \u{b7} 1 个钩子")
         );
     }
 
@@ -6356,8 +6373,8 @@ mod tests {
                     "skills".to_string(),
                     "brainstorming, test-driven-development".to_string()
                 ),
-                ("commands".to_string(), "/brainstorm".to_string()),
-                ("hooks".to_string(), "PreToolUse".to_string()),
+                ("命令".to_string(), "/brainstorm".to_string()),
+                ("钩子".to_string(), "PreToolUse".to_string()),
             ]
         );
     }
@@ -6372,10 +6389,10 @@ mod tests {
         };
         let fields = render_components_fields(&components);
         assert_eq!(fields.len(), 1);
-        assert_eq!(fields[0].0, "skills");
+        assert_eq!(fields[0].0, "技能");
         assert_eq!(
             fields[0].1,
-            "skill-0, skill-1, skill-2, skill-3, skill-4, skill-5, skill-6, skill-7 +4 more"
+            "skill-0, skill-1, skill-2, skill-3, skill-4, skill-5, skill-6, skill-7 +4 项"
         );
     }
 
@@ -6480,7 +6497,7 @@ mod tests {
             "rows must be collapsed by default for this test to pin anything"
         );
         assert_eq!(
-            buffer_count(&buf, "2 skills \u{b7} 1 command \u{b7} 1 hook"),
+            buffer_count(&buf, "2 个技能 \u{b7} 1 条命令 \u{b7} 1 个钩子"),
             1,
             "collapsed marketplace row must show the catalog component summary"
         );
@@ -6520,7 +6537,7 @@ mod tests {
         source.plugins.truncate(1);
         source.plugins[0].components = Some(sample_components());
         let mut state = marketplace_modal_state(source);
-        let summary = "2 skills \u{b7} 1 command \u{b7} 1 hook";
+        let summary = "2 个技能 \u{b7} 1 条命令 \u{b7} 1 个钩子";
 
         let collapsed_buf = render_marketplace_into_buffer(&mut state, 100, 40);
         assert_eq!(
@@ -6831,7 +6848,7 @@ mod tests {
         );
         assert_eq!(buffer_count(&buf, "User (Claude) (1 plugin)"), 1);
         assert_eq!(buffer_count(&buf, "off-tool"), 1);
-        assert_eq!(buffer_count(&buf, "[disabled]"), 1);
+        assert_eq!(buffer_count(&buf, "[已禁用]"), 1);
     }
 
     #[test]

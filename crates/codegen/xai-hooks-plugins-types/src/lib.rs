@@ -478,12 +478,12 @@ impl PluginComponents {
             .filter(|(_, items)| !items.is_empty())
             .map(|(category, items)| {
                 let (singular, plural) = match category {
-                    ComponentCategory::Skills => ("skill", "skills"),
-                    ComponentCategory::Commands => ("command", "commands"),
-                    ComponentCategory::Agents => ("agent", "agents"),
-                    ComponentCategory::McpServers => ("MCP server", "MCP servers"),
-                    ComponentCategory::Hooks => ("hook", "hooks"),
-                    ComponentCategory::LspServers => ("LSP server", "LSP servers"),
+                    ComponentCategory::Skills => ("个技能", "个技能"),
+                    ComponentCategory::Commands => ("条命令", "条命令"),
+                    ComponentCategory::Agents => ("个代理", "个代理"),
+                    ComponentCategory::McpServers => ("个 MCP 服务器", "个 MCP 服务器"),
+                    ComponentCategory::Hooks => ("个钩子", "个钩子"),
+                    ComponentCategory::LspServers => ("个 LSP 服务器", "个 LSP 服务器"),
                 };
                 let label = if items.len() == 1 { singular } else { plural };
                 format!("{} {}", items.len(), label)
@@ -978,7 +978,7 @@ mod tests {
         };
         assert_eq!(
             components.summary_line().as_deref(),
-            Some("3 skills \u{b7} 2 commands \u{b7} 1 MCP server")
+            Some("3 个技能 \u{b7} 2 条命令 \u{b7} 1 个 MCP 服务器")
         );
         assert!(!components.is_empty());
         assert_eq!(PluginComponents::default().summary_line(), None);
@@ -1033,7 +1033,7 @@ mod tests {
         assert_eq!(
             components.summary_line().as_deref(),
             Some(
-                "1 skill \u{b7} 1 command \u{b7} 1 agent \u{b7} 1 MCP server \u{b7} 1 hook \u{b7} 1 LSP server"
+                "1 个技能 \u{b7} 1 条命令 \u{b7} 1 个代理 \u{b7} 1 个 MCP 服务器 \u{b7} 1 个钩子 \u{b7} 1 个 LSP 服务器"
             )
         );
         components.sanitize();
