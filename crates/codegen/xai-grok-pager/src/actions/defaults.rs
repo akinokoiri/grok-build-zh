@@ -261,7 +261,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Folds or unfolds the selected scrollback entry to hide or show its full body.\nHandy for skimming long tool output or reasoning.\nRelated: E folds/unfolds every entry, Ctrl+E toggles all thinking blocks.",
+                "折叠或展开当前选中的回滚条目，隐藏或显示完整正文。\n便于快速浏览冗长的工具输出或推理内容。\n相关：E 会折叠/展开全部条目；Ctrl+E 切换全部思考块。",
             ),
         },
         ActionDef {
@@ -276,7 +276,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Folds or unfolds every scrollback entry at once, unlike e which toggles only the selected row.\nCollapse a long transcript to scan headers, then expand it all back.\nThinking blocks have their own toggle, Ctrl+E.",
+                "一次性折叠或展开全部回滚条目；小写 e 只切换当前选中行。\n可先收起长对话只看标题，再全部展开。\n思考块另有开关：Ctrl+E。",
             ),
         },
         ActionDef {
@@ -291,7 +291,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Shows or hides the agent's reasoning (thinking) blocks across the whole transcript in one keypress.\nReveal how the agent reached an answer, or hide reasoning to focus on results.\nSeparate from E, which folds every entry regardless of type.",
+                "一键显示或隐藏整段对话中的思考（推理）块。\n可查看代理如何得出结论，或隐藏推理只看结果。\n与 E 不同：E 会折叠所有类型的条目。",
             ),
         },
         ActionDef {
@@ -306,7 +306,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Switches the selected entry between rendered markdown and its raw source text.\nUse it to copy exact markdown, inspect a link target, or see formatting the renderer hides.\nPress again to return to the rendered view.",
+                "在选中条目的「渲染 Markdown」与「原始源码」之间切换。\n便于复制原始 Markdown、查看链接目标，或查看渲染时隐藏的格式。\n再按一次回到渲染视图。",
             ),
         },
         // ── Block content ────────────────────────────────────────────
@@ -322,7 +322,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Copies the selected block's body to the clipboard: message text, full tool output, or a code block's contents.\nOffered only on blocks that support copy.\nFor just the command or file path, use Y instead.",
+                "将选中块的正文复制到剪贴板：消息文本、完整工具输出或代码块内容。\n仅在支持复制的块上可用。\n若只要命令行或文件路径，请用大写 Y。",
             ),
         },
         ActionDef {
@@ -337,7 +337,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Copies only the block's identifier: a tool call's command line or a file block's path, not the body.\nHandy to re-run a command or paste a path elsewhere.\nUse lowercase y to copy the full content instead.",
+                "只复制块的标识：工具调用的命令行或文件块路径，不含正文。\n便于重跑命令或把路径粘贴到别处。\n复制完整内容请用小写 y。",
             ),
         },
         ActionDef {
@@ -352,7 +352,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Opens the selected block in a focused, scrollable full-screen viewer.\nBest for long tool output, large files, or code you want to read away from the surrounding transcript.\nEsc returns to the conversation.",
+                "在可滚动的全屏查看器中打开选中块。\n适合阅读长工具输出、大文件，或希望与周围对话分开看的代码。\nEsc 返回对话。",
             ),
         },
         // ── Link navigation ─────────────────────────────────────────
@@ -395,7 +395,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Rewinds the conversation to an earlier turn, restoring the file snapshot taken then and discarding later changes.\nPick a turn from the list and choose what to restore (everything, conversation only, or files only); a running turn is offered for cancel first, and any conflicts or errors are reported after it runs.\nDestructive: later turns are dropped.\nAlso reachable idle with an empty prompt via Esc Esc (within 800ms), same as `/rewind`.",
+                "将对话回退到更早的回合，恢复当时的文件快照并丢弃之后的更改。\n从列表中选中回合并选择恢复范围（全部 / 仅对话 / 仅文件）；若有进行中的回合会先提示取消，冲突或错误会在执行后报告。\n破坏性操作：之后的回合会被丢弃。\n空闲且输入为空时也可用 Esc Esc（800ms 内）触发，与 `/rewind` 相同。",
             ),
         },
         ActionDef {
@@ -410,7 +410,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Terminates the background task owned by the selected task block (e.g. a long shell command sent to the background).\nReach for it to stop a runaway or no-longer-needed process.\nApplies only to a live task; finished ones are unaffected.",
+                "终止选中任务块对应的后台任务（例如已转入后台的长 shell 命令）。\n用于停下失控或不再需要的进程。\n仅对仍在运行的任务生效；已结束的不受影响。",
             ),
         },
         // ── Essentials ────────────────────────────────────────────────
@@ -452,7 +452,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Moves focus from the prompt to the scrollback so you can navigate the transcript.\nTab works in both simple and vim scrollback modes.\nEsc is reserved for clear / rewind (idle) policy, not focus.",
+                "把焦点从输入框移到回滚区，以便浏览对话记录。\n简单模式与 vim 回滚模式下都可用 Tab。\nEsc 保留给清空/回退（空闲策略），不用于切换焦点。",
             ),
         },
         ActionDef {
@@ -467,7 +467,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Interrupts the agent's current turn and stops generation, keeping the session open.\nCtrl+C cancels when the prompt is empty; with a non-empty draft it clears the prompt first and leaves the turn running.\nIt stops the turn, not the app; use the quit shortcut to exit.",
+                "中断代理当前回合并停止生成，会话保持打开。\n输入为空时 Ctrl+C 取消回合；有草稿时先清空输入，回合继续运行。\n只停当前回合，不退出应用；退出请用退出快捷键。",
             ),
         },
         ActionDef {
@@ -483,7 +483,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Shift+Tab"),
             requires_confirmation: false,
             long_help: Some(
-                "Steps the session mode: Normal -> Plan -> Always-Approve -> Normal.\nPlan keeps the agent planning first and writes no files; Always-Approve runs every tool call without asking.\nCtrl+O toggles auto-approve directly.",
+                "循环会话模式：普通 → 计划 → 始终批准 → 普通。\n计划模式先规划、不写文件；始终批准对每次工具调用不再询问。\nCtrl+O 可直接切换自动批准。",
             ),
         },
         // ── Panes (agent-level — toggle side panes) ─────────────────
@@ -499,7 +499,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Shows or hides the todo pane: the agent's live task checklist for the current work.\nWatch what it plans to do and what's left as the turn runs.\nA side pane; toggle it off to reclaim width.",
+                "显示或隐藏待办面板：当前工作的实时任务清单。\n可在回合进行中查看计划与剩余事项。\n侧栏面板；关掉可腾出宽度。",
             ),
         },
         ActionDef {
@@ -514,7 +514,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Shows or hides the tasks pane, which lists background tasks and their status.\nUse it to monitor or return to work you sent to the background with Ctrl+G.\nA side pane; toggle off to reclaim width.",
+                "显示或隐藏任务面板，列出后台任务及其状态。\n用于监控或回到用 Ctrl+G 转入后台的工作。\n侧栏面板；关掉可腾出宽度。",
             ),
         },
         ActionDef {
@@ -542,7 +542,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Shows or hides the prompt queue.\nThe queue lets you line up follow-up prompts while a turn is running; each is sent automatically when the agent finishes.\nLocal macOS VS Code family: Ctrl+4 primary (Ctrl+; / Ctrl+' alts). Otherwise Ctrl+; with Ctrl+' alt.",
+                "显示或隐藏提示队列。\n回合进行中可预先排好后续提示，代理结束后会自动依次发送。\n本机 macOS VS Code 系：主快捷键 Ctrl+4（备选 Ctrl+; / Ctrl+'）。其他环境：Ctrl+;，备选 Ctrl+'。",
             ),
         },
         ActionDef {
@@ -557,7 +557,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Opens the session browser to resume or switch between past conversations.\nSelect one to reattach to its full history.\nSeparate from the Agent Dashboard (Ctrl+\\), which manages many live agents at once.",
+                "打开会话浏览器，恢复或切换历史对话。\n选中一项即可重新接入完整历史。\n与代理仪表盘（Ctrl+\\）不同：仪表盘用于同时管理多个在线代理。",
             ),
         },
         ActionDef {
@@ -577,7 +577,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Opens the extensions manager for MCP servers and plugins: see what's connected and the tools they add.\nUse it to confirm an integration loaded or browse available tools.\nDistinct from settings, which holds general app options.",
+                "打开扩展管理：查看已连接的 MCP 服务器与插件及其提供的工具。\n可用于确认集成是否加载，或浏览可用工具。\n与「设置」不同：设置是通用应用选项。",
             ),
         },
         ActionDef {
@@ -592,7 +592,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Detaches the running turn so it keeps working in the background while you read, queue prompts, or start something else.\nTrack and resume it from the tasks pane (Ctrl+B).\nOnly meaningful while a turn is actually running.",
+                "将正在运行的回合转入后台，可继续阅读、排队提示或做别的事。\n在任务面板（Ctrl+B）中跟踪与恢复。\n仅在回合实际运行时有意义。",
             ),
         },
         // ── Prompt ───────────────────────────────────────────────────
@@ -626,7 +626,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Sends a message to the agent mid-turn without cancelling it (interject), so you can steer or add context while it keeps working.\nPlain Enter while a turn is running queues a follow-up for later; this chord merges composer text into the current turn instead.\nWith an empty composer, bare Enter (or this chord) force-sends the top queued follow-up from the prompt — no need to focus the queue pane. On the queue pane, this chord force-sends the selected row.\nReach for it to correct course without losing the turn's progress.",
+                "在回合进行中向代理插入消息（插话），不取消当前回合，便于边跑边纠偏或补充上下文。\n回合运行时普通 Enter 会排队后续提示；此快捷键则把输入区内容并入当前回合。\n输入为空时，单独 Enter（或此快捷键）会从输入区强制发送队列顶部的后续项，无需聚焦队列面板；在队列面板上则强制发送当前选中行。\n适合在不丢弃当前进度的情况下改道。",
             ),
         },
         ActionDef {
@@ -665,7 +665,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+Space / F8"),
             requires_confirmation: false,
             long_help: Some(
-                "Microphone capture for dictation, bound to Ctrl+Space (or F8 — handy where Ctrl+Space is taken, e.g. macOS input-source switching; use Fn+F8 on a laptop).\nBehavior follows the Voice capture setting: toggle (press to start, press again to stop) or hold-to-talk (hold to record, release to stop), where hold needs a Kitty-protocol terminal and falls back to toggle elsewhere. `/voice` toggles everywhere.\nSpeech is transcribed straight into the prompt.",
+                "麦克风听写：绑定 Ctrl+Space（或 F8——当 Ctrl+Space 被占用时很有用，例如 macOS 输入法切换；笔记本可用 Fn+F8）。\n行为跟随「语音捕获」设置：切换模式（按一下开始、再按停止）或按住说话（按住录音、松开停止）；按住模式需要 Kitty 协议终端，否则回退为切换。`/voice` 可在各处切换。\n语音会直接转写进输入框。",
             ),
         },
         // Prompt history has no key chord (Ctrl+R is deliberately unbound):
@@ -682,7 +682,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Toggles a persistent multi-line prompt so the editor stays expanded for composing longer messages.\nInsert newlines with Shift+Enter or Alt+Enter (or a trailing backslash); bare Enter still sends.\nCtrl+M toggles multiline in the prompt; off the prompt it opens the model picker.",
+                "切换持久多行输入，便于撰写较长消息。\n用 Shift+Enter 或 Alt+Enter（或行尾反斜杠）换行；单独 Enter 仍发送。\n在输入框内 Ctrl+M 切换多行；焦点不在输入框时则打开模型选择器。",
             ),
         },
         ActionDef {
@@ -697,7 +697,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("!"),
             requires_confirmation: false,
             long_help: Some(
-                "Runs a shell command without leaving the chat: type ! at the start of an empty prompt, then the command.\nThe command output is captured into the scrollback.\nDelete the leading ! to go back to a normal prompt.",
+                "不离开对话即可运行 shell 命令：在空输入框以 ! 开头再输入命令。\n命令输出会写入回滚区。\n删掉开头的 ! 即回到普通提示输入。",
             ),
         },
         // ── Agent ────────────────────────────────────────────────────
@@ -713,7 +713,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Turns auto-approve (YOLO) on or off for this session.\nWhile on, the agent runs every tool call (edits, shell, deletes) with no per-action confirmation.\nSame state as the Shift+Tab cycle's Always-Approve; use with care.",
+                "为本会话打开或关闭自动批准（YOLO）。\n开启后，代理的每次工具调用（编辑、shell、删除等）不再逐项确认。\n与 Shift+Tab 循环中的「始终批准」同一状态；请谨慎使用。",
             ),
         },
         ActionDef {
@@ -728,7 +728,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: true,
             long_help: Some(
-                "Starts a fresh session with empty scrollback and context.\nRequires confirmation: press it twice (the first press arms, the second starts)\nso you don't discard the current conversation by accident.",
+                "开启全新会话，回滚区与上下文为空。\n需要确认：连按两次（第一次预备，第二次真正开始），避免误丢当前对话。",
             ),
         },
         ActionDef {
@@ -751,7 +751,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: true,
             long_help: Some(
-                "Exits the app. Requires confirmation: press twice in quick succession;\na lone press is treated as a stray key and ignored.\nBound to Ctrl+Q, with Ctrl+D as an alias (Ctrl+D is primary in VS Code's terminal).",
+                "退出应用。需要确认：短时间内连按两次；单独一次按键会被当作误触忽略。\n绑定 Ctrl+Q，Ctrl+D 为别名（在 VS Code 终端中 Ctrl+D 为主键）。",
             ),
         },
         ActionDef {
@@ -766,7 +766,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("?"),
             requires_confirmation: false,
             long_help: Some(
-                "Fuzzy-search every action and slash command, then run it by name.\nUseful when you don't remember a key binding.\nAlso opens with ? while the scrollback is focused.",
+                "模糊搜索全部操作与斜杠命令，按名称运行。\n记不住快捷键时很有用。\n焦点在回滚区时也可用 ? 打开。",
             ),
         },
         ActionDef {
@@ -789,7 +789,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Opens this keyboard cheatsheet.\nBrowse with j/k, expand a row's inline help with e, or press Enter for a shortcut's full detail page.\nBound to both Ctrl+. and Ctrl+X; the bar advertises whichever your terminal sends reliably.",
+                "打开本键盘快捷键速查表。\n用 j/k 浏览，e 展开行内说明，Enter 打开某快捷键的完整详情页。\n同时绑定 Ctrl+. 与 Ctrl+X；底栏会显示你终端能稳定送达的那一个。",
             ),
         },
         ActionDef {
@@ -804,7 +804,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Opens the model picker to switch the model for this session; the choice applies to later turns.\nBound to Ctrl+M, but while the prompt is focused that chord toggles multiline instead.\nReach it from the scrollback or the command palette.",
+                "打开模型选择器，切换本会话所用模型；选择对之后的回合生效。\n绑定 Ctrl+M，但焦点在输入框时该组合键会改为切换多行。\n可从回滚区或命令面板进入。",
             ),
         },
         ActionDef {
@@ -870,7 +870,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+\\"),
             requires_confirmation: false,
             long_help: Some(
-                "Opens the Agent Dashboard: a list of all your running and recent agents to monitor and switch between.\nWorks from anywhere, including the welcome screen and inside a session.\nFrom there you can dispatch, attach, stop, group, and reorder agents.",
+                "打开代理仪表盘：列出全部运行中与最近的代理，便于监视与切换。\n可在欢迎页或会话内随时打开。\n在此可派发、接入、停止、分组与重排代理。",
             ),
         },
         // Register all in-dashboard shortcuts through
@@ -916,7 +916,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Pins or unpins the selected agent so it stays at the top of the list regardless of sorting or grouping.\nKeep the agents you care about in view as others come and go.\nPins persist across dashboard sessions.",
+                "固定或取消固定选中代理，使其不受排序/分组影响、始终靠前显示。\n便于在其他代理进出列表时仍盯住关心的项。\n固定状态会跨仪表盘会话保留。",
             ),
         },
         ActionDef {
@@ -944,7 +944,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Stops the selected agent and removes its row from the dashboard; a running turn is interrupted first.\nUse it to clear finished or unwanted agents without attaching to them.\nThe in-overlay equivalent (Ctrl+X) confirms before stopping.",
+                "停止选中代理并从仪表盘移除该行；若有进行中的回合会先中断。\n用于清理已完成或不需要的代理，无需先接入。\n浮层内对应操作（Ctrl+X）停止前会要求确认。",
             ),
         },
         ActionDef {
@@ -962,7 +962,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Shift+Tab"),
             requires_confirmation: false,
             long_help: Some(
-                "Cycles the dispatch mode for agents you launch from the dashboard: Normal, Plan, then Always-Approve.\nPlan has new agents plan before changing files; Always-Approve runs their tools without prompting.\nMirrors the in-session Shift+Tab cycle, applied to new dispatches.",
+                "循环仪表盘派发新代理时的模式：普通 → 计划 → 始终批准。\n计划模式会先规划再改文件；始终批准运行工具时不再询问。\n与会话内 Shift+Tab 循环一致，作用于新派发。",
             ),
         },
         ActionDef {
@@ -982,7 +982,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "Switches the dashboard between a flat list and rows grouped by state, such as working versus idle.\nGrouping surfaces the agents that need attention; the flat list keeps a stable order.\nYour choice persists across sessions.",
+                "在「扁平列表」与「按状态分组」（如工作中 / 空闲）之间切换仪表盘。\n分组便于突出需要关注的代理；扁平列表顺序更稳定。\n选择会跨会话保留。",
             ),
         },
         ActionDef {
@@ -1058,7 +1058,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Esc"),
             requires_confirmation: false,
             long_help: Some(
-                "Closes the dashboard and returns to where you were.\nEsc is a cascade: it first dismisses an open peek or clears an active filter, and only exits once nothing else is pending.\nRebind this action to a different key to exit directly.",
+                "关闭仪表盘并返回原先所在位置。\nEsc 为级联：先关闭预览或清除筛选，没有待处理项后才真正退出。\n若将此操作改绑到其他键，可直接退出。",
             ),
         },
         // Mirror of `ToggleYolo` (Ctrl+O) but scoped to the
@@ -1077,7 +1077,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+O"),
             requires_confirmation: false,
             long_help: Some(
-                "Toggles auto-approve (YOLO) for the selected agent right from the dashboard, without attaching to it.\nWhile on, that agent runs every tool call with no per-action confirmation.\nThe per-session equivalent is Ctrl+O inside a session.",
+                "在仪表盘上直接切换选中代理的自动批准（YOLO），无需接入会话。\n开启后该代理每次工具调用不再逐项确认。\n会话内对应操作为 Ctrl+O。",
             ),
         },
         // Open the location picker — a floating modal to change the
@@ -1096,7 +1096,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+l"),
             requires_confirmation: false,
             long_help: Some(
-                "Opens a picker to set the working directory that newly dispatched dashboard agents run in.\nLaunch agents against a different repo or folder without leaving the dashboard.\nAffects new dispatches only, not agents already running.",
+                "打开选择器，设置仪表盘新派发代理的工作目录。\n无需离开仪表盘即可对其他仓库或文件夹启动代理。\n仅影响新派发，不影响已在运行的代理。",
             ),
         },
         // Toggle worktree-dispatch mode. Ctrl+W ("worktree") arms the next
@@ -1116,7 +1116,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+w"),
             requires_confirmation: false,
             long_help: Some(
-                "Arms the next dashboard-dispatched agent to spawn in a fresh git worktree, isolating its work on a separate checkout.\nOnly applies when the working directory is a git repo.\nAffects newly dispatched agents, not ones already running.",
+                "使下一次从仪表盘派发的代理在新的 git worktree 中启动，在独立检出中隔离工作。\n仅当工作目录是 git 仓库时生效。\n仅影响新派发，不影响已在运行的代理。",
             ),
         },
         // Session overlay (dashboard → agent attach)
@@ -1154,7 +1154,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+\\"),
             requires_confirmation: false,
             long_help: Some(
-                "Leaves the attached session overlay and returns to the dashboard list, without stopping the agent.\nAlso reachable via q on the scrollback, a neutral Esc, or the close button.\nTo stop the agent instead of just detaching, use Ctrl+X.",
+                "离开已接入的会话浮层并返回仪表盘列表，不停止代理。\n也可在回滚区按 q、中性 Esc 或关闭按钮。\n若要停止代理而非仅分离，请用 Ctrl+X。",
             ),
         },
         ActionDef {
@@ -1200,7 +1200,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+x"),
             requires_confirmation: true,
             long_help: Some(
-                "Inside a session overlay, stops the attached agent and closes it, returning you to the dashboard list.\nRequires confirmation: press Ctrl+X twice.\nCtrl+. still opens the cheatsheet here; only Ctrl+X is taken over by stop.",
+                "在会话浮层内，停止已接入的代理并关闭，返回仪表盘列表。\n需要确认：连按两次 Ctrl+X。\n此处 Ctrl+. 仍打开快捷键表；仅 Ctrl+X 被占用为停止。",
             ),
         },
     ]);
