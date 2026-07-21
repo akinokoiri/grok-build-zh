@@ -34,10 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain (repo pin if present)
-        uses: dtolnay/rust-toolchain@master
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Install DotSlash
@@ -59,10 +58,8 @@ jobs:
         run: |
           set -euo pipefail
           BIN="target/${{ matrix.target }}/release/xai-grok-pager"
-          if [[ ! -f "$BIN" ]]; then
-            BIN="target/release/xai-grok-pager"
-          fi
-          test -x "$BIN" || test -f "$BIN"
+          if [[ ! -f "$BIN" ]]; then BIN="target/release/xai-grok-pager"; fi
+          test -f "$BIN"
           STAGE="dist/${{ matrix.name }}"
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/grok-zh"
@@ -70,18 +67,13 @@ jobs:
           cp README.md LICENSE "$STAGE/" 2>/dev/null || true
           [[ -f NOTICE ]] && cp NOTICE "$STAGE/" || true
           [[ -f ZH_VERSION ]] && cp ZH_VERSION "$STAGE/" || true
-          cat > "$STAGE/README-BINARY.txt" << EOT
-Grok Build 汉化版（社区非官方构建）
-================================
-二进制: grok-zh
-安装:
-  chmod +x grok-zh
-  mkdir -p ~/.local/bin && mv grok-zh ~/.local/bin/
-  grok-zh
-
-仓库: https://github.com/ivan6232/grok-build-zh
-上游: https://github.com/xai-org/grok-build
-EOT
+          {
+            echo "Grok Build Chinese UI build (community, unofficial)"
+            echo "Binary: grok-zh"
+            echo "Install: chmod +x grok-zh && mv grok-zh ~/.local/bin/"
+            echo "Repo: https://github.com/ivan6232/grok-build-zh"
+            echo "Upstream: https://github.com/xai-org/grok-build"
+          } > "$STAGE/README-BINARY.txt"
           tar -C dist -czf "${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
           ls -lh "${{ matrix.name }}.tar.gz"
 
@@ -115,17 +107,17 @@ EOT
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
-          name: Grok Build 汉化版 ${{ steps.tag.outputs.name }}
+          name: Grok Build zh ${{ steps.tag.outputs.name }}
           prerelease: true
           generate_release_notes: true
           body: |
-            ## 社区汉化版 · 非官方
+            ## Community Chinese UI build (unofficial)
 
-            基于 [xai-org/grok-build](https://github.com/xai-org/grok-build) 的简体中文 UI 构建。
+            Based on [xai-org/grok-build](https://github.com/xai-org/grok-build).
 
-            **与 SpaceXAI / xAI 无官方关系。** 请遵守 xAI 服务条款。
+            **Not affiliated with SpaceXAI/xAI.**
 
-            ### 安装
+            ### Install
             ```bash
             tar -xzf grok-zh-*.tar.gz
             chmod +x */grok-zh
