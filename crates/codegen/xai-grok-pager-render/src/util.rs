@@ -102,7 +102,7 @@ pub fn format_duration(d: Duration) -> String {
 pub fn format_time_ago(d: Duration) -> String {
     let secs = d.as_secs();
     if secs < 60 {
-        return "刚刚".to_string();
+        return format!("不到1分钟");
     }
     if secs < 3600 {
         let mins = secs / 60;
@@ -239,9 +239,9 @@ mod tests {
 
     #[test]
     fn time_ago_just_now() {
-        assert_eq!(format_time_ago(Duration::from_secs(0)), "刚刚");
-        assert_eq!(format_time_ago(Duration::from_secs(30)), "刚刚");
-        assert_eq!(format_time_ago(Duration::from_secs(59)), "刚刚");
+        assert_eq!(format_time_ago(Duration::from_secs(0)), "不到1分钟");
+        assert_eq!(format_time_ago(Duration::from_secs(30)), "不到1分钟");
+        assert_eq!(format_time_ago(Duration::from_secs(59)), "不到1分钟");
     }
 
     #[test]
@@ -320,7 +320,7 @@ mod tests {
         let elapsed = system_time_from_unix_ms(future)
             .elapsed()
             .unwrap_or_default();
-        assert_eq!(format_time_ago(elapsed), "刚刚");
+        assert_eq!(format_time_ago(elapsed), "不到1分钟");
     }
 
     /// A fixed `Instant` projects to a stable wall-clock moment, so its age

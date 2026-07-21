@@ -161,7 +161,7 @@ pub(crate) fn sanitize_display_text(s: &str) -> Cow<'_, str> {
 pub(crate) fn format_relative_time(elapsed: Duration) -> String {
     let secs = elapsed.as_secs();
     if secs < 1 {
-        return "刚刚".to_string();
+        return format!("不到1分钟");
     }
     if secs < 60 {
         return format!("{secs} 秒前");
@@ -279,9 +279,9 @@ mod tests {
 
     #[test]
     fn format_relative_time_sub_second_is_now() {
-        assert_eq!(format_relative_time(Duration::from_millis(0)), "刚刚");
-        assert_eq!(format_relative_time(Duration::from_millis(500)), "刚刚");
-        assert_eq!(format_relative_time(Duration::from_millis(999)), "刚刚");
+        assert_eq!(format_relative_time(Duration::from_millis(0)), "不到1分钟");
+        assert_eq!(format_relative_time(Duration::from_millis(500)), "不到1分钟");
+        assert_eq!(format_relative_time(Duration::from_millis(999)), "不到1分钟");
     }
 
     #[test]

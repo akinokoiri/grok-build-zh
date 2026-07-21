@@ -827,7 +827,7 @@ pub(crate) fn format_time_ago(dt: chrono::DateTime<chrono::Utc>) -> String {
     let duration = now.signed_duration_since(dt);
 
     let raw = if duration.num_minutes() < 1 {
-        "刚刚".to_string()
+        format!("不到1分钟")
     } else if duration.num_minutes() < 60 {
         format!("{} 分钟前", duration.num_minutes())
     } else if duration.num_hours() < 24 {

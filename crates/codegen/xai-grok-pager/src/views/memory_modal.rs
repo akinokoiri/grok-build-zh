@@ -1143,11 +1143,11 @@ fn format_modified(epoch_secs: Option<u64>, now_secs: u64) -> String {
         return "unknown".to_string();
     };
     if now_secs <= modified {
-        return "刚刚".to_string();
+        return format!("不到1分钟");
     }
     let delta = now_secs - modified;
     if delta < 60 {
-        return "刚刚".to_string();
+        return format!("不到1分钟");
     }
     if delta < 3600 {
         let mins = delta / 60;
@@ -1189,8 +1189,8 @@ mod tests {
     fn format_modified_relative() {
         let now = 1_700_000_000u64;
         assert_eq!(format_modified(None, now), "unknown");
-        assert_eq!(format_modified(Some(now), now), "刚刚");
-        assert_eq!(format_modified(Some(now - 30), now), "刚刚");
+        assert_eq!(format_modified(Some(now), now), "不到1分钟");
+        assert_eq!(format_modified(Some(now - 30), now), "不到1分钟");
         assert_eq!(format_modified(Some(now - 120), now), "2 分钟前");
         assert_eq!(format_modified(Some(now - 7200), now), "2 小时前");
         assert_eq!(format_modified(Some(now - 172800), now), "2d ago");
