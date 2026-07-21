@@ -418,7 +418,7 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
                             crate::app::agent::QueueEntryKind::Prompt,
                         )
                     });
-                agent.show_toast(&format!("Send now failed — requeued: {error}"));
+                agent.show_toast(&format!("立即发送失败 — 已重新入队：{error}"));
             }
             vec![]
         }
@@ -770,7 +770,7 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
                 source, session_id = % session_id, error = % error,
                 "session delete failed"
             );
-            app.show_toast(&format!("Couldn't delete session: {error}"));
+            app.show_toast(&format!("无法删除会话：{error}"));
             vec![]
         }
         TaskResult::ContextInfoComplete { agent_id, info } => {
@@ -866,7 +866,7 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
             {
                 agent
                     .scrollback
-                    .push_block(RenderBlock::system(format!("Couldn't load entry: {error}")));
+                    .push_block(RenderBlock::system(format!("无法加载条目：{error}")));
             }
             vec![]
         }
@@ -919,7 +919,7 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
                         chip_elements: Vec::new(),
                         skill_token_ranges: Vec::new(),
                     });
-                agent.show_toast(&format!("Interjection failed — requeued: {error}"));
+                agent.show_toast(&format!("插话失败 — 已重新入队：{error}"));
             }
             vec![]
         }
@@ -983,7 +983,7 @@ pub(super) fn dispatch_task_result(result: TaskResult, app: &mut AppView) -> Vec
                 return vec![];
             };
             agent.rewind_state = None;
-            app.show_toast(&format!("Undo failed: {error}"));
+            app.show_toast(&format!("撤销失败：{error}"));
             vec![]
         }
         TaskResult::RewindPreviewComplete {

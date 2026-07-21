@@ -342,7 +342,7 @@ impl PersonaDetailState {
             }
         }
 
-        std::fs::write(path, doc.to_string()).map_err(|e| format!("Failed to write file: {e}"))?;
+        std::fs::write(path, doc.to_string()).map_err(|e| format!("写入文件失败：{e}"))?;
         Ok(())
     }
 }

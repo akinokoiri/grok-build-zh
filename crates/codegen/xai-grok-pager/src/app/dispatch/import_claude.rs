@@ -66,7 +66,7 @@ pub(super) fn dispatch_import_claude_confirm(app: &mut AppView) -> Vec<Effect> {
             Err(e) => {
                 app.startup_warnings.push(crate::startup::StartupWarning {
                     severity: crate::startup::WarningSeverity::Warning,
-                    message: format!("Failed to import Claude settings: {}", e),
+                    message: format!("导入 Claude 设置失败：{}", e),
                     action: None,
                 });
                 return vec![];

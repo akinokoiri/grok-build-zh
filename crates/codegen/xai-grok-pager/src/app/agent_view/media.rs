@@ -392,7 +392,7 @@ impl AgentView {
             self.show_toast("Opening in default app\u{2026}");
             true
         } else {
-            self.show_toast("Could not open file");
+            self.show_toast("无法打开文件");
             false
         }
     }

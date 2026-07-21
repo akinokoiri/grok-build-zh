@@ -49,112 +49,112 @@ pub static USER_GUIDE: &[Doc] = &[
     guide!(
         "01-getting-started.md",
         "入门指南",
-        "Installation, first launch, and basic interaction"
+        "安装、首次启动与基本操作"
     ),
     guide!(
         "02-authentication.md",
-        "Authentication",
-        "Browser login, API keys, OIDC, external auth providers"
+        "身份认证",
+        "浏览器登录、API Key、OIDC 与外部认证"
     ),
     guide!(
         "03-keyboard-shortcuts.md",
         "键盘快捷键",
-        "Complete reference for all TUI key bindings"
+        "TUI 全部快捷键一览"
     ),
     guide!(
         "04-slash-commands.md",
-        "Slash Commands",
-        "All / commands for session management, models, memory, hooks"
+        "斜杠命令",
+        "会话、模型、记忆、钩子等 / 命令"
     ),
     guide!(
         "05-configuration.md",
-        "Configuration",
-        "config.toml, pager.toml, environment variables, file locations"
+        "配置",
+        "config.toml、pager.toml、环境变量与文件位置"
     ),
     guide!(
         "06-theming.md",
-        "Theming and Appearance",
-        "Themes, color support, pager.toml customization"
+        "主题与外观",
+        "主题、颜色支持与 pager.toml 自定义"
     ),
     guide!(
         "07-mcp-servers.md",
-        "MCP Servers",
-        "Setting up external tool integrations via MCP"
+        "MCP 服务器",
+        "通过 MCP 接入外部工具"
     ),
     guide!(
         "08-skills.md",
-        "Skills",
-        "Creating and using reusable prompt packages"
+        "技能 (Skills)",
+        "创建与使用可复用提示包"
     ),
     guide!(
         "09-plugins.md",
-        "Plugins and Marketplace",
-        "Installing, managing, and creating plugin packages"
+        "插件与市场",
+        "安装、管理与创建插件包"
     ),
     guide!(
         "10-hooks.md",
-        "Hooks",
-        "Project lifecycle scripts for pre/post tool-use events"
+        "钩子 (Hooks)",
+        "工具调用前后的生命周期脚本"
     ),
     guide!(
         "11-custom-models.md",
-        "Custom Models",
-        "BYOK, Ollama, OpenAI-compatible endpoints"
+        "自定义模型",
+        "BYOK、Ollama、OpenAI 兼容端点"
     ),
     guide!(
         "12-project-rules.md",
-        "Project Rules (AGENTS.md)",
-        "Per-directory instructions and precedence rules"
+        "项目规则 (AGENTS.md)",
+        "按目录的指令与优先级"
     ),
     guide!(
         "13-memory.md",
-        "Memory",
-        "Cross-session knowledge persistence and search"
+        "记忆",
+        "跨会话知识持久化与搜索"
     ),
     guide!(
         "14-headless-mode.md",
-        "Headless Mode and Scripting",
-        "Non-interactive CLI for automation and CI/CD"
+        "无头模式与脚本",
+        "自动化与 CI/CD 的非交互 CLI"
     ),
     guide!(
         "15-agent-mode.md",
-        "Agent Mode and IDE Integration",
-        "ACP stdio transport, WebSocket relay, SDK integration"
+        "代理模式与 IDE",
+        "ACP stdio、WebSocket 与 SDK 集成"
     ),
     guide!(
         "16-subagents.md",
-        "Subagents and Personas",
-        "Spawning parallel child agents with specialized roles"
+        "子代理与角色",
+        "并行子代理与专用角色"
     ),
     guide!(
         "17-sessions.md",
-        "Session Management",
-        "Save, load, resume, rewind, and compact sessions"
+        "会话管理",
+        "保存、加载、恢复、回退与压缩"
     ),
     guide!(
         "18-sandbox.md",
-        "Sandbox Mode",
-        "OS-level filesystem and network isolation"
+        "沙箱模式",
+        "操作系统级文件系统与网络隔离"
     ),
     guide!(
         "19-plan-mode.md",
-        "Plan Mode",
-        "Structured planning with approval dialogs"
+        "计划模式",
+        "结构化规划与批准对话框"
     ),
     guide!(
         "20-background-tasks.md",
-        "Background Tasks and Monitoring",
-        "Background commands, /loop, monitor, scheduler"
+        "后台任务与监控",
+        "后台命令、/loop、monitor、调度器"
     ),
     guide!(
         "21-terminal-support.md",
-        "Terminal Support and Troubleshooting",
-        "tmux, Byobu, Zellij, SSH, truecolor, clipboard, and diagnostics"
+        "终端支持与排障",
+        "tmux、SSH、truecolor、剪贴板与诊断"
     ),
     guide!(
         "22-permissions-and-safety.md",
-        "Permissions and Safety",
-        "Tool approval, sandbox, security"
+        "权限与安全",
+        "工具批准、沙箱与安全策略"
     ),
 ];
 
@@ -165,14 +165,14 @@ pub static USER_GUIDE: &[Doc] = &[
 static REFERENCE_DOCS: &[Doc] = &[
     Doc {
         filename: "hooks-and-plugins.md",
-        title: "Hooks & Plugins Guide",
-        description: "Using hooks, plugins, and marketplace",
+        title: "钩子与插件指南",
+        description: "使用钩子、插件与市场",
         content: include_str!("../docs/hooks-and-plugins.md"),
     },
     Doc {
         filename: "custom-hooks.md",
-        title: "Creating Custom Hooks",
-        description: "Writing your own hooks and matchers",
+        title: "创建自定义钩子",
+        description: "编写自己的钩子与匹配规则",
         content: include_str!("../docs/custom-hooks.md"),
     },
 ];
@@ -220,12 +220,12 @@ pub fn default_howto_entries() -> Vec<DocEntry> {
 pub fn extract_user_guide_docs(grok_home: &std::path::Path) {
     let docs_dir = grok_home.join("docs").join("user-guide");
     if let Err(e) = std::fs::create_dir_all(&docs_dir) {
-        tracing::warn!(error = %e, "Failed to create user-guide docs directory");
+        tracing::warn!(error = %e, "无法创建用户指南目录");
         return;
     }
     for doc in USER_GUIDE {
         if let Err(e) = std::fs::write(docs_dir.join(doc.filename), doc.content) {
-            tracing::debug!(error = %e, filename = doc.filename, "Failed to extract user-guide doc");
+            tracing::debug!(error = %e, filename = doc.filename, "无法导出用户指南文档");
         }
     }
     // Clean up stale managed docs (files removed from USER_GUIDE since last run).
@@ -244,7 +244,7 @@ pub fn extract_user_guide_docs(grok_home: &std::path::Path) {
                     && !valid.contains(name)
                     && let Err(e) = std::fs::remove_file(dir_entry.path())
                 {
-                    tracing::debug!(error = %e, filename = name, "Failed to remove stale user-guide doc");
+                    tracing::debug!(error = %e, filename = name, "无法删除过期用户指南文档");
                 }
             }
         }

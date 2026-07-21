@@ -109,7 +109,7 @@ pub(super) fn dispatch_copy_assistant_message(
                 Err(e) => {
                     agent
                         .scrollback
-                        .push_block(RenderBlock::system(format!("Failed to write file: {e}")));
+                        .push_block(RenderBlock::system(format!("写入文件失败：{e}")));
                 }
             }
             return;
@@ -173,7 +173,7 @@ pub(super) fn dispatch_export_conversation(
                 && let Err(e) = std::fs::create_dir_all(parent)
             {
                 agent.scrollback.push_block(RenderBlock::system(format!(
-                    "Failed to create directory: {e}"
+                    "创建目录失败：{e}"
                 )));
                 return;
             }
@@ -189,7 +189,7 @@ pub(super) fn dispatch_export_conversation(
                     // (it may contain secrets or PII); the generic failure is sufficient.
                     agent
                         .scrollback
-                        .push_block(RenderBlock::system(format!("Failed to write file: {}", e)));
+                        .push_block(RenderBlock::system(format!("写入文件失败：{}", e)));
                 }
             }
         } else {
@@ -272,7 +272,7 @@ pub(crate) fn dispatch_open_transcript_pager(app: &mut AppView) {
         Err(e) => {
             with_active_agent(app, |agent| {
                 agent.scrollback.push_block(RenderBlock::system(format!(
-                    "Failed to write transcript: {e}"
+                    "写入 transcript 失败：{e}"
                 )));
             });
         }
@@ -576,7 +576,7 @@ pub(super) fn dispatch_dump_input_log(app: &mut AppView) -> Vec<Effect> {
     let json = match serde_json::to_string_pretty(&dump) {
         Ok(j) => j,
         Err(e) => {
-            agent.show_toast(&format!("Failed to serialize input log: {e}"));
+            agent.show_toast(&format!("序列化输入日志失败：{e}"));
             return vec![];
         }
     };
@@ -600,7 +600,7 @@ pub(super) fn dispatch_dump_input_log(app: &mut AppView) -> Vec<Effect> {
             );
         }
         Err(e) => {
-            agent.show_toast(&format!("Failed to write input log: {e}"));
+            agent.show_toast(&format!("写入输入日志失败：{e}"));
         }
     }
     vec![]

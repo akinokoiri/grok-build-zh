@@ -1008,7 +1008,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                 app.show_toast(if opened {
                     "Opening in default app\u{2026}"
                 } else {
-                    "Could not open file"
+                    "无法打开文件"
                 });
             } else {
                 open_url_or_show(app, &url);
@@ -1023,7 +1023,7 @@ pub(crate) fn dispatch(action: Action, app: &mut AppView) -> Vec<Effect> {
                     app.show_toast(if opened {
                         "Opening in default app\u{2026}"
                     } else {
-                        "Could not open file"
+                        "无法打开文件"
                     });
                 }
                 Some(LinkTarget::Url(url)) => {

@@ -1,54 +1,51 @@
-# Grok Build User Guide
+# Grok Build 用户指南（简体中文）
 
-Learn how to install, configure, and extend Grok Build, the terminal-based AI coding assistant from SpaceXAI.
+> **汉化说明**：本文档为社区汉化版，基于 [xai-org/grok-build](https://github.com/xai-org/grok-build) 上游文档翻译。  
+> 非官方文档；术语以源码与配置键名为准（配置键保持英文）。
 
----
-
-## Tier 1: Essential User Docs
-
-Start here. These guides cover what you need on your first day.
-
-| # | Document | Description |
-|---|----------|-------------|
-| 1 | [Getting Started](01-getting-started.md) | Installation, first launch, authentication, basic interaction, and key concepts |
-| 2 | [Authentication](02-authentication.md) | Browser login, API keys, OIDC/SSO, external auth providers, and device-code flow |
-| 3 | [Keyboard Shortcuts](03-keyboard-shortcuts.md) | Reference for every key binding and mouse action in the TUI |
-| 4 | [Slash Commands](04-slash-commands.md) | Every `/` command for sessions, models, memory, hooks, and plugins |
-| 5 | [Configuration](05-configuration.md) | `config.toml`, `pager.toml`, environment variables, and file locations |
+了解如何安装、配置与扩展 Grok Build（终端 AI 编程助手）。
 
 ---
 
-## Tier 2: Core Feature Docs
+## 第一层：入门必读
 
-Customize and extend Grok Build.
+| # | 文档 | 说明 |
+|---|------|------|
+| 1 | [入门指南](01-getting-started.md) | 安装、首次启动、认证、基本交互 |
+| 2 | [身份认证](02-authentication.md) | 浏览器登录、API Key、OIDC/SSO |
+| 3 | [键盘快捷键](03-keyboard-shortcuts.md) | TUI 全部快捷键与鼠标操作 |
+| 4 | [斜杠命令](04-slash-commands.md) | 会话、模型、记忆、钩子等 `/` 命令 |
+| 5 | [配置](05-configuration.md) | `config.toml`、`pager.toml`、环境变量 |
 
-| # | Document | Description |
-|---|----------|-------------|
-| 6 | [Theming and Appearance](06-theming.md) | Themes, the `/theme` command, `pager.toml`, and color-support detection |
-| 7 | [MCP Servers](07-mcp-servers.md) | External tool integrations through the Model Context Protocol |
-| 8 | [Skills](08-skills.md) | Reusable prompt packages in the SKILL.md format |
-| 9 | [Plugins](09-plugins.md) | Bundle and share skills, commands, agents, hooks, and MCP servers; install from marketplace sources |
-| 10 | [Hooks](10-hooks.md) | Lifecycle scripts and HTTP callbacks for pre- and post-tool-use events |
-| 11 | [Custom Models](11-custom-models.md) | Bring-your-own-key, Ollama, and OpenAI-compatible endpoints |
-| 12 | [Project Rules (AGENTS.md)](12-project-rules.md) | Per-directory AGENTS.md instructions and their precedence |
-| 13 | [Memory](13-memory.md) | Cross-session knowledge persistence with `/flush`, `/dream`, and hybrid search |
+## 第二层：核心功能
+
+| # | 文档 | 说明 |
+|---|------|------|
+| 6 | [主题与外观](06-theming.md) | 主题、`/theme`、`pager.toml` |
+| 7 | [MCP 服务器](07-mcp-servers.md) | 外部工具集成 |
+| 8 | [技能 Skills](08-skills.md) | SKILL.md 可复用提示包 |
+| 9 | [插件与市场](09-plugins.md) | 插件安装与打包 |
+| 10 | [钩子 Hooks](10-hooks.md) | 工具前后生命周期脚本 |
+| 11 | [自定义模型](11-custom-models.md) | BYOK、Ollama、兼容端点 |
+| 12 | [项目规则 AGENTS.md](12-project-rules.md) | 目录级指令与优先级 |
+| 13 | [记忆 Memory](13-memory.md) | 跨会话知识与搜索 |
+
+## 第三层：进阶
+
+| # | 文档 | 说明 |
+|---|------|------|
+| 14 | [无头模式](14-headless-mode.md) | `grok -p`、CI/CD |
+| 15 | [代理模式与 IDE](15-agent-mode.md) | ACP、WebSocket、SDK |
+| 16 | [子代理](16-subagents.md) | 并行子会话与角色 |
+| 17 | [会话管理](17-sessions.md) | 保存、恢复、回退、压缩 |
+| 18 | [沙箱](18-sandbox.md) | 文件系统与网络隔离 |
+| 19 | [计划模式](19-plan-mode.md) | 规划与批准后再改代码 |
+| 20 | [后台任务](20-background-tasks.md) | background、/loop、monitor |
+| 21 | [终端支持](21-terminal-support.md) | tmux、SSH、剪贴板 |
+| 22 | [权限与安全](22-permissions-and-safety.md) | 批准、沙箱、安全策略 |
+| 23 | [仪表盘](23-dashboard.md) | 多会话总览 |
+| 24 | [用量监控](24-monitoring-usage.md) | OpenTelemetry 导出 |
 
 ---
 
-## Tier 3: Advanced Usage Docs
-
-Automate, script, and integrate Grok Build with other systems.
-
-| # | Document | Description |
-|---|----------|-------------|
-| 14 | [Headless Mode and Scripting](14-headless-mode.md) | `grok -p`, output formats, CI/CD integration, and piping |
-| 15 | [Agent Mode and IDE Integration](15-agent-mode.md) | ACP stdio transport, WebSocket relay, and SDK integration |
-| 16 | [Subagents and Personas](16-subagents.md) | Parallel child sessions, agent types, personas, and capability modes |
-| 17 | [Session Management](17-sessions.md) | Save, load, resume, rewind, compact, and the session persistence format |
-| 18 | [Sandbox Mode](18-sandbox.md) | OS-level filesystem and network isolation profiles |
-| 19 | [Plan Mode](19-plan-mode.md) | Structured planning, plan-file edits, and approval before coding |
-| 20 | [Background Tasks and Monitoring](20-background-tasks.md) | `background: true`, `/loop`, `monitor`, and `Ctrl+G` to demote |
-| 21 | [Terminal Support and Troubleshooting](21-terminal-support.md) | tmux, SSH, truecolor, clipboard, and OSC 52 |
-| 22 | [Permissions and Safety Controls](22-permissions-and-safety.md) | `dontAsk` mode, auto-approved tools, the safe-bash list, and restrictive PreToolUse hooks (such as git/gh-only) |
-| 23 | [Agent Dashboard](23-dashboard.md) | Central overview of local sessions and forks |
-| 24 | [Monitoring Usage (External OpenTelemetry)](24-monitoring-usage.md) | Customer OTEL export |
+**汉化仓库**：[ivan6232/grok-build-zh](https://github.com/ivan6232/grok-build-zh)（社区非官方）

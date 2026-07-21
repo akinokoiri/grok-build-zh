@@ -1160,7 +1160,7 @@ impl AgentView {
                 self.session.session_id.as_ref().map(|s| s.0.as_ref()),
                 Some(serde_json::json!({ "action": action.log_label() })),
             );
-            self.show_toast("Could not render diagram");
+            self.show_toast("无法渲染图表");
         }
     }
 
@@ -1196,7 +1196,7 @@ impl AgentView {
                             self.session.session_id.as_ref().map(|s| s.0.as_ref()),
                             Some(serde_json::json!({ "action": action.log_label() })),
                         );
-                        self.show_toast("Could not render diagram");
+                        self.show_toast("无法渲染图表");
                     }
                 }
             }
@@ -2289,7 +2289,7 @@ mod tests {
         pump_until(&mut agent, |a| !a.mermaid_needs_tick());
         assert_eq!(
             toast_of(&agent),
-            "Could not render diagram",
+            "无法渲染图表",
             "a failed render surfaces the error toast",
         );
     }

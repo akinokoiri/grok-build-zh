@@ -1,160 +1,79 @@
-# Plan Mode
+# 计划模式
 
-Plan mode is a structured planning phase: the agent explores the codebase and designs an implementation approach before writing any code. Use it for tasks with genuine ambiguity about the right approach, where getting your input before coding prevents significant rework.
-
----
-
-## What Plan Mode Does
-
-When plan mode is active, the agent:
-
-1. Reads and searches the codebase to understand existing patterns and architecture
-2. Designs an implementation approach and writes it to the plan file
-3. May use `ask_user_question` to clarify specific questions
-4. Calls `exit_plan_mode` to present the plan for your approval
-
-Plan mode is read-only except for the plan file: plan-file edits (`plan.md` in the session directory) are auto-approved, and edits to any other file are rejected outright — the tool call fails with a short message naming the plan file as the only editable path. This holds in every permission mode, including always-approve. Separating planning from implementation lets you review and correct the approach before any code is written.
+计划模式是结构化规划阶段：代理先探索代码库并设计实现方案，**再**写代码。适合「怎么做还不清楚」、先对齐方案能避免大量返工的任务。
 
 ---
 
-## How to Enter Plan Mode
+## 计划模式会做什么
 
-### Agent-Initiated Entry
+激活后代理会：
 
-The agent enters plan mode when it determines a task has genuine ambiguity. It calls the `enter_plan_mode` tool, which requires your approval before plan mode activates. If you decline, the agent stays in normal mode.
+1. 阅读/搜索代码，了解现有模式与架构  
+2. 把实现方案写入计划文件  
+3. 可用 `ask_user_question` 向你澄清问题  
+4. 调用 `exit_plan_mode` 把计划交给你批准  
 
-**Good triggers for plan mode:**
-
-- "Add user authentication to the app" -- genuinely ambiguous (session vs JWT, token storage, middleware structure)
-- "Redesign the data pipeline" -- major restructuring where the wrong approach wastes significant effort
-- "Add caching to the API" -- multiple reasonable approaches (Redis vs in-memory vs file-based)
-- "Add real-time updates" -- architectural decision (WebSockets vs SSE vs polling)
-
-**Not appropriate for plan mode:**
-
-- "Add a delete button to the user profile" -- clear implementation path
-- "Fix the typo in the README" -- straightforward
-- "Update the error handling in the API" -- start working, ask specific questions if needed
-- "Can we work on the search feature?" -- user wants to get started, not plan
-
-### User-Initiated Entry
-
-You can enter plan mode yourself in two ways:
-
-- **`/plan`** -- Enter plan mode. Plan mode activates when you send your next prompt. Run `/plan <description>` to enter plan mode and start a turn with that description in one step.
-- **Shift+Tab** -- Cycle the session mode: Normal, then Plan, then Always-approve, then back to Normal. From Normal, a single press lands on Plan.
-
-After a plan exists, run **`/view-plan`** (aliases `/show-plan`, `/plan-view`) to reopen its saved preview.
+除**计划文件**外只读：`plan.md`（会话目录内）的编辑自动批准，其它文件编辑会被拒绝（包括 always-approve 模式）。这样可在动代码前审阅与修正方案。
 
 ---
 
-## The Plan File
+## 如何进入
 
-The plan is written to `plan.md` inside the session directory (`~/.grok/sessions/<cwd>/<session-id>/plan.md`, where `<cwd>` is an encoded directory name, not the literal path).
+### 代理主动进入
 
-The plan file contains:
+任务存在真实歧义时，代理调用 `enter_plan_mode`（需你批准）。你拒绝则保持普通模式。
 
-- A **Context** section explaining why the change is being made
-- The recommended approach (not every alternative)
-- The paths of critical files to modify
-- Existing functions and utilities to reuse, with their file paths
-- A verification section describing how to test the changes end to end
+**适合进入计划模式：**
 
----
+- 「给应用加用户认证」（方案很多）  
+- 「重构数据管道」  
+- 「给 API 加缓存」（Redis / 内存 / 文件等）  
 
-## Plan Approval
+**不适合：**
 
-When the agent finishes planning, it calls the `exit_plan_mode` tool. The tool reads the plan file from disk, and the TUI opens a scrollable preview of the plan with an action bar along the bottom.
+- 「给个人资料加删除按钮」  
+- 「修 README 错别字」  
 
-If the agent exits without writing a plan (empty or missing `plan.md`), the same approval surface still opens with a clear empty-state message so you can approve and start implementing, request changes (send the agent back to planning), or quit. In minimal mode the empty notice is committed into scrollback and the controls strip header reads **No plan written yet**.
+### 用户主动进入
 
-### Reviewing the Plan
+- **`/plan`**：进入计划模式；下一条提示开始规划。也可 `/plan <描述>` 一步完成。  
+- **Shift+Tab**：在 普通 → 计划 → 始终批准 → 普通 之间循环。  
 
-Scroll the plan with the arrow keys or `j`/`k`. The action bar shows these shortcuts:
-
-| Shortcut | Action                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------- |
-| `a`      | Approve the plan and start building. With pending comments, this reads `approve w/ comments` and sends them alongside the approval. |
-| `s`      | Request changes. Focus moves to the prompt so you can type revision notes; press `Enter` to send them. |
-| `c`      | Comment on the selected line or line range.                                                          |
-| `q`      | Quit plan -- abandon the plan without approving and turn plan mode off.                              |
-
-Press `Tab` to move focus between the plan preview and the prompt.
-
-### Providing Feedback
-
-The approval view has three focus states:
-
-- **Preview**: Scroll the plan and select lines to comment on.
-- **Commenting**: Add an inline comment to the selected line range (press `c`, or `Enter` on a line).
-- **Prompt**: Type freeform revision notes.
-
-Press `Tab` to switch between the preview and the prompt. When you send feedback -- inline comments, freeform notes, or both -- the agent receives it and revises the plan. Plan mode stays active so you can iterate.
-
-### Leaving the Approval View
-
-Press `Esc` to return focus from the prompt to the plan preview. To dismiss the approval without approving or sending feedback, press `q` to quit the plan. Quitting abandons the proposed plan and turns plan mode off.
+已有计划后可用 **`/view-plan`**（别名 `/show-plan`、`/plan-view`）重新打开预览。
 
 ---
 
-## Plan Mode Lifecycle
+## 计划文件
 
-The plan mode state machine has four states:
+路径：`~/.grok/sessions/<编码后的cwd>/<session-id>/plan.md`
 
-| State          | Description                                                    |
-| -------------- | -------------------------------------------------------------- |
-| `Inactive`     | Normal operating mode. No plan mode constraints.               |
-| `Pending`      | Client toggled plan mode ON, but no prompt has been sent yet.  |
-| `Active`       | Plan mode is active. Plan-file edits are auto-approved; edits to other files are rejected. |
-| `ExitPending`  | User toggled plan mode OFF while a turn is in-flight.          |
+通常包含：
 
-Transitions:
-
-```
-Inactive    --> Active   (enter_plan_mode tool called and approved -- skips Pending)
-Inactive    --> Pending  (you toggle plan mode on with /plan or Shift+Tab)
-Pending     --> Active   (your first prompt activates plan mode)
-Active      --> Inactive (exit_plan_mode approved, or you toggle plan mode off when idle)
-Active      --> ExitPending (you toggle plan mode off while a turn is in-flight)
-ExitPending --> Inactive (after the turn completes)
-```
-
-Plan mode state is persisted to disk and survives process restarts. Transient states (`Pending`, `ExitPending`) are collapsed to `Inactive` on restart since they depend on in-flight interactions.
+- **背景**：为何要改  
+- 推荐方案（不是罗列所有备选）  
+- 关键文件路径  
+- 可复用函数/工具及路径  
+- 如何端到端验证  
 
 ---
 
-## Edits During Plan Mode
+## 批准计划
 
-During active plan mode, edits to the plan file are auto-approved without prompting, so the agent can iterate on the plan freely. Edits to **any other file are rejected** before they run — the agent receives a short message naming the plan file as the only editable path.
+代理规划结束后调用 `exit_plan_mode`，TUI 打开可滚动预览与底部操作条。
 
-This enforcement is independent of the permission mode:
+若没有写出计划（空/缺失 `plan.md`），仍会打开批准界面并提示「尚未写入计划」。
 
-- **Always-approve (yolo) stays armed underneath plan mode.** Non-edit tools (bash commands, reads, MCP tools) still auto-run, but file edits are blocked until you approve exiting plan mode. Once the plan is approved, always-approve resumes for implementation.
-- Bash commands are not inspected for file writes — plan mode blocks the edit tools, not shell redirection.
-- Subagents are not covered by the parent session's plan-mode edit gate. Each subagent starts with a fresh plan-mode tracker (`Inactive`), so a `general-purpose` (or other write-capable) subagent can edit files while the parent is still in plan mode — and it inherits the parent's permission mode (including always-approve). Read-only types such as `explore` remain limited by their own toolset.
-
-The status flag shows `plan` while plan mode is active. If always-approve is enabled underneath, its flag reappears when plan mode exits.
-
----
-
-## Plan Mode and Compaction
-
-When `/compact` runs during an active plan mode session, the plan mode state is preserved. The compacted context includes a reminder that plan mode is active, so the agent continues planning after compaction.
+| 快捷键 | 作用 |
+|--------|------|
+| `a` | 批准并开始实现（有评论时为「带评论批准」） |
+| `s` | 要求修改，回到输入框写修改意见 |
+| `c` | 对当前行/行范围写评论 |
+| `q` | 退出计划，不批准并关闭计划模式 |
 
 ---
 
-## When Plan Mode is Appropriate
+## 与权限模式的关系
 
-**Use plan mode for:**
+计划模式约束「能改哪些文件」；权限模式约束「工具是否询问」。二者独立：计划模式下 always-approve 仍不能乱改非计划文件。
 
-- Tasks with significant architectural ambiguity (multiple reasonable approaches)
-- Unclear requirements that need exploration before implementation
-- High-impact restructuring where the wrong approach wastes significant effort
-
-**Skip plan mode for:**
-
-- Tasks with a clear implementation path
-- Bug fixes where the fix is obvious once you understand the bug
-- Adding features that follow existing conventions
-- Straightforward modifications (renaming, formatting, adding tests)
-- Research and exploration tasks (use subagents instead)
+详见 [权限与安全](22-permissions-and-safety.md)。

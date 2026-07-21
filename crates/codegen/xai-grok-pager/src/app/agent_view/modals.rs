@@ -62,7 +62,7 @@ impl AgentView {
                     && let Some(ref mut modal) = self.agents_modal
                 {
                     modal.message = Some(crate::views::agents_modal::AgentsModalMessage::error(
-                        format!("Failed to load persona '{name}'"),
+                        format!("无法加载角色 '{name}'"),
                     ));
                 }
                 self.persona_detail = detail;

@@ -1,10 +1,9 @@
 grok-build-zh
 branch: zh-CN
-phase: P0+status+shortcuts
-features:
-  - settings labels/descriptions (zh)
-  - permission prompts (zh)
-  - status bar: Responding/Thinking/Compacting/Waiting (zh)
-  - session events: Worked for / Turn failed / Compacting (zh)
-  - release workflow for macOS/Linux binaries
+phase: P1-docs-and-errors
+- settings + permissions (zh)
+- status bar / session events / shortcuts (zh)
+- user-guide/*.md Chinese
+- toast/error strings (batch)
+- release workflow
 upstream: xai-org/grok-build
