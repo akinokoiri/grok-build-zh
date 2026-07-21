@@ -104,7 +104,7 @@ impl SlashCommand for ForkCommand {
     }
 
     fn description(&self) -> &str {
-        "Branch the current session into a peer agent"
+        "将会话分支为并行代理"
     }
 
     fn session_scoped(&self) -> bool {

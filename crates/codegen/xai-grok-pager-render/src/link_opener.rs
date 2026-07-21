@@ -48,7 +48,7 @@ pub fn browser_open_likely_available() -> bool {
 /// User-facing copy when the browser opener cannot run. Includes the full
 /// URL on its own line so it is easy to select/copy in the TUI.
 pub fn browser_unavailable_message(url: &str) -> String {
-    format!("Could not open a browser. Open this URL manually:\n{url}")
+    format!("无法打开浏览器。请手动打开此 URL：\n{url}")
 }
 
 /// Open a URL in the system's default browser/handler.
@@ -570,7 +570,7 @@ mod tests {
     fn browser_unavailable_message_includes_full_url() {
         let url = "https://grok.com/supergrok?referrer=grok-build";
         let msg = browser_unavailable_message(url);
-        assert!(msg.contains("Could not open a browser"));
+        assert!(msg.contains("无法打开浏览器"));
         assert!(msg.contains(url));
         // URL on its own line for easy select/copy in the TUI.
         assert!(msg.lines().any(|l| l == url));

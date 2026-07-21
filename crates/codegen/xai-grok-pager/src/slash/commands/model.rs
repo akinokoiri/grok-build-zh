@@ -23,7 +23,7 @@ impl SlashCommand for ModelCommand {
     }
 
     fn description(&self) -> &str {
-        "Switch the active model"
+        "切换当前模型"
     }
 
     fn session_scoped(&self) -> bool {

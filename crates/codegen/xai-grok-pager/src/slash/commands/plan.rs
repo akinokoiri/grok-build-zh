@@ -17,7 +17,7 @@ impl SlashCommand for PlanCommand {
     }
 
     fn description(&self) -> &str {
-        "Enter plan mode"
+        "进入计划模式"
     }
 
     fn session_scoped(&self) -> bool {

@@ -19,7 +19,7 @@ impl SlashCommand for CdCommand {
     }
 
     fn description(&self) -> &str {
-        "Change the working directory for new agents"
+        "更改新代理的工作目录"
     }
 
     fn usage(&self) -> &str {

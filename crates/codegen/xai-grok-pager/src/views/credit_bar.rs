@@ -40,9 +40,9 @@ impl CreditBalance {
     /// "Weekly limit" / "Monthly limit", falling back to "Usage" when unknown.
     pub fn usage_label(&self) -> &'static str {
         match self.period_type.as_deref() {
-            Some(t) if t.contains("WEEKLY") => "Weekly limit",
-            Some(t) if t.contains("MONTHLY") => "Monthly limit",
-            _ => "Usage",
+            Some(t) if t.contains("WEEKLY") => "每周限额",
+            Some(t) if t.contains("MONTHLY") => "每月限额",
+            _ => "用量",
         }
     }
 }
@@ -112,7 +112,7 @@ pub fn format_usage_summary(balance: &CreditBalance, autotopup: Option<&AutoTopu
         balance.usage_pct.floor() as i64
     )];
     if let Some(reset) = &balance.period_end_display {
-        lines.push(format!("Next reset: {reset}"));
+        lines.push(format!("下次重置：{reset}"));
     }
 
     // Billing stores credit / top-up amounts as negative cents (accounting
@@ -123,18 +123,18 @@ pub fn format_usage_summary(balance: &CreditBalance, autotopup: Option<&AutoTopu
         .filter(|c| *c > 0)
     {
         lines.push(String::new());
-        lines.push(format!("Credits: {}", fmt_dollars(prepaid)));
+        lines.push(format!("积分：{}", fmt_dollars(prepaid)));
         match autotopup {
             Some(at) if at.enabled && at.topup_amount_cents.is_some() => {
                 lines.push(format!(
-                    "Auto topup: {}",
+                    "自动充值：{}",
                     fmt_dollars(at.topup_amount_cents.unwrap().abs())
                 ));
                 if let Some(max) = at.max_amount_cents {
-                    lines.push(format!("Max monthly topup: {}", fmt_dollars(max.abs())));
+                    lines.push(format!("每月充值上限：{}", fmt_dollars(max.abs())));
                 }
             }
-            _ => lines.push("Auto topup: disabled".to_string()),
+            _ => lines.push("自动充值：已关闭".to_string()),
         }
     }
 
@@ -145,7 +145,7 @@ pub fn format_usage_summary(balance: &CreditBalance, autotopup: Option<&AutoTopu
         let used = balance.on_demand_used_cents.unwrap_or(0).abs() as f64 / 100.0;
         let cap = balance.on_demand_cap_cents.unwrap_or(0).abs() as f64 / 100.0;
         lines.push(String::new());
-        lines.push(format!("Pay-as-you-go: ${used:.2} used of ${cap:.2} limit"));
+        lines.push(format!("按量付费：已用 ${used:.2} / 限额 ${cap:.2}"));
     }
 
     lines.join("\n")
@@ -198,7 +198,7 @@ pub fn usage_warning_for_session(
                 let used = balance.on_demand_used_cents.unwrap_or(0).abs();
                 let remaining = (cap - used).max(0);
                 if remaining <= LOW_BALANCE_CENTS {
-                    let text = format!("Pay-as-you-go limit left: {}", fmt_dollars(remaining));
+                    let text = format!("按量付费剩余限额：{}", fmt_dollars(remaining));
                     return Some((text, remaining <= PAY_AS_YOU_GO_CRITICAL_CENTS));
                 }
             }
@@ -211,7 +211,7 @@ pub fn usage_warning_for_session(
             // floored summary (99.994% → "1% left", not "0%").
             let remaining = (100 - pct.floor() as i64).max(0);
             let label = balance.usage_label();
-            return Some((format!("{label} left: {remaining}%"), pct > 95.0));
+            return Some((format!("{label} 剩余：{remaining}%"), pct > 95.0));
         }
         return None;
     };
@@ -223,7 +223,7 @@ pub fn usage_warning_for_session(
 
     let credits_warning = || {
         (
-            format!("Credits left: {}", fmt_dollars(credits_cents)),
+            format!("积分剩余：{}", fmt_dollars(credits_cents)),
             true,
         )
     };
@@ -274,7 +274,7 @@ pub fn credit_bar_line_for_session(
         theme.accent_success
     };
 
-    let text = format!("Credits used: {pct:.0}%");
+    let text = format!("积分已用：{pct:.0}%");
 
     let style = Style::default().fg(color).bg(theme.bg_base);
     Some(Line::from(Span::styled(text, style)))

@@ -12,7 +12,7 @@ impl SlashCommand for ShareCommand {
     }
 
     fn description(&self) -> &str {
-        "Share this session via URL"
+        "通过 URL 分享此会话"
     }
 
     fn session_scoped(&self) -> bool {

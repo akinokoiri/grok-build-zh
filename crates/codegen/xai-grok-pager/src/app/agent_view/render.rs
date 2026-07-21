@@ -2555,7 +2555,7 @@ impl AgentView {
                         left_spans.push(Span::styled(counter, hint_style));
                     }
                     left_spans.push(Span::styled("\u{2191}/\u{2193}", hint_key));
-                    left_spans.push(Span::styled(" navigate", hint_style));
+                    left_spans.push(Span::styled(" 导航", hint_style));
                     if qv.questions.len() > 1 {
                         left_spans.push(Span::styled(" \u{b7} ", hint_style));
                         left_spans.push(Span::styled("\u{2190}/\u{2192}", hint_key));
@@ -2563,7 +2563,7 @@ impl AgentView {
                     }
                     left_spans.push(Span::styled(" \u{b7} ", hint_style));
                     left_spans.push(Span::styled("y", hint_key));
-                    left_spans.push(Span::styled(" copy", hint_style));
+                    left_spans.push(Span::styled(" 复制", hint_style));
                     let left_line = Line::from(left_spans);
                     let avail_w = footer_w.saturating_sub(3);
                     buf.set_line_safe(content_x, footer_y, &left_line, avail_w);
@@ -2915,9 +2915,9 @@ impl AgentView {
                     let msg_y = top_border_y + 1;
                     if msg_y < bottom_border_y {
                         let message = if self.prompt_history_loading() {
-                            "  Loading..."
+                            "  加载中…"
                         } else {
-                            "  no matching history"
+                            "  无匹配历史"
                         };
                         buf.set_string_safe(
                             items_x,
@@ -3347,7 +3347,7 @@ impl AgentView {
                 h.push(HintItem::new(key!('v'), "select"));
                 h.push(HintItem::new(key!('x'), "clear"));
                 if self.vim_mode {
-                    h.push(HintItem::new(key!('y'), "copy"));
+                    h.push(HintItem::new(key!('y'), "复制"));
                     h.push(HintItem::new(key!('Y'), "filename"));
                 }
                 h.push(HintItem::new(key!(':'), "goto"));
@@ -3458,7 +3458,7 @@ impl AgentView {
                         let tick = self.scrollback.animation_tick();
                         let frames = crate::glyphs::braille_spinner_frames();
                         let frame = frames[(tick / SPINNER_DIVISOR) as usize % frames.len()];
-                        let loading = format!("{} Loading...", frame);
+                        let loading = format!("{} 加载中…", frame);
                         let lw = loading.width() as u16;
                         let lx = popup_rect.x + 1 + inner_cols.saturating_sub(lw) / 2;
                         let ly = popup_rect.y + 1 + inner_rows / 2;
@@ -3500,7 +3500,7 @@ impl AgentView {
                                     viewer.image_width, viewer.image_height, viewer.mime_type,
                                 )),
                                 ratatui::text::Line::from(""),
-                                ratatui::text::Line::from("  Press Esc to close"),
+                                ratatui::text::Line::from("  按 Esc 关闭"),
                             ];
                             ratatui::widgets::Paragraph::new(meta_lines)
                                 .style(Style::default().fg(theme.gray_dim).bg(theme.bg_base))
@@ -3921,7 +3921,7 @@ impl AgentView {
                         let spinner_frames = crate::glyphs::braille_spinner_frames();
                         let tick = self.scrollback.current_tick() as usize;
                         let spinner = spinner_frames[tick % spinner_frames.len()];
-                        let label = format!("{spinner} Loading...");
+                        let label = format!("{spinner} 加载中…");
                         let cy = rect.y + rect.height / 2;
                         buf.set_string_safe(
                             center_x(label.len()),
@@ -4011,7 +4011,7 @@ impl AgentView {
                             .push((rect, path.clone()));
                         if button_visible {
                             let open_label = "[Open]";
-                            let copy_label = "[Copy]";
+                            let copy_label = "[复制]";
                             let gap = 3u16;
                             let total = open_label.len() as u16 + gap + copy_label.len() as u16;
                             let start_x = rect.x + rect.width.saturating_sub(total) / 2;

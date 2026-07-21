@@ -16,7 +16,7 @@ impl SlashCommand for HelpCommand {
     }
 
     fn description(&self) -> &str {
-        "Browse commands and keyboard shortcuts"
+        "浏览命令与键盘快捷键"
     }
 
     fn usage(&self) -> &str {

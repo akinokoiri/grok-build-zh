@@ -31,9 +31,9 @@ impl SlashCommand for VoiceCommand {
         // it's configurable (toggle or hold via `voice_capture_mode`), so leave
         // the behavior unspecified.
         if crate::app::kitty_flags_pushed() {
-            "Dictation (Ctrl+Space/F8; Esc/Enter to stop)"
+            "听写（Ctrl+Space/F8；Esc/Enter 停止）"
         } else {
-            "Toggle dictation (Ctrl+Space/F8; Esc/Enter to stop)"
+            "开关听写（Ctrl+Space/F8；Esc/Enter 停止）"
         }
     }
 

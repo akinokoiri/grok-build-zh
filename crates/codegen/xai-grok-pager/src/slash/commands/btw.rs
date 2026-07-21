@@ -14,7 +14,7 @@ impl SlashCommand for BtwCommand {
     }
 
     fn description(&self) -> &str {
-        "Ask a side question without interrupting"
+        "旁路提问，不打断当前回合"
     }
 
     fn session_scoped(&self) -> bool {

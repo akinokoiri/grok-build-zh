@@ -14,7 +14,7 @@ impl SlashCommand for TimestampsCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle message timestamps on/off"
+        "开关消息时间戳"
     }
 
     fn usage(&self) -> &str {

@@ -11,7 +11,7 @@ impl SlashCommand for LogoutCommand {
     }
 
     fn description(&self) -> &str {
-        "Log out and return to the login screen"
+        "退出登录并返回登录界面"
     }
 
     fn usage(&self) -> &str {

@@ -30,9 +30,9 @@ pub fn send_now_tip() -> EphemeralTip {
     EphemeralTip::new(
         SEND_NOW_TIP_KEY,
         Line::from(vec![
-            Span::styled("Queued · ", dim),
+            Span::styled("已排队 · ", dim),
             Span::styled("Enter", key_style),
-            Span::styled(" to send now", dim),
+            Span::styled(" 立即发送", dim),
         ]),
     )
     .with_session_seen_cap(SEND_NOW_TIP_SEEN_KEY, SEND_NOW_TIP_SEEN_CAP)
@@ -59,7 +59,7 @@ mod tests {
         let tip = send_now_tip();
         let text: String = tip.line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
-            text.contains("Enter") && text.contains("send now") && text.contains("Queued"),
+            text.contains("Enter") && text.contains("立即发送") && text.contains("已排队"),
             "expected queued/send-now copy with Enter, got {text:?}"
         );
     }

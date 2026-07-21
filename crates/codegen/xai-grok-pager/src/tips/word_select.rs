@@ -48,11 +48,11 @@ pub fn word_select_tip() -> EphemeralTip {
         ..EphemeralTip::new(
             WORD_SELECT_TIP_KEY,
             Line::from(vec![
-                Span::styled("Want double-click to select? ", dim),
+                Span::styled("想双击选中文字？", dim),
                 Span::styled("/settings", key_style),
-                Span::styled(" → Text selection · ", dim),
+                Span::styled(" → 文本选择 · ", dim),
                 Span::styled(WORD_SELECT_ACCEPT_CHORD, key_style),
-                Span::styled(": enable now", dim),
+                Span::styled("：立即启用", dim),
             ]),
         )
         .with_session_seen_cap(WORD_SELECT_TIP_SEEN_KEY, WORD_SELECT_TIP_SEEN_CAP)

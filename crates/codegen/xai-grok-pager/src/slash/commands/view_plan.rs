@@ -16,7 +16,7 @@ impl SlashCommand for ViewPlanCommand {
     }
 
     fn description(&self) -> &str {
-        "View the current plan"
+        "查看当前计划"
     }
 
     fn session_scoped(&self) -> bool {

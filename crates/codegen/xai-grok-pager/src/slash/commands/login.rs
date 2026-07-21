@@ -11,7 +11,7 @@ impl SlashCommand for LoginCommand {
     }
 
     fn description(&self) -> &str {
-        "Log in or re-authenticate with your account"
+        "登录或重新认证账号"
     }
 
     fn usage(&self) -> &str {

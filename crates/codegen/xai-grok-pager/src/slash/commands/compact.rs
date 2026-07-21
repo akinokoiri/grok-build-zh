@@ -15,7 +15,7 @@ impl SlashCommand for CompactCommand {
     }
 
     fn description(&self) -> &str {
-        "Compact conversation history"
+        "压缩对话历史"
     }
 
     fn session_scoped(&self) -> bool {

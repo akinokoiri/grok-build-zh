@@ -19,7 +19,7 @@ impl SlashCommand for ImportClaudeCommand {
     }
 
     fn description(&self) -> &str {
-        "Open the Claude settings import modal"
+        "打开 Claude 设置导入对话框"
     }
 
     fn usage(&self) -> &str {

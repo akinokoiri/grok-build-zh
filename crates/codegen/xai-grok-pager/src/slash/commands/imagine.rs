@@ -15,7 +15,7 @@ impl SlashCommand for ImagineCommand {
     }
 
     fn description(&self) -> &str {
-        "Generate an image from a text description"
+        "根据文字描述生成图片"
     }
 
     fn usage(&self) -> &str {

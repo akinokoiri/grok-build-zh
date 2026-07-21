@@ -21,7 +21,7 @@ impl SlashCommand for ExportCommand {
     }
 
     fn description(&self) -> &str {
-        "Export the current conversation to a file or clipboard"
+        "导出当前对话到文件或剪贴板"
     }
 
     fn session_scoped(&self) -> bool {

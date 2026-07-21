@@ -47,9 +47,9 @@ pub fn ssh_wrap_tip() -> EphemeralTip {
         ..EphemeralTip::new(
             SSH_WRAP_TIP_KEY,
             Line::from(vec![
-                Span::styled("Over SSH? Run ", dim),
+                Span::styled("SSH 环境？在本地运行 ", dim),
                 Span::styled("grok wrap ssh <host>", command),
-                Span::styled(" locally for clipboard + terminal restore", dim),
+                Span::styled(" 以支持剪贴板与终端恢复", dim),
             ]),
         )
         .with_session_seen_cap(SSH_WRAP_TIP_SEEN_KEY, SSH_WRAP_TIP_SEEN_CAP)

@@ -16,7 +16,7 @@ impl SlashCommand for EffortCommand {
     }
 
     fn description(&self) -> &str {
-        "Set reasoning effort for the current model"
+        "设置当前模型的推理强度"
     }
 
     fn session_scoped(&self) -> bool {

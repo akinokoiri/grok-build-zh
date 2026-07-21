@@ -26,7 +26,7 @@ impl SlashCommand for ThemeCommand {
     }
 
     fn description(&self) -> &str {
-        "Switch the color theme"
+        "切换配色主题"
     }
 
     /// Minimal has no theming, so there is nothing for `/theme` to switch.
@@ -87,7 +87,7 @@ impl SlashCommand for ThemeCommand {
             display: "auto".to_string(),
             match_text: "auto".to_string(),
             insert_text: "auto".to_string(),
-            description: format!("auto (follow system){auto_active}"),
+            description: format!("自动（跟随系统）{auto_active}"),
         }];
 
         // Concrete themes — only show "(active)" when not in auto mode.

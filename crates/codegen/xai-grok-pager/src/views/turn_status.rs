@@ -130,34 +130,18 @@ impl Watchers {
 fn watching_label(watchers: Watchers) -> String {
     use std::fmt::Write as _;
     let mut label = String::with_capacity(32);
-    label.push_str("watching");
+    label.push_str("监视中");
     if watchers.commands > 0 {
-        let noun = if watchers.commands == 1 {
-            "command"
-        } else {
-            "commands"
-        };
-        let _ = write!(label, " \u{00b7} {} {noun}", watchers.commands);
+        let _ = write!(label, " \u{00b7} {} 条命令", watchers.commands);
     }
     if watchers.monitors > 0 {
-        let noun = if watchers.monitors == 1 {
-            "monitor"
-        } else {
-            "monitors"
-        };
-        let _ = write!(label, " \u{00b7} {} {noun}", watchers.monitors);
+        let _ = write!(label, " \u{00b7} {} 个监视器", watchers.monitors);
     }
     if watchers.loops > 0 {
-        let noun = if watchers.loops == 1 { "loop" } else { "loops" };
-        let _ = write!(label, " \u{00b7} {} {noun}", watchers.loops);
+        let _ = write!(label, " \u{00b7} {} 个循环", watchers.loops);
     }
     if watchers.subagents > 0 {
-        let noun = if watchers.subagents == 1 {
-            "subagent"
-        } else {
-            "subagents"
-        };
-        let _ = write!(label, " \u{00b7} {} {noun}", watchers.subagents);
+        let _ = write!(label, " \u{00b7} {} 个子代理", watchers.subagents);
     }
     label
 }
@@ -266,7 +250,7 @@ pub fn render_turn_status(
                 Style::default().fg(diamond_color),
             ),
             Span::styled(
-                "agent idle ~ waiting on your edit",
+                "代理空闲 ~ 等待你完成编辑",
                 Style::default().fg(theme.gray),
             ),
         ];
@@ -341,7 +325,7 @@ pub fn render_turn_status(
     let show_bg = show_cancel && has_running_execute;
     let bg_str = if show_bg {
         if bg_hovered {
-            " [send to bg]"
+            " [发送到后台]"
         } else {
             " [\u{2193}]"
         }
@@ -356,8 +340,8 @@ pub fn render_turn_status(
     // color (red on hover, see `cancel_style`), not by swapping the label.
     let cancel_str: &str = match (show_cancel, show_bg) {
         (false, _) => "",
-        (true, true) => "[stop]",
-        (true, false) => " [stop]",
+        (true, true) => "[停止]",
+        (true, false) => " [停止]",
     };
     let cancel_width = cancel_str.width();
 
@@ -514,9 +498,9 @@ pub fn render_turn_status(
         // toast — see `AgentView::held_queue_top_sendable`).
         let suffix = if held_queue > 0 && is_sendable_wait(activity) {
             if held_queue_top_sendable {
-                format!(" · {held_queue} queued — Enter to send now")
+                format!(" · 已排队 {held_queue} 条 — Enter 立即发送")
             } else {
-                format!(" · {held_queue} queued")
+                format!(" · 已排队 {held_queue} 条")
             }
         } else {
             String::new()

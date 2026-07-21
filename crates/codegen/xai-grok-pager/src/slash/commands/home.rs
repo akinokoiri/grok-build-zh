@@ -16,7 +16,7 @@ impl SlashCommand for HomeCommand {
     }
 
     fn description(&self) -> &str {
-        "Return to the welcome screen"
+        "返回欢迎页"
     }
 
     fn usage(&self) -> &str {

@@ -16,7 +16,7 @@ impl SlashCommand for RenameCommand {
     }
 
     fn description(&self) -> &str {
-        "Rename the current session"
+        "重命名当前会话"
     }
 
     fn session_scoped(&self) -> bool {

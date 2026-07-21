@@ -362,12 +362,12 @@ impl ClipboardFeedback {
             Self::CopiedOscContainer => "Copied via OSC 52 from the container.",
             Self::CopiedOscRemote => "Copied via OSC 52.",
             Self::UnverifiedOscRemote | Self::UnverifiedOscContainer => {
-                "Copy sent. If paste fails, use grok wrap or /minimal."
+                "已复制。若粘贴失败，请使用 grok wrap 或 /minimal。"
             }
             Self::VsCodeSshNonAscii => {
                 "Copied. VS Code over SSH may garble non-ASCII; use /minimal if needed."
             }
-            Self::FailedRemote | Self::Failed => "Copy failed. Try /terminal-setup or /minimal.",
+            Self::FailedRemote | Self::Failed => "复制失败。请尝试 /terminal-setup 或 /minimal。",
         }
     }
 
@@ -381,9 +381,9 @@ impl ClipboardFeedback {
             Self::CopiedTmux => "Copied to tmux buffer, paste with prefix + ]",
             Self::CopiedOscContainer => "Copied via OSC 52 from the container",
             Self::CopiedOscRemote => "Copied via OSC 52",
-            Self::UnverifiedOscRemote | Self::UnverifiedOscContainer => "Copy sent",
+            Self::UnverifiedOscRemote | Self::UnverifiedOscContainer => "已复制",
             Self::VsCodeSshNonAscii => "Copied",
-            Self::FailedRemote | Self::Failed => "Copy failed",
+            Self::FailedRemote | Self::Failed => "复制失败",
         }
     }
 
@@ -2043,14 +2043,14 @@ mod tests {
             (
                 ClipboardFeedback::UnverifiedOscRemote,
                 ClipboardDelivery::Unverified,
-                "Copy sent. If paste fails, use grok wrap or /minimal.",
+                "已复制。若粘贴失败，请使用 grok wrap 或 /minimal。",
                 "unverified_osc_remote",
                 120,
             ),
             (
                 ClipboardFeedback::UnverifiedOscContainer,
                 ClipboardDelivery::Unverified,
-                "Copy sent. If paste fails, use grok wrap or /minimal.",
+                "已复制。若粘贴失败，请使用 grok wrap 或 /minimal。",
                 "unverified_osc_container",
                 120,
             ),
@@ -2064,14 +2064,14 @@ mod tests {
             (
                 ClipboardFeedback::FailedRemote,
                 ClipboardDelivery::Failed,
-                "Copy failed. Try /terminal-setup or /minimal.",
+                "复制失败。请尝试 /terminal-setup 或 /minimal。",
                 "failed_remote",
                 120,
             ),
             (
                 ClipboardFeedback::Failed,
                 ClipboardDelivery::Failed,
-                "Copy failed. Try /terminal-setup or /minimal.",
+                "复制失败。请尝试 /terminal-setup 或 /minimal。",
                 "failed",
                 120,
             ),

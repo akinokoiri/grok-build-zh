@@ -9,7 +9,7 @@ impl SlashCommand for McpsCommand {
     }
 
     fn description(&self) -> &str {
-        "Show MCP server status"
+        "显示 MCP 服务器状态"
     }
 
     fn usage(&self) -> &str {

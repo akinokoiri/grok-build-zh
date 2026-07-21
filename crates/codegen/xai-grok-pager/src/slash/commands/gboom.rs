@@ -18,7 +18,7 @@ impl SlashCommand for GboomCommand {
 
     fn description(&self) -> &str {
         // Never shown: the command is hidden from the dropdown.
-        "Hidden easter egg"
+        "隐藏彩蛋"
     }
 
     fn usage(&self) -> &str {

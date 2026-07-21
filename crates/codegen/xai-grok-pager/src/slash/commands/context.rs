@@ -12,7 +12,7 @@ impl SlashCommand for ContextCommand {
     }
 
     fn description(&self) -> &str {
-        "View context usage"
+        "查看上下文用量"
     }
 
     fn session_scoped(&self) -> bool {

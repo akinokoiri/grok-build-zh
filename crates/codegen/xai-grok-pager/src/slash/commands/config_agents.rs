@@ -16,7 +16,7 @@ impl SlashCommand for ConfigAgentsCommand {
     }
 
     fn description(&self) -> &str {
-        "Manage agent definitions"
+        "管理代理定义"
     }
 
     fn usage(&self) -> &str {

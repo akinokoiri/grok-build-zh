@@ -14,7 +14,7 @@ impl SlashCommand for TimelineCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle the timeline sidebar"
+        "切换时间线侧栏"
     }
 
     /// Minimal mode has no interactive scrollback pane for the rail.

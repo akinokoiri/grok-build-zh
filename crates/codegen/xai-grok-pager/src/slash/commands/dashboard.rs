@@ -40,7 +40,7 @@ impl SlashCommand for DashboardCommand {
     }
 
     fn description(&self) -> &str {
-        "Open the Agent Dashboard — a fullscreen overview of every running session"
+        "打开代理仪表盘 — 全屏查看所有运行中会话"
     }
 
     fn usage(&self) -> &str {

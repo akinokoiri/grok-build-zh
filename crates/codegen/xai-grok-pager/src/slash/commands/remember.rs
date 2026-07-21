@@ -12,7 +12,7 @@ impl SlashCommand for RememberCommand {
     }
 
     fn description(&self) -> &str {
-        "Save a memory note"
+        "保存一条记忆笔记"
     }
 
     fn usage(&self) -> &str {

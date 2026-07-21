@@ -24,7 +24,7 @@ impl SlashCommand for DocsCommand {
     }
 
     fn description(&self) -> &str {
-        "Open How-to Guides or online Build docs"
+        "打开使用指南或在线 Build 文档"
     }
 
     fn usage(&self) -> &str {
@@ -49,20 +49,20 @@ impl SlashCommand for DocsCommand {
                 display: "how-to".into(),
                 match_text: "how-to".into(),
                 insert_text: "how-to".into(),
-                description: "Browse in-TUI How-to Guides".into(),
+                description: "浏览应用内使用指南".into(),
             },
             ArgItem {
                 display: "web".into(),
                 match_text: "web".into(),
                 insert_text: "web".into(),
-                description: "Open docs.x.ai/build in the browser".into(),
+                description: "在浏览器打开 docs.x.ai/build".into(),
             },
         ];
         items.extend(all_titles().map(|title| ArgItem {
             display: title.into(),
             match_text: title.into(),
             insert_text: title.into(),
-            description: format!("Open \"{title}\""),
+            description: format!("打开「{title}」"),
         }));
         Some(items)
     }

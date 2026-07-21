@@ -2357,7 +2357,7 @@ pub(crate) async fn run(
                             Some(serde_json::json!({ "attempt": attempt })),
                         );
                         app.show_toast(&format!(
-                            "Disconnected. Reconnecting... (attempt {attempt})"
+                            "已断开。正在重连…（第 {attempt} 次）"
                         ));
                         presenter.request(false);
                     }

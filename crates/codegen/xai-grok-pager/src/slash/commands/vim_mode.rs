@@ -18,7 +18,7 @@ impl SlashCommand for VimModeCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle vim-style scrollback keybindings (j/k, h/l, g/G, y/Y, …)"
+        "切换 vim 风格滚动快捷键（j/k、h/l、g/G、y/Y…）"
     }
 
     fn usage(&self) -> &str {

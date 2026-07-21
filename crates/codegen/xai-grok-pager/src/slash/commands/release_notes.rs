@@ -16,7 +16,7 @@ impl SlashCommand for ReleaseNotesCommand {
     }
 
     fn description(&self) -> &str {
-        "View release notes for the current version"
+        "查看当前版本发行说明"
     }
 
     fn usage(&self) -> &str {

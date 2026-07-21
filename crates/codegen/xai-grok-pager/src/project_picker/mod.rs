@@ -10,12 +10,12 @@ use std::path::{Path, PathBuf};
 use xai_grok_tools::implementations::grok_build::ask_user_question::{Question, QuestionOption};
 
 /// `resolved_paths` is index-aligned with the leading `question.options`.
-/// The trailing "Don't ask me again" option at `dont_ask_index` has no
+/// The trailing "不再询问" option at `dont_ask_index` has no
 /// corresponding path (selecting it continues in the current directory).
 pub struct ProjectQuestion {
     pub question: Question,
     pub resolved_paths: Vec<PathBuf>,
-    /// Option index of the "Don't ask me again" entry.
+    /// Option index of the "不再询问" entry.
     pub dont_ask_index: usize,
 }
 
@@ -34,10 +34,10 @@ pub fn build_project_question(
     } else {
         cwd.file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("current directory")
+            .unwrap_or("当前目录")
     };
     options.push(QuestionOption {
-        label: format!("{cwd_name} (current)"),
+        label: format!("{cwd_name}（当前）"),
         description: sources::display_path(cwd),
         preview: None,
         id: None,
@@ -70,16 +70,16 @@ pub fn build_project_question(
     // Kept out of `resolved_paths` so the path options stay index-aligned.
     let dont_ask_index = options.len();
     options.push(QuestionOption {
-        label: "Don't ask me again".to_string(),
-        description: "Always start in the current directory (reset in config.toml)".to_string(),
+        label: "不再询问".to_string(),
+        description: "始终在当前目录启动（可在 config.toml 中重置）".to_string(),
         preview: None,
         id: None,
     });
 
     ProjectQuestion {
         question: Question {
-            question: "Run Grok Build in a project directory?\n\n\
-                 This gives Grok Build full context of your codebase for better results."
+            question: "要在项目目录中运行 Grok Build 吗？\n\n\
+                 这样可获得完整代码库上下文，结果通常更好。"
                 .into(),
             id: None,
             options,
@@ -110,7 +110,7 @@ mod tests {
             (PathBuf::from("/projects/beta"), now),
         ];
         let pq = build_project_question(&recent, Path::new("/home/user"));
-        // Options carry one extra trailing "Don't ask me again" entry beyond
+        // Options carry one extra trailing "不再询问" entry beyond
         // the index-aligned path options.
         assert_eq!(pq.question.options.len(), pq.resolved_paths.len() + 1);
         assert_eq!(pq.resolved_paths[0], PathBuf::from("/home/user"));
@@ -125,7 +125,7 @@ mod tests {
         assert_eq!(pq.dont_ask_index, pq.question.options.len() - 1);
         assert_eq!(
             pq.question.options[pq.dont_ask_index].label,
-            "Don't ask me again"
+            "不再询问"
         );
     }
 }

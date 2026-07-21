@@ -19,7 +19,7 @@ impl SlashCommand for TerminalSetupCommand {
     }
 
     fn description(&self) -> &str {
-        "Check terminal, color, and clipboard setup"
+        "检查终端、颜色与剪贴板配置"
     }
 
     fn usage(&self) -> &str {

@@ -60,7 +60,7 @@ pub const ENABLE_ALWAYS_APPROVE_OPTION_ID: &str = "enable-always-approve";
 /// here (not at each construction site) so the label is identical across
 /// every permission prompt — edit, bash, MCP, web_fetch, fallback.
 const ENABLE_ALWAYS_APPROVE_LABEL: &str =
-    "是，且不再询问任何操作（始终批准模式）";
+    "在所有会话中始终允许";
 
 /// Build the "enable always-approve mode" option that is prepended to
 /// every TUI/Pager/Desktop permission prompt. See
@@ -243,7 +243,7 @@ pub fn mcp_pretty_name_if_qualified(name: &str) -> String {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct McpToolPermission {
     /// Static label prefix shown before the dynamic scope text,
-    /// e.g. `"Always allow:"`. Mirrors `BashCommandPermission::prompt_prefix`.
+    /// e.g. `"始终允许："`. Mirrors `BashCommandPermission::prompt_prefix`.
     pub prompt_prefix: String,
     /// Full tool name as the agent called it
     /// (e.g. `"grok_com_notion__notion-fetch"`).
@@ -284,7 +284,7 @@ pub enum PromptOutcome {
     AllowAlways,
     /// Session-scoped: allow all edits for the remainder of this session only.
     /// Does **not** persist to disk (unlike the legacy `AllowAlways` path for edits).
-    /// Matches the UX of "Yes, allow all edits during this session".
+    /// Matches the UX of "是，本会话始终允许所有编辑".
     AllowEditsForSession,
     AllowAlwaysBashCommand(String),
     AllowAlwaysDomain(String),
@@ -934,7 +934,7 @@ fn map_selected_outcome(
                         PromptOutcome::AllowAlways
                     }
                 } else if option_id.0.as_ref() == ALLOW_EDITS_SESSION_OPTION_ID {
-                    // The edit prompt's "Yes, allow all edits during this session".
+                    // The edit prompt's "是，本会话始终允许所有编辑".
                     // Treat as session-scoped only (in-memory). Do not persist.
                     PromptOutcome::AllowEditsForSession
                 } else {

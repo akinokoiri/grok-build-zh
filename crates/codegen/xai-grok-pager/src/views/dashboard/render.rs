@@ -644,7 +644,7 @@ fn render_dashboard_banner(
         return;
     }
     if rows.is_empty() {
-        let hint = " No sessions yet — Esc to dispatch one. ";
+        let hint = " 暂无会话 — 按 Esc 可派发。 ";
         let trunc = truncate_str(hint, inner.width as usize);
         buf.set_string(
             inner.x,
@@ -3834,7 +3834,7 @@ pub fn render_popup_overlay(
         outline.render(area, buf);
         if area.height >= 3 && area.width >= 6 {
             let hint = truncate_str(
-                "(terminal too small — Esc to close)",
+                "(终端太小 — 按 Esc 关闭)",
                 area.width.saturating_sub(2) as usize,
             );
             buf.set_string(
@@ -8022,8 +8022,8 @@ if *count == 1)),
                     last_user_message: None,
                     question: Some("允许？".into()),
                     options: vec![
-                        ("allow".into(), "Allow".into()),
-                        ("deny".into(), "Deny".into()),
+                        ("allow".into(), "允许".into()),
+                        ("deny".into(), "拒绝".into()),
                     ],
                     request_id: None,
                     reject_option: None,
@@ -8104,8 +8104,8 @@ if *count == 1)),
                     last_user_message: None,
                     question: Some("允许？".into()),
                     options: vec![
-                        ("allow".into(), "Allow".into()),
-                        ("deny".into(), "Deny".into()),
+                        ("allow".into(), "允许".into()),
+                        ("deny".into(), "拒绝".into()),
                     ],
                     request_id: None,
                     reject_option: None,
@@ -8547,7 +8547,7 @@ if *count == 1)),
             );
         }
         assert!(
-            content.contains("Enter:send"),
+            content.contains("Enter:发送"),
             "default compose: bare Enter is send, got: {content:?}",
         );
         assert!(
@@ -8579,13 +8579,13 @@ if *count == 1)),
         );
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Shift+Enter:send") || content.contains("Alt+Enter:send"),
+            content.contains("Shift+Enter:发送") || content.contains("Alt+Enter:发送"),
             "multiline footer must advertise Shift/Alt+Enter as send, got: {content:?}",
         );
-        // Bare Enter:send would appear as "  Enter:send" (footer pad); the
-        // modified chords contain the substring "Enter:send" so avoid that.
+        // Bare Enter:send would appear as "  Enter:发送" (footer pad); the
+        // modified chords contain the substring "Enter:发送" so avoid that.
         assert!(
-            !content.contains("  Enter:send"),
+            !content.contains("  Enter:发送"),
             "multiline footer must not claim bare Enter:send, got: {content:?}",
         );
         assert!(
@@ -8616,7 +8616,7 @@ if *count == 1)),
         );
         let content = buf_to_text(&buf);
         assert!(
-            content.contains("Shift+Enter:create") || content.contains("Alt+Enter:create"),
+            content.contains("Shift+Enter:create") || content.contains("Alt+Enter:创建"),
             "multiline empty footer must advertise Shift/Alt+Enter as create, got: {content:?}",
         );
         assert!(

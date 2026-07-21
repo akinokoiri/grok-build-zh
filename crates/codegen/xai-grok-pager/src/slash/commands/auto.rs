@@ -20,7 +20,7 @@ impl SlashCommand for AutoCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle auto mode (classifier approves safe tools)"
+        "切换自动模式（分类器批准安全工具）"
     }
 
     fn usage(&self) -> &str {

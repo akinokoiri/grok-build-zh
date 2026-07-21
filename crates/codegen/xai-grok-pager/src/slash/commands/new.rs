@@ -16,7 +16,7 @@ impl SlashCommand for NewCommand {
     }
 
     fn description(&self) -> &str {
-        "Start a new session"
+        "开始新会话"
     }
 
     fn usage(&self) -> &str {

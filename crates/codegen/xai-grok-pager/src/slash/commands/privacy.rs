@@ -21,7 +21,7 @@ impl SlashCommand for PrivacyCommand {
     }
 
     fn description(&self) -> &str {
-        "Show or toggle privacy & data retention status"
+        "查看或切换隐私与数据保留状态"
     }
 
     fn usage(&self) -> &str {

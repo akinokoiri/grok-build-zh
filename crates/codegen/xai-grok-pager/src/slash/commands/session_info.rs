@@ -12,7 +12,7 @@ impl SlashCommand for SessionInfoCommand {
     }
 
     fn description(&self) -> &str {
-        "Show session info"
+        "显示会话信息"
     }
 
     fn session_scoped(&self) -> bool {

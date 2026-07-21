@@ -9,7 +9,7 @@ impl SlashCommand for JumpCommand {
     }
 
     fn description(&self) -> &str {
-        "Jump to a turn in the conversation"
+        "跳转到对话中的某一回合"
     }
 
     fn session_scoped(&self) -> bool {

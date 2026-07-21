@@ -17,7 +17,7 @@ impl SlashCommand for PersonasCommand {
     }
 
     fn description(&self) -> &str {
-        "Manage personas (create, edit, delete)"
+        "管理人设（创建、编辑、删除）"
     }
 
     fn usage(&self) -> &str {

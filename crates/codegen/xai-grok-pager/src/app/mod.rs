@@ -620,14 +620,14 @@ pub async fn run(
         let conn = crate::acp::connect_via_leader(&cancel, connect_flags, &raw_config).await?;
         tracing::info!(
             elapsed_ms = startup_start.elapsed().as_millis() as u64,
-            "Connected via leader"
+            "已通过 leader 连接"
         );
         conn
     } else {
         let conn = crate::acp::connect(&cancel, connect_flags).await?;
         tracing::info!(
             elapsed_ms = startup_start.elapsed().as_millis() as u64,
-            "Connected directly (non-leader)"
+            "已直连（非 leader）"
         );
         conn
     };
@@ -795,7 +795,7 @@ fn print_exit_resume_hint(info: &ExitInfo, max_width: usize, w: &mut impl Write)
         }
         let _ = writeln!(w);
     }
-    let _ = writeln!(w, "Resume this session with:");
+    let _ = writeln!(w, "使用以下命令恢复此会话：");
     if info.minimal {
         let _ = writeln!(w, "  grok --minimal --resume {}", info.session_id);
     } else {
@@ -810,7 +810,7 @@ fn print_relaunch_failure_hint(
     w: &mut impl Write,
 ) {
     let _ = writeln!(w, "Failed to relaunch in requested mode: {error}");
-    let _ = writeln!(w, "Resume this session with:");
+    let _ = writeln!(w, "使用以下命令恢复此会话：");
     let _ = writeln!(
         w,
         "  {}",

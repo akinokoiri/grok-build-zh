@@ -46,7 +46,7 @@ pub fn small_screen_tip() -> EphemeralTip {
     EphemeralTip::new(
         SMALL_SCREEN_TIP_KEY,
         Line::from(vec![
-            Span::styled("Tight on space? Try ", dim),
+            Span::styled("屏幕偏小？试试 ", dim),
             Span::styled("/compact-mode", command),
         ]),
     )

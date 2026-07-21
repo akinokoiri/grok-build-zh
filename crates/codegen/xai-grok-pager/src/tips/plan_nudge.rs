@@ -53,7 +53,7 @@ pub fn plan_nudge_tip() -> EphemeralTip {
     EphemeralTip::new(
         PLAN_NUDGE_KEY,
         Line::from(vec![
-            Span::styled("Planning? Check out plan mode via ", dim),
+            Span::styled("在做规划？可切换到计划模式：", dim),
             Span::styled(plan_chord_label(), chord),
         ]),
     )

@@ -22,7 +22,7 @@ impl SlashCommand for ToggleMouseReportingCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle terminal mouse reporting (native click-drag copy/paste)"
+        "切换终端鼠标上报（原生拖选复制粘贴）"
     }
 
     fn usage(&self) -> &str {

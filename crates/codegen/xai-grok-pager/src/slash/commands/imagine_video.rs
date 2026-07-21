@@ -16,7 +16,7 @@ impl SlashCommand for ImagineVideoCommand {
     }
 
     fn description(&self) -> &str {
-        "Generate a video from a text description"
+        "根据文字描述生成视频"
     }
 
     fn usage(&self) -> &str {

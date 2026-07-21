@@ -143,9 +143,9 @@ impl CancelTurnChoice {
     pub fn label(&self) -> &'static str {
         match self {
             Self::StopRunning => "Stop running",
-            Self::ContinueToRun => "Continue to run",
-            Self::AlwaysStop => "Always stop",
-            Self::AlwaysContinue => "Always continue",
+            Self::ContinueToRun => "继续运行",
+            Self::AlwaysStop => "始终停止",
+            Self::AlwaysContinue => "始终继续",
         }
     }
 }
@@ -1396,7 +1396,7 @@ mod doc_picker_tip_tests {
             all.push('\n');
         }
         assert!(
-            all.contains("Tip") && all.contains("Ask Grok"),
+            all.contains("Tip") && all.contains("问 Grok"),
             "missing tip footer:\n{all}"
         );
         assert!(

@@ -24,7 +24,7 @@ impl SlashCommand for MultilineCommand {
     }
 
     fn description(&self) -> &str {
-        "Toggle multiline input mode (swap Enter and Shift+Enter)"
+        "切换多行输入（交换 Enter 与 Shift+Enter）"
     }
 
     fn session_scoped(&self) -> bool {

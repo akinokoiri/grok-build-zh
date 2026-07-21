@@ -20,7 +20,7 @@ impl SlashCommand for CopyCommand {
     }
 
     fn description(&self) -> &str {
-        "Copy last response to clipboard or file (/copy [N] [file])"
+        "复制最近回复到剪贴板或文件（/copy [N] [file]）"
     }
 
     fn session_scoped(&self) -> bool {

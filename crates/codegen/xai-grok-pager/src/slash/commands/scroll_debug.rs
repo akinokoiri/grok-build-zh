@@ -19,7 +19,7 @@ impl SlashCommand for ScrollDebugCommand {
 
     fn description(&self) -> &str {
         // Never shown: the command is hidden from the dropdown.
-        "Toggle the scroll-diagnostics HUD"
+        "切换滚动诊断 HUD"
     }
 
     fn usage(&self) -> &str {

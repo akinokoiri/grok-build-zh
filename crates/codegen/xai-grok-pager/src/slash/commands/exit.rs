@@ -16,7 +16,7 @@ impl SlashCommand for ExitCommand {
     }
 
     fn description(&self) -> &str {
-        "Quit the application"
+        "退出应用"
     }
 
     fn usage(&self) -> &str {

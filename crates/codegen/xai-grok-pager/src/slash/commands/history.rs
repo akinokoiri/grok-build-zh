@@ -17,7 +17,7 @@ impl SlashCommand for HistoryCommand {
     }
 
     fn description(&self) -> &str {
-        "Search prompt history"
+        "搜索提示历史"
     }
 
     fn session_scoped(&self) -> bool {

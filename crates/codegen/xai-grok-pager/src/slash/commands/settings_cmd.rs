@@ -19,7 +19,7 @@ impl SlashCommand for SettingsCommand {
     }
 
     fn description(&self) -> &str {
-        "Open the settings modal"
+        "打开设置"
     }
 
     fn usage(&self) -> &str {

@@ -14,7 +14,7 @@ impl SlashCommand for AnnouncementsCommand {
     }
 
     fn description(&self) -> &str {
-        "Show or hide announcements"
+        "显示或隐藏公告"
     }
 
     fn usage(&self) -> &str {
@@ -39,13 +39,13 @@ impl SlashCommand for AnnouncementsCommand {
                 display: "hide".to_string(),
                 match_text: "hide".to_string(),
                 insert_text: "hide".to_string(),
-                description: "Hide the announcement banner".to_string(),
+                description: "隐藏公告横幅".to_string(),
             },
             ArgItem {
                 display: "show".to_string(),
                 match_text: "show".to_string(),
                 insert_text: "show".to_string(),
-                description: "Show the announcement banner".to_string(),
+                description: "显示公告横幅".to_string(),
             },
         ])
     }

@@ -18,7 +18,7 @@ impl SlashCommand for TasksCommand {
     }
 
     fn description(&self) -> &str {
-        "List background tasks, subagents, and scheduled tasks"
+        "列出后台任务、子代理与定时任务"
     }
 
     fn session_scoped(&self) -> bool {

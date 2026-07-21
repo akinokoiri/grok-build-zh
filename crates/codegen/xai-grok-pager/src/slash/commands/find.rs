@@ -16,7 +16,7 @@ impl SlashCommand for FindCommand {
     }
 
     fn description(&self) -> &str {
-        "Search the conversation scrollback"
+        "搜索对话滚动区"
     }
 
     fn session_scoped(&self) -> bool {

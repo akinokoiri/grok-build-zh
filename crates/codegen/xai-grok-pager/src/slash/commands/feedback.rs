@@ -12,7 +12,7 @@ impl SlashCommand for FeedbackCommand {
     }
 
     fn description(&self) -> &str {
-        "Send feedback about the current session"
+        "发送关于当前会话的反馈"
     }
 
     fn usage(&self) -> &str {

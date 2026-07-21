@@ -18,7 +18,7 @@ impl SlashCommand for HooksCommand {
     }
 
     fn description(&self) -> &str {
-        "View hooks"
+        "查看钩子"
     }
 
     fn usage(&self) -> &str {
@@ -42,7 +42,7 @@ impl SlashCommand for PluginsCommand {
     }
 
     fn description(&self) -> &str {
-        "View plugins"
+        "查看插件"
     }
 
     fn usage(&self) -> &str {
@@ -66,7 +66,7 @@ impl SlashCommand for MarketplaceCommand {
     }
 
     fn description(&self) -> &str {
-        "View marketplace"
+        "查看市场"
     }
 
     fn usage(&self) -> &str {
@@ -90,7 +90,7 @@ impl SlashCommand for SkillsCommand {
     }
 
     fn description(&self) -> &str {
-        "View skills"
+        "查看技能"
     }
 
     fn usage(&self) -> &str {
