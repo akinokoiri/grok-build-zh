@@ -452,9 +452,9 @@ impl SessionActor {
 
     pub(super) fn format_turn_error_message(err: &acp::Error) -> String {
         if let Some(detail) = Self::turn_error_detail(err) {
-            format!("Turn failed: {detail}")
+            format!("回合失败: {detail}")
         } else {
-            format!("Turn failed: {}", Self::classify_turn_error(err))
+            format!("回合失败: {}", Self::classify_turn_error(err))
         }
     }
 

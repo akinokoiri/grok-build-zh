@@ -998,7 +998,7 @@ pub(super) fn handle_prompt_response(
         // when a queued prompt is removed in leader mode and its
         // `respond_to` is dropped on the leader, the resulting
         // "session failed to respond" error would detonate an unrelated
-        // in-flight turn with a spurious "Turn failed" (on the
+        // in-flight turn with a spurious "回合失败" (on the
         // submitter's screen, even when another client did the edit).
         let response_pid = match &result {
             Ok(pr) => pr
@@ -1115,7 +1115,7 @@ pub(super) fn handle_prompt_response(
         // A 401/auth failure already surfaced an actionable
         // `ReAuthRequired` prompt via the RetryState handler (which
         // runs before this PromptResponse). Suppress the redundant
-        // "Turn failed" block + error toast so only the prompt shows.
+        // "回合失败" block + error toast so only the prompt shows.
         let reauth_prompted = scrollback_has_recent_reauth_prompt(&agent.scrollback)
             || (http_status == Some(401)
                 && result
@@ -1361,7 +1361,7 @@ pub(super) fn handle_prompt_response(
         // prompt is retried automatically; otherwise the upsell
         // is shown.
         if credit_limit_blocked {
-            // Strip stale "Retry failed" / "Turn failed" error blocks
+            // Strip stale "Retry failed" / "回合失败" error blocks
             // that were pushed before the credit-limit was detected.
             // Walk backwards from the end and remove matching events.
             let mut to_remove = Vec::new();

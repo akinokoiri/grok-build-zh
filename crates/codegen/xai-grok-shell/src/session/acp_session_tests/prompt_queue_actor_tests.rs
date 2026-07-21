@@ -163,7 +163,7 @@ async fn clear_queue_is_owner_scoped() {
 /// surfaces to the client as `RecvError` → "session failed to respond", which
 /// — because the client's PromptResponse prompt-id gate only runs on the `Ok`
 /// path — is misattributed to the running turn and rendered as a spurious
-/// "Turn failed". Regression guard.
+/// "回合失败". Regression guard.
 #[tokio::test]
 async fn remove_queued_prompt_resolves_rpc_cancelled() {
     let local = tokio::task::LocalSet::new();

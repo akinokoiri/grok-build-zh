@@ -3140,7 +3140,7 @@ mod tests {
                 item,
                 action_id: Some(id),
                 ..
-            } if item.description.as_deref() == Some("Keyboard shortcuts") => Some(*id),
+            } if item.description.as_deref() == Some("键盘快捷键") => Some(*id),
             _ => None,
         });
         assert_eq!(

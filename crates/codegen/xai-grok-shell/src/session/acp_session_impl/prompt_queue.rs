@@ -402,7 +402,7 @@ impl SessionActor {
     /// turns into `acp::Error::internal_error("session failed to respond")`.
     /// Worse, the client's `PromptResponse` handler only applies its
     /// prompt-id gate on the `Ok` path, so that `Err` is misattributed to the
-    /// *running* turn and rendered as a spurious "Turn failed" — the session
+    /// *running* turn and rendered as a spurious "回合失败" — the session
     /// appears to die.
     ///
     /// Report success with [`PromptCompletionKind::RemovedFromQueue`] instead:
@@ -622,7 +622,7 @@ impl SessionActor {
         // client awaiting its `respond_to`, so it must be resolved with
         // `Cancelled` (see [`respond_removed_prompt`]) instead of being
         // dropped — a bare drop surfaces as "session failed to respond" and a
-        // spurious "Turn failed" on the running turn.
+        // spurious "回合失败" on the running turn.
         let running_id = state.running_prompt_id().map(str::to_string);
         let mut kept = VecDeque::with_capacity(state.pending_inputs.len());
         for item in std::mem::take(&mut state.pending_inputs) {

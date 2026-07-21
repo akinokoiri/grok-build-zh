@@ -270,7 +270,7 @@ pub(super) fn finalize_turn_from_terminal(
         Some("cancelled") if send_now_cancel => None,
         Some("cancelled") => Some(SessionEvent::TurnCancelled { elapsed }),
         // Rate limits drive a dedicated UX on the driver and are not actionable
-        // from a viewer — don't surface a stray "Turn failed" line.
+        // from a viewer — don't surface a stray "回合失败" line.
         Some("rate_limit") => None,
         Some("error") => Some(SessionEvent::TurnFailed {
             error: agent_result

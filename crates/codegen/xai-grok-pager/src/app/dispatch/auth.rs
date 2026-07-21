@@ -118,7 +118,7 @@ pub(super) fn dispatch_switch_account(app: &mut AppView) -> Vec<Effect> {
 
 /// Scan the trailing run of session-event / system blocks for a
 /// [`SessionEvent::ReAuthRequired`] prompt. Used by the `PromptResponse`
-/// handler to suppress the redundant "Turn failed" block after a 401 — the
+/// handler to suppress the redundant "回合失败" block after a 401 — the
 /// re-auth prompt is pushed by the `RetryState` handler, which runs first.
 pub(super) fn scrollback_has_recent_reauth_prompt(
     scrollback: &crate::scrollback::state::ScrollbackState,
