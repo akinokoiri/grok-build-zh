@@ -692,7 +692,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
             category: SettingCategory::Appearance,
             owner: SettingOwner::Shared,
             label: "自动深色主题",
-            description: "系统深色模式时使用的主题（仅 theme=auto 时生效）。"",
+            description: "系统深色模式时使用的主题（仅 theme=auto 时生效）。",
             keywords: &["auto", "dark", "theme", "system", "appearance", "night"],
             kind: SettingKind::Enum {
                 // `Option<String>` — `None` falls back to "groknight".
@@ -708,7 +708,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
             category: SettingCategory::Appearance,
             owner: SettingOwner::Shared,
             label: "自动浅色主题",
-            description: "系统浅色模式时使用的主题（仅 theme=auto 时生效）。"",
+            description: "系统浅色模式时使用的主题（仅 theme=auto 时生效）。",
             keywords: &["auto", "light", "theme", "system", "appearance", "day"],
             kind: SettingKind::Enum {
                 // `Option<String>` — `None` falls back to "grokday".
@@ -727,7 +727,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
             category: SettingCategory::Appearance,
             owner: SettingOwner::Shell,
             label: "渲染 Mermaid 图表",
-            description: "```mermaid 代码块展示方式：auto/on 增加可点击行打开渲染图；off 显示源码。"",
+            description: "```mermaid 代码块展示方式：auto/on 增加可点击行打开渲染图；off 显示源码。",
             keywords: &[
                 "mermaid",
                 "diagram",
@@ -782,7 +782,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
             category: SettingCategory::Agent,
             owner: SettingOwner::Shell,
             label: "记住工具授权",
-            description: "在权限提示中显示「始终允许」选项，避免同一命令/工具反复询问。适用于 ask 与 auto；Always-approve 仍会跳过全部提示。需重启生效。"",
+            description: "在权限提示中显示「始终允许」选项，避免同一命令/工具反复询问。适用于 ask 与 auto；Always-approve 仍会跳过全部提示。需重启生效。",
             keywords: &[
                 "permission",
                 "approve",
@@ -809,7 +809,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
             category: SettingCategory::Editor,
             owner: SettingOwner::Pager,
             label: "多行输入",
-            description: "开启后 Enter 换行，Shift+Enter 发送。每个会话重置。"",
+            description: "开启后 Enter 换行，Shift+Enter 发送。每个会话重置。",
             keywords: &["multiline", "newline", "input", "editor", "enter"],
             kind: SettingKind::Bool { default: false },
             restart_required: false,
@@ -823,7 +823,7 @@ pub fn default_settings() -> Vec<SettingMeta> {
             category: SettingCategory::Models,
             owner: SettingOwner::Shell,
             label: "默认模型",
-            description: "新会话使用的模型。修改时也会切换当前会话。选择「(不覆盖)」可清除。"",
+            description: "新会话使用的模型。修改时也会切换当前会话。选择「(不覆盖)」可清除。",
             keywords: &["model", "default", "agent", "llm", "grok", "switch"],
             kind: SettingKind::DynamicEnum {
                 default: "",
