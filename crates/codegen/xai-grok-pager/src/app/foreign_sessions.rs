@@ -310,7 +310,7 @@ impl ForeignPickerSource {
         let skill = self.skill_name();
         [
             grok_home
-                .join("bundled")
+                .join("内置")
                 .join("skills")
                 .join(skill)
                 .join("SKILL.md"),

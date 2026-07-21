@@ -475,14 +475,14 @@ pub fn merge_persona_lists(bundle: &BundleState, cwd: &Path) -> Vec<PersonaDetai
     let mut names: std::collections::HashSet<String> =
         list.iter().map(|p| p.name.clone()).collect();
     let grok_home = xai_grok_config::grok_home();
-    let bundled_dir = grok_home.join("bundled").join("personas");
+    let bundled_dir = grok_home.join("内置").join("personas");
     for persona in &mut list {
         if persona.source_path.is_none() {
             let path = bundled_dir.join(format!("{}.toml", persona.name));
             if path.exists() {
                 persona.source_path = Some(path.display().to_string());
                 if persona.scope_label.is_none() {
-                    persona.scope_label = Some("bundled".to_string());
+                    persona.scope_label = Some("内置".to_string());
                 }
             }
         }
@@ -652,7 +652,7 @@ fn config_path_is_user_or_project(path: &Path, subdir: &str) -> bool {
     };
     if canonical
         .components()
-        .any(|c| matches!(c, std::path::Component::Normal(s) if s == "bundled"))
+        .any(|c| matches!(c, std::path::Component::Normal(s) if s == "内置"))
     {
         return false;
     }
@@ -683,7 +683,7 @@ pub fn delete_persona_file(path: &Path) -> Result<(), String> {
     if !persona_path_is_deletable(path) {
         if dunce::canonicalize(path).ok().is_some_and(|c| {
             c.components()
-                .any(|comp| matches!(comp, std::path::Component::Normal(s) if s == "bundled"))
+                .any(|comp| matches!(comp, std::path::Component::Normal(s) if s == "内置"))
         }) {
             return Err("Cannot delete bundled personas".to_string());
         }
@@ -1049,22 +1049,22 @@ pub fn render_agents_modal(
 fn build_agents_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a>> {
     let mut shortcuts = vec![
         Shortcut {
-            label: "j/k nav",
+            label: "j/k 导航",
             clickable: false,
             id: 0,
         },
         Shortcut {
-            label: "e/\u{2192} expand",
+            label: "e/\u{2192} 展开",
             clickable: false,
             id: 0,
         },
         Shortcut {
-            label: "E/\u{2190} collapse",
+            label: "E/\u{2190} 折叠",
             clickable: false,
             id: 0,
         },
         Shortcut {
-            label: "Enter view",
+            label: "Enter 查看",
             clickable: false,
             id: 0,
         },
@@ -1079,7 +1079,7 @@ fn build_agents_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a>>
             id: 0,
         },
         Shortcut {
-            label: "s default",
+            label: "s 默认",
             clickable: false,
             id: 0,
         },
@@ -1107,7 +1107,7 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
                 id: 0,
             },
             Shortcut {
-                label: "Enter create",
+                label: "Enter 创建",
                 clickable: false,
                 id: 0,
             },
@@ -1120,12 +1120,12 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
     } else if state.persona_confirm.is_some() {
         vec![
             Shortcut {
-                label: "y confirm",
+                label: "y 确认",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "n/Esc cancel",
+                label: "n/Esc 取消",
                 clickable: false,
                 id: 0,
             },
@@ -1133,22 +1133,22 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
     } else {
         let mut shortcuts = vec![
             Shortcut {
-                label: "j/k nav",
+                label: "j/k 导航",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "e/\u{2192} expand",
+                label: "e/\u{2192} 展开",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "E/\u{2190} collapse",
+                label: "E/\u{2190} 折叠",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "Enter view",
+                label: "Enter 查看",
                 clickable: false,
                 id: 0,
             },
@@ -1158,12 +1158,12 @@ fn build_personas_tab_shortcuts<'a>(state: &AgentsModalState) -> Vec<Shortcut<'a
                 id: 0,
             },
             Shortcut {
-                label: "n new",
+                label: "n 新建",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "d delete",
+                label: "d 删除",
                 clickable: false,
                 id: 0,
             },
@@ -2245,7 +2245,7 @@ fn handle_personas_tab_key(state: &mut AgentsModalState, key: &KeyEvent) -> Agen
                 let scope_label = persona
                     .scope_label
                     .clone()
-                    .unwrap_or_else(|| "bundled".to_string());
+                    .unwrap_or_else(|| "内置".to_string());
                 return AgentsModalOutcome::OpenPersonaDetail {
                     name: persona.name.clone(),
                     source_path,

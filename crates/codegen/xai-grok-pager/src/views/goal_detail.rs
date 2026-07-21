@@ -342,12 +342,8 @@ fn humanize_event_timestamp(ts: &str) -> String {
         .signed_duration_since(dt.with_timezone(&chrono::Utc))
         .num_seconds()
         .max(0) as u64;
-    let ago = crate::util::format_time_ago(std::time::Duration::from_secs(secs));
-    if ago == "just now" {
-        ago
-    } else {
-        format!("{ago} ago")
-    }
+    // `format_time_ago` already returns localized Chinese (e.g. 刚刚 / 1分 / 2时).
+    crate::util::format_time_ago(std::time::Duration::from_secs(secs))
 }
 
 /// Compute the overlay area (centered, sized to content, clamped to screen).
@@ -2246,12 +2242,12 @@ mod tests {
     fn humanize_event_timestamp_relative_and_fallback() {
         assert_eq!(humanize_event_timestamp(""), "");
         // Non-RFC3339 (legacy / fixture) returned verbatim.
-        assert_eq!(humanize_event_timestamp("1m ago"), "1m ago");
+        assert_eq!(humanize_event_timestamp("1m ago"), "1m ago");  // non-RFC3339 passthrough
         // A fresh RFC3339 stamp → "just now"; ~2h ago → "2h ago".
         let now = chrono::Utc::now().to_rfc3339();
-        assert_eq!(humanize_event_timestamp(&now), "just now");
+        assert_eq!(humanize_event_timestamp(&now), "刚刚");
         let past = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
-        assert_eq!(humanize_event_timestamp(&past), "2h ago");
+        assert_eq!(humanize_event_timestamp(&past), "2时");
     }
 
     #[test]
@@ -2268,7 +2264,7 @@ mod tests {
             text.contains("Paused: back off"),
             "humanized event label, got:\n{text}"
         );
-        assert!(text.contains("2m ago"), "relative time, got:\n{text}");
+        assert!(text.contains("2分"), "relative time, got:\n{text}");
         assert!(
             !text.contains("goal_paused"),
             "raw event name must not render, got:\n{text}"

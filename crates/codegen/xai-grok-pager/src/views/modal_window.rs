@@ -216,7 +216,7 @@ pub struct Shortcut<'a> {
 pub fn push_vim_nav_search_hint<'a>(shortcuts: &mut Vec<Shortcut<'a>>, search_active: bool) {
     if !search_active && crate::appearance::cache::load_vim_mode() {
         shortcuts.push(Shortcut {
-            label: "i search",
+            label: "i 搜索",
             clickable: false,
             id: 0,
         });

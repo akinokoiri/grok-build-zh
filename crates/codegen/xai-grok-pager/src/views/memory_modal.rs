@@ -364,7 +364,7 @@ pub fn build_entries(
             entries.extend(items);
         }
     };
-    push_section("Global", global);
+    push_section("全局", global);
     push_section("Workspace", workspace);
     push_section("Sessions", session);
     entries
@@ -1091,7 +1091,7 @@ fn build_shortcuts(
                 id: 0,
             },
             Shortcut {
-                label: "Esc exit filter",
+                label: "Esc 退出筛选",
                 clickable: false,
                 id: 0,
             },
@@ -1103,7 +1103,7 @@ fn build_shortcuts(
                 id: 0,
             },
             Shortcut {
-                label: "any key cancel",
+                label: "任意键取消",
                 clickable: false,
                 id: 0,
             },
@@ -1143,19 +1143,19 @@ fn format_modified(epoch_secs: Option<u64>, now_secs: u64) -> String {
         return "unknown".to_string();
     };
     if now_secs <= modified {
-        return "just now".to_string();
+        return "刚刚".to_string();
     }
     let delta = now_secs - modified;
     if delta < 60 {
-        return "just now".to_string();
+        return "刚刚".to_string();
     }
     if delta < 3600 {
         let mins = delta / 60;
-        return format!("{mins}m ago");
+        return format!("{mins} 分钟前");
     }
     if delta < 86400 {
         let hours = delta / 3600;
-        return format!("{hours}h ago");
+        return format!("{hours} 小时前");
     }
     let days = delta / 86400;
     format!("{days}d ago")
@@ -1189,10 +1189,10 @@ mod tests {
     fn format_modified_relative() {
         let now = 1_700_000_000u64;
         assert_eq!(format_modified(None, now), "unknown");
-        assert_eq!(format_modified(Some(now), now), "just now");
-        assert_eq!(format_modified(Some(now - 30), now), "just now");
-        assert_eq!(format_modified(Some(now - 120), now), "2m ago");
-        assert_eq!(format_modified(Some(now - 7200), now), "2h ago");
+        assert_eq!(format_modified(Some(now), now), "刚刚");
+        assert_eq!(format_modified(Some(now - 30), now), "刚刚");
+        assert_eq!(format_modified(Some(now - 120), now), "2 分钟前");
+        assert_eq!(format_modified(Some(now - 7200), now), "2 小时前");
         assert_eq!(format_modified(Some(now - 172800), now), "2d ago");
     }
 
@@ -1233,7 +1233,7 @@ mod tests {
         let entries = build_entries(files);
         assert_eq!(entries.len(), 6);
         assert!(entries[0].is_header);
-        assert_eq!(entries[0].label, "Global");
+        assert_eq!(entries[0].label, "全局");
         assert!(!entries[1].is_header);
         assert!(entries[2].is_header);
         assert_eq!(entries[2].label, "Workspace");
@@ -1418,7 +1418,7 @@ mod tests {
         state.list_area = Rect::new(5, 10, 30, 20);
         state.scroll_offset = 0;
 
-        // Click on row 0 (header "Global" at y=11).
+        // Click on row 0 (header "全局" at y=11).
         let result = handle_memory_mouse(
             &mut state,
             MouseEventKind::Down(crossterm::event::MouseButton::Left),
@@ -1654,7 +1654,7 @@ mod tests {
                 path: PathBuf::new(),
                 source: String::new(),
                 meta_display: String::new(),
-                label: "Global".to_string(),
+                label: "全局".to_string(),
                 is_header: true,
             },
             MemoryFileEntry {

@@ -134,10 +134,10 @@ pub enum SourceFilter {
 impl SourceFilter {
     pub fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Local => "Local",
-            Self::Remote => "Remote",
-            Self::External => "External",
+            Self::All => "全部",
+            Self::Local => "本地",
+            Self::Remote => "远程",
+            Self::External => "外部",
         }
     }
 
@@ -827,18 +827,18 @@ pub(crate) fn format_time_ago(dt: chrono::DateTime<chrono::Utc>) -> String {
     let duration = now.signed_duration_since(dt);
 
     let raw = if duration.num_minutes() < 1 {
-        "just now".to_string()
+        "刚刚".to_string()
     } else if duration.num_minutes() < 60 {
-        format!("{}m ago", duration.num_minutes())
+        format!("{} 分钟前", duration.num_minutes())
     } else if duration.num_hours() < 24 {
-        format!("{}h ago", duration.num_hours())
+        format!("{} 小时前", duration.num_hours())
     } else if duration.num_days() < 30 {
-        format!("{}d ago", duration.num_days())
+        format!("{} 天前", duration.num_days())
     } else {
-        format!("{}mo ago", duration.num_days() / 30)
+        format!("{} 个月前", duration.num_days() / 30)
     };
     // Right-align to fixed width so the column doesn't jump
-    format!("{:>8}", raw)
+    format!("{:>10}", raw)
 }
 
 // ---------------------------------------------------------------------------

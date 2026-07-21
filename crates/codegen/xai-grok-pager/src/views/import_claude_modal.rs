@@ -612,12 +612,12 @@ pub fn render_import_claude_modal(
             id: SHORTCUT_ID_HINT,
         },
         Shortcut {
-            label: "a all",
+            label: "a 全选",
             clickable: true,
             id: SHORTCUT_ID_SELECT_ALL,
         },
         Shortcut {
-            label: "n none",
+            label: "n 无",
             clickable: true,
             id: SHORTCUT_ID_SELECT_NONE,
         },

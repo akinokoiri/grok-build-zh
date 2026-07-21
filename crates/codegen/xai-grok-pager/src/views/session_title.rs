@@ -161,21 +161,21 @@ pub(crate) fn sanitize_display_text(s: &str) -> Cow<'_, str> {
 pub(crate) fn format_relative_time(elapsed: Duration) -> String {
     let secs = elapsed.as_secs();
     if secs < 1 {
-        return "now".to_string();
+        return "刚刚".to_string();
     }
     if secs < 60 {
-        return format!("{secs}s ago");
+        return format!("{secs} 秒前");
     }
     let mins = secs / 60;
     if mins < 60 {
-        return format!("{mins}m ago");
+        return format!("{mins} 分钟前");
     }
     let hours = mins / 60;
     if hours < 24 {
-        return format!("{hours}h ago");
+        return format!("{hours} 小时前");
     }
     let days = hours / 24;
-    format!("{days}d ago")
+    format!("{days} 天前")
 }
 
 #[cfg(test)]
@@ -279,38 +279,38 @@ mod tests {
 
     #[test]
     fn format_relative_time_sub_second_is_now() {
-        assert_eq!(format_relative_time(Duration::from_millis(0)), "now");
-        assert_eq!(format_relative_time(Duration::from_millis(500)), "now");
-        assert_eq!(format_relative_time(Duration::from_millis(999)), "now");
+        assert_eq!(format_relative_time(Duration::from_millis(0)), "刚刚");
+        assert_eq!(format_relative_time(Duration::from_millis(500)), "刚刚");
+        assert_eq!(format_relative_time(Duration::from_millis(999)), "刚刚");
     }
 
     #[test]
     fn format_relative_time_seconds() {
-        assert_eq!(format_relative_time(Duration::from_secs(1)), "1s ago");
-        assert_eq!(format_relative_time(Duration::from_secs(30)), "30s ago");
-        assert_eq!(format_relative_time(Duration::from_secs(59)), "59s ago");
+        assert_eq!(format_relative_time(Duration::from_secs(1)), "1 秒前");
+        assert_eq!(format_relative_time(Duration::from_secs(30)), "30 秒前");
+        assert_eq!(format_relative_time(Duration::from_secs(59)), "59 秒前");
     }
 
     #[test]
     fn format_relative_time_minutes() {
-        assert_eq!(format_relative_time(Duration::from_secs(60)), "1m ago");
-        assert_eq!(format_relative_time(Duration::from_secs(120)), "2m ago");
+        assert_eq!(format_relative_time(Duration::from_secs(60)), "1 分钟前");
+        assert_eq!(format_relative_time(Duration::from_secs(120)), "2 分钟前");
         assert_eq!(
             format_relative_time(Duration::from_secs(59 * 60)),
-            "59m ago"
+            "59 分钟前"
         );
     }
 
     #[test]
     fn format_relative_time_hours() {
-        assert_eq!(format_relative_time(Duration::from_secs(60 * 60)), "1h ago");
+        assert_eq!(format_relative_time(Duration::from_secs(60 * 60)), "1 小时前");
         assert_eq!(
             format_relative_time(Duration::from_secs(2 * 60 * 60)),
-            "2h ago"
+            "2 小时前"
         );
         assert_eq!(
             format_relative_time(Duration::from_secs(23 * 60 * 60)),
-            "23h ago"
+            "23 小时前"
         );
     }
 
@@ -318,11 +318,11 @@ mod tests {
     fn format_relative_time_days() {
         assert_eq!(
             format_relative_time(Duration::from_secs(24 * 60 * 60)),
-            "1d ago"
+            "1 天前"
         );
         assert_eq!(
             format_relative_time(Duration::from_secs(3 * 24 * 60 * 60)),
-            "3d ago"
+            "3 天前"
         );
     }
 }

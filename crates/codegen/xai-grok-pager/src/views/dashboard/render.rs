@@ -1022,7 +1022,7 @@ fn render_location_picker(
 
     let mut shortcuts = vec![
         Shortcut {
-            label: "\u{2191}\u{2193} nav",
+            label: "\u{2191}\u{2193} 导航",
             clickable: false,
             id: 0,
         },

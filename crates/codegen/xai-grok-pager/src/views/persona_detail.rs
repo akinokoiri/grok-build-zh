@@ -241,7 +241,7 @@ impl PersonaDetailState {
             outputs: Vec::new(),
             source_path: None,
             editable: false,
-            scope_label: "bundled".to_owned(),
+            scope_label: "内置".to_owned(),
             selected_field: PersonaField::Name,
             scroll_offset: 0,
             mode: PersonaDetailMode::Browse,
@@ -684,7 +684,7 @@ fn build_shortcuts(state: &PersonaDetailState) -> Vec<Shortcut<'static>> {
     if state.is_editing() {
         vec![
             Shortcut {
-                label: "Enter save",
+                label: "Enter 保存",
                 clickable: false,
                 id: 0,
             },
@@ -696,26 +696,26 @@ fn build_shortcuts(state: &PersonaDetailState) -> Vec<Shortcut<'static>> {
         ]
     } else {
         let mut shortcuts = vec![Shortcut {
-            label: "j/k nav",
+            label: "j/k 导航",
             clickable: false,
             id: 0,
         }];
         if state.editable {
             shortcuts.push(Shortcut {
-                label: "e edit field",
+                label: "e 编辑字段",
                 clickable: false,
                 id: 0,
             });
         }
         if state.source_path.is_some() && state.editable {
             shortcuts.push(Shortcut {
-                label: "i $EDITOR",
+                label: "i 外部编辑器",
                 clickable: false,
                 id: 0,
             });
         }
         shortcuts.push(Shortcut {
-            label: "Esc back",
+            label: "Esc 返回",
             clickable: false,
             id: 0,
         });

@@ -102,26 +102,26 @@ pub fn format_duration(d: Duration) -> String {
 pub fn format_time_ago(d: Duration) -> String {
     let secs = d.as_secs();
     if secs < 60 {
-        return "just now".to_string();
+        return "刚刚".to_string();
     }
     if secs < 3600 {
         let mins = secs / 60;
-        return format!("{mins}m");
+        return format!("{mins}分");
     }
     if secs < 86400 {
         let hours = secs / 3600;
-        return format!("{hours}h");
+        return format!("{hours}时");
     }
     let days = secs / 86400;
     if days < 30 {
-        return format!("{days}d");
+        return format!("{days}天");
     }
     if days < 365 {
         let months = days / 30;
-        return format!("{months}mo");
+        return format!("{months}月");
     }
     let years = days / 365;
-    format!("{years}y")
+    format!("{years}年")
 }
 
 /// Convert unix-epoch millis into a wall-clock [`SystemTime`].
@@ -239,44 +239,44 @@ mod tests {
 
     #[test]
     fn time_ago_just_now() {
-        assert_eq!(format_time_ago(Duration::from_secs(0)), "just now");
-        assert_eq!(format_time_ago(Duration::from_secs(30)), "just now");
-        assert_eq!(format_time_ago(Duration::from_secs(59)), "just now");
+        assert_eq!(format_time_ago(Duration::from_secs(0)), "刚刚");
+        assert_eq!(format_time_ago(Duration::from_secs(30)), "刚刚");
+        assert_eq!(format_time_ago(Duration::from_secs(59)), "刚刚");
     }
 
     #[test]
     fn time_ago_minutes() {
-        assert_eq!(format_time_ago(Duration::from_secs(60)), "1m");
-        assert_eq!(format_time_ago(Duration::from_secs(125)), "2m");
-        assert_eq!(format_time_ago(Duration::from_secs(3599)), "59m");
+        assert_eq!(format_time_ago(Duration::from_secs(60)), "1分");
+        assert_eq!(format_time_ago(Duration::from_secs(125)), "2分");
+        assert_eq!(format_time_ago(Duration::from_secs(3599)), "59分");
     }
 
     #[test]
     fn time_ago_hours() {
-        assert_eq!(format_time_ago(Duration::from_secs(3600)), "1h");
-        assert_eq!(format_time_ago(Duration::from_secs(7200)), "2h");
-        assert_eq!(format_time_ago(Duration::from_secs(86399)), "23h");
+        assert_eq!(format_time_ago(Duration::from_secs(3600)), "1时");
+        assert_eq!(format_time_ago(Duration::from_secs(7200)), "2时");
+        assert_eq!(format_time_ago(Duration::from_secs(86399)), "23时");
     }
 
     #[test]
     fn time_ago_days() {
-        assert_eq!(format_time_ago(Duration::from_secs(86400)), "1d");
-        assert_eq!(format_time_ago(Duration::from_secs(172800)), "2d");
-        assert_eq!(format_time_ago(Duration::from_secs(2_592_000 - 1)), "29d"); // just under 30d
+        assert_eq!(format_time_ago(Duration::from_secs(86400)), "1天");
+        assert_eq!(format_time_ago(Duration::from_secs(172800)), "2天");
+        assert_eq!(format_time_ago(Duration::from_secs(2_592_000 - 1)), "29天"); // just under 30d
     }
 
     #[test]
     fn time_ago_months() {
-        assert_eq!(format_time_ago(Duration::from_secs(2_592_000)), "1mo"); // 30d
-        assert_eq!(format_time_ago(Duration::from_secs(5_184_000)), "2mo");
+        assert_eq!(format_time_ago(Duration::from_secs(2_592_000)), "1月"); // 30d
+        assert_eq!(format_time_ago(Duration::from_secs(5_184_000)), "2月");
         // 359d is still 11mo (359/30=11); 360d would be 12mo.
-        assert_eq!(format_time_ago(Duration::from_secs(359 * 86400)), "11mo");
+        assert_eq!(format_time_ago(Duration::from_secs(359 * 86400)), "11月");
     }
 
     #[test]
     fn time_ago_years() {
-        assert_eq!(format_time_ago(Duration::from_secs(31_536_000)), "1y"); // 365d
-        assert_eq!(format_time_ago(Duration::from_secs(63_072_000)), "2y");
+        assert_eq!(format_time_ago(Duration::from_secs(31_536_000)), "1年"); // 365d
+        assert_eq!(format_time_ago(Duration::from_secs(63_072_000)), "2年");
     }
 
     fn now_unix_ms() -> i64 {
@@ -295,13 +295,13 @@ mod tests {
         let elapsed = system_time_from_unix_ms(two_hours_ago)
             .elapsed()
             .unwrap_or_default();
-        assert_eq!(format_time_ago(elapsed), "2h");
+        assert_eq!(format_time_ago(elapsed), "2时");
 
         let forty_five_days_ago = now_unix_ms() - 45 * 86_400_000;
         let elapsed = system_time_from_unix_ms(forty_five_days_ago)
             .elapsed()
             .unwrap_or_default();
-        assert_eq!(format_time_ago(elapsed), "1mo");
+        assert_eq!(format_time_ago(elapsed), "1月");
     }
 
     /// A zero / missing timestamp (the `#[serde(default)]` sentinel) falls back
@@ -320,7 +320,7 @@ mod tests {
         let elapsed = system_time_from_unix_ms(future)
             .elapsed()
             .unwrap_or_default();
-        assert_eq!(format_time_ago(elapsed), "just now");
+        assert_eq!(format_time_ago(elapsed), "刚刚");
     }
 
     /// A fixed `Instant` projects to a stable wall-clock moment, so its age
@@ -331,7 +331,7 @@ mod tests {
         let elapsed = system_time_from_instant(ten_min_ago)
             .elapsed()
             .unwrap_or_default();
-        assert_eq!(format_time_ago(elapsed), "10m");
+        assert_eq!(format_time_ago(elapsed), "10分");
     }
 
     #[test]

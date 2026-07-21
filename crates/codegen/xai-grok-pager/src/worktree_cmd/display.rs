@@ -149,13 +149,13 @@ fn format_age(created_at: i64) -> String {
         .as_secs() as i64;
     let delta = now.saturating_sub(created_at);
     if delta < 60 {
-        format!("{delta}s ago")
+        format!("{delta} 秒前")
     } else if delta < 3600 {
-        format!("{}m ago", delta / 60)
+        format!("{} 分钟前", delta / 60)
     } else if delta < 86400 {
-        format!("{}h ago", delta / 3600)
+        format!("{} 小时前", delta / 3600)
     } else {
-        format!("{}d ago", delta / 86400)
+        format!("{} 天前", delta / 86400)
     }
 }
 
@@ -239,10 +239,10 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        assert!(format_age(now - 30).ends_with("s ago"));
-        assert!(format_age(now - 120).ends_with("m ago"));
-        assert!(format_age(now - 7200).ends_with("h ago"));
-        assert!(format_age(now - 172800).ends_with("d ago"));
+        assert!(format_age(now - 30).ends_with("秒前"));
+        assert!(format_age(now - 120).ends_with("分钟前"));
+        assert!(format_age(now - 7200).ends_with("小时前"));
+        assert!(format_age(now - 172800).ends_with("天前"));
     }
 
     #[test]

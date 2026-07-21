@@ -2081,9 +2081,9 @@ fn render_welcome_done(
             };
             let mins = hint.age.as_secs() / 60;
             let when = if mins == 0 {
-                "moments ago".to_string()
+                "刚才".to_string()
             } else {
-                format!("{mins}m ago")
+                format!("{mins} 分钟前")
             };
             let accent = Style::default().fg(theme.accent_user);
             let accent_bold = accent.add_modifier(Modifier::BOLD);
@@ -2752,7 +2752,7 @@ mod tests {
             params.foreign_resume_hint = Some(&hint);
             let text = render_done_text(&params);
             assert!(text.contains(&format!("来自 {label}?")), "{text}");
-            assert!(text.contains("2m ago"), "{text}");
+            assert!(text.contains("2 分钟前"), "{text}");
             assert!(text.contains("ctrl+u"), "{text}");
         }
     }

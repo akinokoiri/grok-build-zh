@@ -337,7 +337,7 @@ fn build_reset_confirm_shortcuts() -> Vec<Shortcut<'static>> {
             id: RESET_CONFIRM_YES_ID,
         },
         Shortcut {
-            label: "n cancel",
+            label: "n 取消",
             clickable: true,
             id: RESET_CONFIRM_NO_ID,
         },
@@ -347,7 +347,7 @@ fn build_reset_confirm_shortcuts() -> Vec<Shortcut<'static>> {
             id: 0,
         },
         Shortcut {
-            label: "F2 cancel",
+            label: "F2 取消",
             clickable: false,
             id: 0,
         },
@@ -2728,7 +2728,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "g/G top/btm",
+                    label: "g/G 顶/底",
                     clickable: false,
                     id: 0,
                 },
@@ -2753,7 +2753,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "d reset",
+                    label: "d 重置",
                     clickable: false,
                     id: 0,
                 },
@@ -2780,7 +2780,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                 id: 0,
             },
             Shortcut {
-                label: "Backspace edit",
+                label: "Backspace 编辑",
                 clickable: false,
                 id: 0,
             },
@@ -2823,7 +2823,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "d reset",
+                    label: "d 重置",
                     clickable: false,
                     id: 0,
                 },
@@ -2854,7 +2854,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "d reset",
+                    label: "d 重置",
                     clickable: false,
                     id: 0,
                 },
@@ -2894,7 +2894,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                 id: 0,
             },
             Shortcut {
-                label: "Esc back",
+                label: "Esc 返回",
                 clickable: false,
                 id: 0,
             },

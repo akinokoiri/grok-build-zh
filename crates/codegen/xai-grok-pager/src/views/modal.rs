@@ -1143,12 +1143,12 @@ pub fn render_doc_viewer_overlay(
     use ratatui::widgets::{Paragraph, Widget, Wrap};
     let doc_shortcuts = vec![
         super::modal_window::Shortcut {
-            label: "\u{2191}/\u{2193} scroll",
+            label: "\u{2191}/\u{2193} 滚动",
             clickable: false,
             id: 0,
         },
         super::modal_window::Shortcut {
-            label: "Esc back",
+            label: "Esc 返回",
             clickable: false,
             id: 0,
         },
