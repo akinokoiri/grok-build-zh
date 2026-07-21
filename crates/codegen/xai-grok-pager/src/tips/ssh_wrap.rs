@@ -76,7 +76,7 @@ mod tests {
         let text: String = tip.line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert_eq!(
             text,
-            "Over SSH? Run grok wrap ssh <host> locally for clipboard + terminal restore"
+            "SSH 环境？在本地运行 grok wrap ssh <host> 以支持剪贴板与终端恢复"
         );
     }
 

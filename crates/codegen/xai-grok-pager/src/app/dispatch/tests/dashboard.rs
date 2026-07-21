@@ -2009,7 +2009,7 @@ fn extract_response_type_running_no_activity_is_working() {
     // not the stale prior response.
     agent.session.state = AgentState::TurnRunning;
     assert!(agent.session.turn_activity().is_none());
-    assert_eq!(extract_last_response_type(agent), "Working");
+    assert_eq!(extract_last_response_type(agent), "工作中");
 
     // Idle turn → the message IS the result → Response.
     agent.session.state = AgentState::Idle;
@@ -2076,7 +2076,7 @@ fn extract_response_type_tool_running_overrides_stale_response() {
         .scrollback
         .push_block(RenderBlock::agent_message("streaming reply"));
     agent.scrollback.set_last_running(true);
-    assert_eq!(extract_last_response_type(agent), "Working");
+    assert_eq!(extract_last_response_type(agent), "工作中");
 }
 
 /// Always-Approve mode makes the next spawned agent auto-approve.

@@ -237,13 +237,13 @@ impl RowState {
         match self {
             // Shorter, punchier labels. "Done" reads cleaner as a group
             // header than the past-tense "Completed" did.
-            Self::NeedsInput => "Awaiting",
-            Self::Working => "Working",
-            Self::Idle => "Idle",
-            Self::Inactive => "Inactive",
+            Self::NeedsInput => "等待中",
+            Self::Working => "工作中",
+            Self::Idle => "空闲",
+            Self::Inactive => "未激活",
             Self::Completed => "完成",
             Self::Failed => "失败",
-            Self::Blocked => "Blocked",
+            Self::Blocked => "已阻塞",
         }
     }
 }
@@ -5694,7 +5694,7 @@ mod tests {
         let mut state = make_state_with_selection();
         state.peek = Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         ));
         let reg = crate::actions::ActionRegistry::defaults();
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
@@ -5711,7 +5711,7 @@ mod tests {
         let mut s = make_state_with_selection();
         s.peek = Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         ));
         s
     }
@@ -6789,7 +6789,7 @@ mod tests {
         crate::appearance::cache::set_vim_mode(true);
         state.peek = Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         ));
         let reg = crate::actions::ActionRegistry::defaults();
         assert!(
@@ -6824,7 +6824,7 @@ mod tests {
         crate::appearance::cache::set_vim_mode(true);
         state.peek = Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         ));
         let reg = crate::actions::ActionRegistry::defaults();
         assert!(!state.peek.as_ref().unwrap().focused);
@@ -6868,7 +6868,7 @@ mod tests {
         let fields = super::super::peek::PeekFields {
             label: "other".into(),
             time_ago: String::new(),
-            response_type: "Idle".into(),
+            response_type: "空闲".into(),
             last_user_message: None,
             question: None,
             options: vec![],
@@ -7670,7 +7670,7 @@ mod tests {
             // Peek is shown by default when a row is selected.
             state.peek = Some(super::super::peek::PeekPanelState::new(
                 DashboardRowId::TopLevel(AgentId(0)),
-                peek_fields_for_test("Idle"),
+                peek_fields_for_test("空闲"),
             ));
             let outcome = state.handle_key(&KeyEvent::new(code, KeyModifiers::SHIFT), &reg);
             assert!(
@@ -7694,7 +7694,7 @@ mod tests {
             let mut state = make_state_with_selection();
             state.peek = Some(super::super::peek::PeekPanelState::new(
                 DashboardRowId::TopLevel(AgentId(0)),
-                peek_fields_for_test("Idle"),
+                peek_fields_for_test("空闲"),
             ));
             let outcome = state.handle_key(&key, &reg);
             assert!(
@@ -7915,7 +7915,7 @@ mod tests {
         state.last_prompt_click = Some(Instant::now());
         state.set_peek(Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         )));
         assert!(
             state.last_prompt_click.is_none(),
@@ -7992,7 +7992,7 @@ mod tests {
         state.focus_row(DashboardRowId::TopLevel(AgentId(0)));
         state.set_peek(Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         )));
         let outcome = state.handle_input(
             &Event::Paste(crate::wrap_clipboard_image::MAGIC_NONE.to_string()),
@@ -8072,7 +8072,7 @@ mod tests {
         state.focus_row(DashboardRowId::TopLevel(AgentId(0)));
         state.set_peek(Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         )));
         // Unfocused (Tab → row nav) — paste must still target the reply
         // and re-focus it ("pasting implies an intent to reply").
@@ -9610,7 +9610,7 @@ mod tests {
         state.stop_confirm = Some((DashboardRowId::TopLevel(AgentId(0)), Instant::now()));
         state.peek = Some(super::super::peek::PeekPanelState::new(
             DashboardRowId::TopLevel(AgentId(0)),
-            peek_fields_for_test("Idle"),
+            peek_fields_for_test("空闲"),
         ));
         let _ = state.handle_key(&KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), &reg);
         assert!(

@@ -1971,7 +1971,7 @@ fn peek_label_reflects_last_response_type() {
     agent
         .scrollback
         .push_block(RenderBlock::user_prompt("do it"));
-    assert_eq!(extract_last_response_type(agent), "Idle");
+    assert_eq!(extract_last_response_type(agent), "空闲");
 }
 /// agent.question_view.is_some() → NeedsInput.
 #[test]

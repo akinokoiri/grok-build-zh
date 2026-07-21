@@ -465,10 +465,10 @@ pub(super) fn render_rows(
 
     let total_visible = state.filtered_cache.len();
 
-    // Empty filter — show "No matches for <query>".
+    // Empty filter — show "无匹配：<query>".
     if total_visible == 0 {
         if !state.query().is_empty() {
-            let prefix = "No matches for ";
+            let prefix = "无匹配：";
             let suffix_quote_w = 2u16; // surrounding "" chars
             let available_for_query = (area.width as usize)
                 .saturating_sub(prefix.width())
@@ -2718,12 +2718,12 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
     match &state.state.mode {
         SettingsMode::Browse => {
             let enter_label = match state.focused_setting() {
-                Some((_, meta)) if matches!(meta.kind, SettingKind::Bool { .. }) => "Enter toggle",
-                _ => "Enter edit",
+                Some((_, meta)) if matches!(meta.kind, SettingKind::Bool { .. }) => "Enter 切换",
+                _ => "Enter 编辑",
             };
             let mut shortcuts = vec![
                 Shortcut {
-                    label: "\u{2191}/\u{2193}/j/k nav",
+                    label: "\u{2191}/\u{2193}/j/k 导航",
                     clickable: false,
                     id: 0,
                 },
@@ -2733,7 +2733,7 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "Space toggle",
+                    label: "Space 切换",
                     clickable: false,
                     id: 0,
                 },
@@ -2743,12 +2743,12 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
                     id: 0,
                 },
                 Shortcut {
-                    label: "\u{2192} expand",
+                    label: "\u{2192} 展开",
                     clickable: false,
                     id: 0,
                 },
                 Shortcut {
-                    label: "/ search",
+                    label: "/ 搜索",
                     clickable: false,
                     id: 0,
                 },
@@ -2770,12 +2770,12 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
         }
         SettingsMode::FilterFocused => vec![
             Shortcut {
-                label: "type to filter",
+                label: "输入以筛选",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "\u{2191}/\u{2193} nav",
+                label: "\u{2191}/\u{2193} 导航",
                 clickable: false,
                 id: 0,
             },
@@ -2801,9 +2801,9 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
         } => {
             // Labels depend on whether the Enum supports live preview.
             let nav_label = if *sp {
-                "\u{2191}/\u{2193} try"
+                "\u{2191}/\u{2193} 预览"
             } else {
-                "\u{2191}/\u{2193} nav"
+                "\u{2191}/\u{2193} 导航"
             };
             let esc_label = if *sp { "Esc 还原" } else { "Esc 取消" };
             vec![
@@ -2862,12 +2862,12 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
         }
         SettingsMode::EditingString { .. } => vec![
             Shortcut {
-                label: "type to edit",
+                label: "输入以编辑",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "\u{2190}/\u{2192} cursor",
+                label: "\u{2190}/\u{2192} 光标",
                 clickable: false,
                 id: 0,
             },
@@ -2884,12 +2884,12 @@ pub(super) fn build_shortcuts(state: &SettingsModalState) -> Vec<Shortcut<'stati
         ],
         SettingsMode::PickingGroup { .. } => vec![
             Shortcut {
-                label: "\u{2191}/\u{2193}/j/k nav",
+                label: "\u{2191}/\u{2193}/j/k 导航",
                 clickable: false,
                 id: 0,
             },
             Shortcut {
-                label: "Space/Enter toggle",
+                label: "Space/Enter 切换",
                 clickable: false,
                 id: 0,
             },

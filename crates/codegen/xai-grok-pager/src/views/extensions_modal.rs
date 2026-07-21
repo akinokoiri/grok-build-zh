@@ -571,8 +571,8 @@ impl StatusFilter {
     pub fn label(self) -> &'static str {
         match self {
             Self::All => "全部",
-            Self::Enabled => "Enabled",
-            Self::Disabled => "Disabled",
+            Self::Enabled => "已启用",
+            Self::Disabled => "已禁用",
         }
     }
 

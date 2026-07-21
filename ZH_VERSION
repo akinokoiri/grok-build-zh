@@ -1,9 +1,10 @@
 grok-build-zh
 branch: zh-CN
-phase: install+release
+phase: checklist-complete
 features:
   - curl | bash install.sh → grok-zh
   - Release CI: macOS arm64/x64, Linux x64/arm64
-  - settings / permissions / status / docs zh-CN
-note: not 100% of every string; tracing logs remain English
+  - settings / dashboard / tasks / tips / goals / personas chrome zh-CN
+  - bundled-zh optional description overlay
+note: marketplace remote descriptions remain EN; tool short names EN; no runtime i18n yet
 upstream: xai-org/grok-build

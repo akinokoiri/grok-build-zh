@@ -2543,13 +2543,15 @@ fn render_no_match(buf: &mut Buffer, area: Rect, theme: &Theme, filter: &Filter)
         return;
     }
     let hint = match filter {
-        Filter::None => "No matching rows.".to_string(),
+        // Kept as a live arm even if rare — substring / state / agent filters
+        // are the common empty-filter paths.
+        Filter::None => "筛选后无匹配行 — 按 Esc 清除筛选。".to_string(),
         Filter::Agent(n) => format!("无匹配 `a:{n}` 的代理 — 按 Esc 清除筛选。"),
         Filter::State(s) => format!(
             "状态 `{}` 下无代理 — 按 Esc 清除筛选。",
             s.group_label()
         ),
-        Filter::Substring(n) => format!("No rows match `{n}` — press Esc to clear the filter."),
+        Filter::Substring(n) => format!("无匹配 `{n}` — 按 Esc 清除筛选。"),
     };
     let truncated = truncate_str(&hint, area.width.saturating_sub(2) as usize);
     // Explicit offset to avoid `area.y + 1.min(...)`
@@ -6348,12 +6350,12 @@ if *count == 1)),
 
         // A dedicated "Pinned" section header with a count of 1.
         assert!(
-            content.contains("Pinned 1"),
-            "missing `Pinned` section header, got: {content:?}",
+            content.contains("已固定 1"),
+            "missing `已固定` section header, got: {content:?}",
         );
         // It sits ABOVE the state groups.
-        let idx_pinned = content.find("Pinned").expect("Pinned header present");
-        let idx_working = content.find("Working").expect("Working header present");
+        let idx_pinned = content.find("已固定").expect("已固定 header present");
+        let idx_working = content.find("工作中").expect("工作中 header present");
         assert!(
             idx_pinned < idx_working,
             "the Pinned section must be at the top, got: {content:?}",
@@ -6387,8 +6389,8 @@ if *count == 1)),
 
         // No labelled "Pinned"/state headers in groups-off mode.
         assert!(
-            !content.contains("Pinned"),
-            "the `Pinned` text header must be hidden when grouping is off, got: {content:?}",
+            !content.contains("已固定"),
+            "the `已固定` text header must be hidden when grouping is off, got: {content:?}",
         );
         assert!(
             !content.contains("Working "),
@@ -6438,17 +6440,17 @@ if *count == 1)),
         render_rows(&mut buf, Rect::new(0, 0, 80, 30), &theme, &rows, &mut state);
         let content = buf_to_text(&buf);
         // Group labels: Awaiting / Working / Idle / Done / Failed.
-        for label in ["Awaiting", "Working", "Idle", "Done", "失败"] {
+        for label in ["等待中", "工作中", "空闲", "完成", "失败"] {
             assert!(
                 content.contains(label),
                 "missing group header `{label}`, got: {content:?}",
             );
         }
         // Headers appear in the canonical priority order.
-        let idx_aw = content.find("Awaiting").expect("Awaiting present");
-        let idx_wk = content.find("Working").expect("Working present");
-        let idx_id = content.find("Idle").expect("Idle present");
-        let idx_dn = content.find("Done").expect("Done present");
+        let idx_aw = content.find("等待中").expect("等待中 present");
+        let idx_wk = content.find("工作中").expect("工作中 present");
+        let idx_id = content.find("空闲").expect("空闲 present");
+        let idx_dn = content.find("完成").expect("完成 present");
         let idx_fl = content.find("失败").expect("Failed present");
         assert!(idx_aw < idx_wk, "Awaiting must precede Working");
         assert!(idx_wk < idx_id, "Working must precede Idle");
@@ -7067,7 +7069,7 @@ if *count == 1)),
             render_narrow_rows(&mut buf, area, &theme, &rows, &mut state);
             let content = buf_to_text(&buf);
             assert!(
-                !content.contains("Idle"),
+                !content.contains("空闲"),
                 "fixture invalid — Idle header must start off-screen, got: {content:?}",
             );
         }
@@ -7877,7 +7879,7 @@ if *count == 1)),
             crate::views::dashboard::peek::PeekFields {
                 label: "label".into(),
                 time_ago: String::new(),
-                response_type: "Idle".into(),
+                response_type: "空闲".into(),
                 last_user_message: None,
                 question: None,
                 options: Vec::new(),
@@ -7918,7 +7920,7 @@ if *count == 1)),
             crate::views::dashboard::peek::PeekFields {
                 label: "label".into(),
                 time_ago: String::new(),
-                response_type: "Idle".into(),
+                response_type: "空闲".into(),
                 last_user_message: None,
                 question: None,
                 options: Vec::new(),
@@ -7968,7 +7970,7 @@ if *count == 1)),
             crate::views::dashboard::peek::PeekFields {
                 label: "label".into(),
                 time_ago: String::new(),
-                response_type: "Idle".into(),
+                response_type: "空闲".into(),
                 last_user_message: None,
                 question: None,
                 options: Vec::new(),

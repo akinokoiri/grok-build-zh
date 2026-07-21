@@ -187,9 +187,9 @@ impl GroupKind {
     /// Display label shown in the group header.
     fn label(self) -> &'static str {
         match self {
-            GroupKind::Subagents => "Subagents",
-            GroupKind::Tasks => "Tasks",
-            GroupKind::Watchers => "Watchers",
+            GroupKind::Subagents => "子代理",
+            GroupKind::Tasks => "任务",
+            GroupKind::Watchers => "监视器",
         }
     }
 
@@ -856,7 +856,7 @@ impl TasksPane {
         // scheduled) so each kind is one contiguous block, then running
         // before done within each group, then newest-first, then a stable
         // id tiebreak. Monitors and scheduled/loops render under one shared
-        // "Watchers" header but keep distinct ranks (monitors first).
+        // "监视器" header but keep distinct ranks (monitors first).
         self.items.sort_by(|a, b| {
             // 1. Group by type so each kind is one contiguous block:
             //    subagents → tasks → monitors → scheduled.
@@ -2545,7 +2545,7 @@ mod tests {
     #[test]
     fn monitors_and_loops_share_one_watchers_section() {
         // Monitor (BgTask) and loop (Scheduled) tasks render under a single
-        // "Watchers" header, monitors sorted before loops.
+        // "监视器" header, monitors sorted before loops.
         let mut pane = TasksPane::new();
         pane.show_done = true;
 
@@ -2588,7 +2588,7 @@ mod tests {
             } => styled.spans.iter().map(|s| s.content.as_ref()).collect(),
             _ => panic!("expected Watchers header first"),
         };
-        assert!(header_text.contains("Watchers"), "got: {header_text}");
+        assert!(header_text.contains("监视器"), "got: {header_text}");
         assert!(header_text.contains('2'), "combined count: {header_text}");
         assert!(matches!(
             &pane.entries[1],
@@ -2669,7 +2669,7 @@ mod tests {
             }
             _ => unreachable!(),
         };
-        assert!(header_text.contains("Subagents"), "got: {header_text}");
+        assert!(header_text.contains("子代理"), "got: {header_text}");
         assert!(header_text.contains('1'), "count in header: {header_text}");
     }
 

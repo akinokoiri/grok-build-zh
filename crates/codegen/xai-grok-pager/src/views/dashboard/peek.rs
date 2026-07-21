@@ -771,7 +771,7 @@ pub fn render_peek_panel(
         };
         // While Working, the status label is secondary (a touch brighter than
         // dim chrome). Live-tail keeps painting the middle regardless.
-        let working = panel.response_type == "Working";
+        let working = panel.response_type == "工作中";
         let label_fg = if working {
             theme.text_secondary
         } else {
@@ -966,18 +966,18 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
             Some(TurnActivity::Thinking) => return "思考中".to_string(),
             Some(TurnActivity::Responding) => return "回复".to_string(),
             Some(TurnActivity::AutoCompacting) => return "压缩中".to_string(),
-            Some(TurnActivity::Retrying { .. }) => return "Retrying".to_string(),
+            Some(TurnActivity::Retrying { .. }) => return "重试中".to_string(),
             // A tool is executing: fall through to the scan to recover its
             // specific label (Bash/Read/…); a missing/stale block yields the
-            // generic "Working" fallback below.
+            // generic "工作中" fallback below.
             Some(TurnActivity::ToolRunning { .. }) => {}
             // Blocked on a suppressed tool (task output / wait / sleep) → keep
-            // the compact "Working" the peek showed before this was surfaced.
-            Some(TurnActivity::Waiting(_)) => return "Working".to_string(),
+            // the compact "工作中" the peek showed before this was surfaced.
+            Some(TurnActivity::Waiting(_)) => return "工作中".to_string(),
             // Turn running but no live activity (e.g. just granted a
             // permission and waiting for tool results / the next inference) →
-            // "Working", never a stale response.
-            None => return "Working".to_string(),
+            // "工作中", never a stale response.
+            None => return "工作中".to_string(),
         }
     }
     let len = agent.scrollback.len();
@@ -987,19 +987,20 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
         };
         match &entry.block {
             RenderBlock::AgentMessage(_) => {
-                // Idle → the last message is the result ("Response"). While
+                // Idle → the last message is the result ("回复"). While
                 // running we only reach here in the ToolRunning case (other
                 // activities returned above): a message is then stale, so skip
-                // it and fall through to "Working" / a newer tool label.
+                // it and fall through to "工作中" / a newer tool label.
                 if running {
                     break;
                 }
-                return "Response".to_string();
+                return "回复".to_string();
             }
             RenderBlock::Thinking(_) => {
-                return if running { "思考中" } else { "Thought" }.to_string();
+                return if running { "思考中" } else { "思考" }.to_string();
             }
             RenderBlock::ToolCall(tc) => {
+                // Tool short names stay English (match tool IDs in the UI).
                 let label = match tc {
                     ToolCallBlock::Execute(_) => Some("Bash"),
                     ToolCallBlock::Read(_) => Some("Read"),
@@ -1020,11 +1021,11 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
                     return label.to_string();
                 }
             }
-            RenderBlock::Subagent(_) => return "Subagent".to_string(),
-            RenderBlock::BgTask(_) => return "Task".to_string(),
-            RenderBlock::Btw(_) => return "Btw".to_string(),
-            RenderBlock::ContextInfo(_) => return "Context".to_string(),
-            RenderBlock::CreditLimit(_) => return "Credit limit".to_string(),
+            RenderBlock::Subagent(_) => return "子代理".to_string(),
+            RenderBlock::BgTask(_) => return "任务".to_string(),
+            RenderBlock::Btw(_) => return "旁注".to_string(),
+            RenderBlock::ContextInfo(_) => return "上下文".to_string(),
+            RenderBlock::CreditLimit(_) => return "额度限制".to_string(),
             // The user's latest input marks the turn boundary — there's
             // no agent response after it yet.
             RenderBlock::UserPrompt(_) => break,
@@ -1033,9 +1034,9 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
         }
     }
     if running {
-        "Working".to_string()
+        "工作中".to_string()
     } else {
-        "Idle".to_string()
+        "空闲".to_string()
     }
 }
 
@@ -1324,7 +1325,7 @@ mod tests {
             buf
         };
         // Inner content sits two cells in (1 border + 1 pad inset): status at (2,1).
-        let working = render("Working");
+        let working = render("工作中");
         assert_eq!(working[(2, 1)].symbol(), "W", "status label is `Working`");
         assert_eq!(
             working[(2, 1)].fg,
@@ -1493,7 +1494,7 @@ mod tests {
 
     #[test]
     fn peek_handles_missing_question() {
-        let mut f = fields("Idle");
+        let mut f = fields("空闲");
         f.last_user_message = Some("hello?".to_string());
         let state = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), f);
         assert!(state.question.is_none());
@@ -1506,7 +1507,7 @@ mod tests {
     /// wrong agent after the selection cursor moves.
     #[test]
     fn apply_fields_reports_row_change() {
-        let mut state = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let mut state = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         // Same row → no change reported (caller preserves the draft).
         let changed = state.apply_fields(
             DashboardRowId::TopLevel(AgentId(0)),
@@ -1515,7 +1516,7 @@ mod tests {
         assert!(!changed, "same row must not report a change");
         assert_eq!(state.response_type, "Running\u{2026}");
         // Different row → change reported (caller clears the draft).
-        let changed = state.apply_fields(DashboardRowId::TopLevel(AgentId(1)), fields("Idle"));
+        let changed = state.apply_fields(DashboardRowId::TopLevel(AgentId(1)), fields("空闲"));
         assert!(changed, "row change must be reported");
         assert_eq!(state.row, DashboardRowId::TopLevel(AgentId(1)));
     }
@@ -1601,7 +1602,7 @@ mod tests {
         use ratatui::layout::Rect;
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 5));
         let theme = Theme::current();
-        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         panel.focused = true;
         let mut reply = test_reply();
         reply.set_text("ship it");
@@ -1640,7 +1641,7 @@ mod tests {
         use ratatui::layout::Rect;
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 5));
         let theme = Theme::current();
-        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         let mut reply = test_reply();
         reply.set_text("draft");
         panel.focused = false;
@@ -1681,7 +1682,7 @@ mod tests {
         use ratatui::layout::Rect;
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 5));
         let theme = Theme::current();
-        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         panel.focused = false;
         let mut reply = test_reply();
         let res = render_peek_panel(
@@ -1725,7 +1726,7 @@ mod tests {
         let render = |focused: bool| {
             let mut buf = Buffer::empty(Rect::new(0, 0, 80, 6));
             let mut panel =
-                PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+                PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
             let mut reply = test_reply();
             reply.set_text("draft");
             panel.focused = focused;
@@ -2118,7 +2119,7 @@ mod tests {
         use ratatui::layout::Rect;
         let mut buf = Buffer::empty(Rect::new(0, 0, 80, 5));
         let theme = Theme::current();
-        let panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         let mut reply = test_reply();
         reply.set_compact(true);
         let pasted = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven";
@@ -2159,7 +2160,7 @@ mod tests {
         use ratatui::layout::Rect;
         crate::appearance::cache::set_vim_mode(false);
         let theme = Theme::current();
-        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let mut panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         panel.focused = true;
         let mut reply = test_reply();
         reply.set_compact(true);
@@ -2237,7 +2238,7 @@ mod tests {
         let area = Rect::new(0, 0, 80, 14);
         let mut buf = Buffer::empty(area);
         let theme = Theme::current();
-        let panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("Idle"));
+        let panel = PeekPanelState::new(DashboardRowId::TopLevel(AgentId(0)), fields("空闲"));
         let mut reply = test_reply();
         reply.set_text("alpha\nbravo\ncharlie");
         let res = render_peek_panel(
@@ -2275,7 +2276,7 @@ mod tests {
             PeekFields {
                 label: "label".to_string(),
                 time_ago: String::new(),
-                response_type: "Idle".to_string(),
+                response_type: "空闲".to_string(),
                 last_user_message: None,
                 question,
                 options,

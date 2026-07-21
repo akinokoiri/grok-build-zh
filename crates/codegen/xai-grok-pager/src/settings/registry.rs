@@ -115,8 +115,8 @@ pub fn dynamic_enum_choices(
             let mut out = Vec::with_capacity(snapshot.available_models.len() + 1);
             out.push(OwnedEnumChoice {
                 canonical: String::new(),
-                display: "(no override)".to_string(),
-                description: "Inherit the default model (no per-user override).".to_string(),
+                display: "（不覆盖）".to_string(),
+                description: "继承默认模型（不做用户级覆盖）。".to_string(),
             });
             for (name, _id) in &snapshot.available_models {
                 out.push(OwnedEnumChoice {

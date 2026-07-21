@@ -181,12 +181,12 @@ impl TodoCounts {
 
 fn empty_placeholder_message(todos_empty: bool, counts: TodoCounts) -> String {
     if todos_empty {
-        return "No todo items.".into();
+        return "暂无待办项。".into();
     }
     match (counts.completed, counts.cancelled) {
-        (_, 0) => "All done.".into(),
-        (0, c) => format!("{c} cancelled."),
-        (d, c) => format!("{d} done. {c} cancelled."),
+        (_, 0) => "全部完成。".into(),
+        (0, c) => format!("{c} 项已取消。"),
+        (d, c) => format!("{d} 项完成。{c} 项已取消。"),
     }
 }
 
@@ -538,20 +538,20 @@ mod tests {
     fn empty_todos_message() {
         assert_eq!(
             empty_placeholder_message(true, TodoCounts::default()),
-            "No todo items."
+            "暂无待办项。"
         );
     }
 
     #[test]
     fn all_completed_is_all_done() {
-        assert_eq!(empty_placeholder_message(false, counts(3, 0)), "All done.");
+        assert_eq!(empty_placeholder_message(false, counts(3, 0)), "全部完成。");
     }
 
     #[test]
     fn mixed_done_and_cancelled_summarizes_counts() {
         assert_eq!(
             empty_placeholder_message(false, counts(5, 1)),
-            "5 done. 1 cancelled."
+            "5 项完成。1 项已取消。"
         );
     }
 
@@ -559,7 +559,7 @@ mod tests {
     fn only_cancelled() {
         assert_eq!(
             empty_placeholder_message(false, counts(0, 2)),
-            "2 cancelled."
+            "2 项已取消。"
         );
     }
 }

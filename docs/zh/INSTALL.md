@@ -29,6 +29,18 @@ grok-zh --version
 grok-zh
 ```
 
+### 可选：内置人设描述中文
+
+装完 `grok-zh` 后，若希望代理/人设列表的 **description** 也是中文（ID 仍为英文）：
+
+```bash
+git clone https://github.com/ivan6232/grok-build-zh.git
+cd grok-build-zh && git checkout zh-CN
+bash docs/zh/bundled-zh/apply.sh
+```
+
+详见 [bundled-zh/README.md](bundled-zh/README.md)。操作习惯见 [USAGE.md](USAGE.md)。
+
 ### 常用选项
 
 | 用法 | 说明 |

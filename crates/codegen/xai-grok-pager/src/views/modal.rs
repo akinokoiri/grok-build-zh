@@ -142,7 +142,7 @@ impl CancelTurnChoice {
     ];
     pub fn label(&self) -> &'static str {
         match self {
-            Self::StopRunning => "Stop running",
+            Self::StopRunning => "停止运行",
             Self::ContinueToRun => "继续运行",
             Self::AlwaysStop => "始终停止",
             Self::AlwaysContinue => "始终继续",
@@ -619,30 +619,30 @@ impl ActiveModal {
         match self {
             ActiveModal::EditConfirm { .. } => {
                 if drain_blocked {
-                    "Save and send?"
+                    "保存并发送？"
                 } else {
-                    "Save changes?"
+                    "保存更改？"
                 }
             }
-            ActiveModal::CommandPalette { .. } => "Commands",
+            ActiveModal::CommandPalette { .. } => "命令",
             ActiveModal::SessionPicker { .. } => "恢复会话",
             ActiveModal::ArgPicker {
                 command,
                 args_query,
                 ..
             } => match command.as_str() {
-                "model" | "m" if !args_query.is_empty() => "Pick reasoning effort",
+                "model" | "m" if !args_query.is_empty() => "选择推理强度",
                 "model" | "m" => "选择模型",
-                "theme" | "t" => "Pick theme",
-                _ => "Pick option",
+                "theme" | "t" => "选择主题",
+                _ => "选择选项",
             },
             ActiveModal::DocPicker { .. } => "使用指南",
             ActiveModal::DocViewer { title, .. } => title.as_str(),
             ActiveModal::ShortcutsHelp { .. } => "键盘快捷键",
             ActiveModal::MemoryBrowser { .. } => "记忆",
             ActiveModal::Settings { .. } => crate::views::settings_modal::MODAL_TITLE,
-            ActiveModal::ResetSettingsConfirm { .. } => "Reset setting?",
-            ActiveModal::RememberNoteReview { .. } => "Memory Note",
+            ActiveModal::ResetSettingsConfirm { .. } => "重置设置？",
+            ActiveModal::RememberNoteReview { .. } => "记忆笔记",
         }
     }
 }
@@ -851,16 +851,16 @@ pub fn render_cancel_turn_panel(
         content_x,
         y,
         &Line::from(Span::styled(
-            "Subagents are still running. Stop them?",
+            "仍有子代理在运行。要停止它们吗？",
             title_style,
         )),
         content_w as u16,
     );
     y += 1;
     let count_text = if state.running_count == 1 {
-        "1 subagent running".to_string()
+        "1 个子代理运行中".to_string()
     } else {
-        format!("{} subagents running", state.running_count)
+        format!("{} 个子代理运行中", state.running_count)
     };
     buf.set_line(
         content_x,

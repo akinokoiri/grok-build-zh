@@ -121,11 +121,11 @@ impl ItemKind {
 
     fn label(&self) -> &'static str {
         match self {
-            Self::Permission => "Permissions",
-            Self::EnvVar => "Env vars",
-            Self::McpServer => "MCP servers",
-            Self::Hook => "Hooks",
-            Self::PathEntry => "Paths",
+            Self::Permission => "权限",
+            Self::EnvVar => "环境变量",
+            Self::McpServer => "MCP 服务器",
+            Self::Hook => "钩子",
+            Self::PathEntry => "路径",
         }
     }
 

@@ -280,9 +280,9 @@ fn classifier_details_display(path: Option<&str>, exists: bool) -> &str {
 /// of every render site.
 fn classifier_verdict_label(verdict: Option<GoalClassifierVerdict>) -> &'static str {
     match verdict {
-        Some(GoalClassifierVerdict::Achieved) => "Achieved",
-        Some(GoalClassifierVerdict::NotAchieved) => "Not Achieved",
-        None => "Not yet evaluated",
+        Some(GoalClassifierVerdict::Achieved) => "已达成",
+        Some(GoalClassifierVerdict::NotAchieved) => "未达成",
+        None => "尚未评估",
     }
 }
 
@@ -297,26 +297,26 @@ fn humanize_goal_event(event: &str, detail: Option<&str>) -> String {
     // can't leak control bytes; the fixed labels below are `&'static`.
     let phrase = |d: Option<&str>| d.map(|s| strip_control_chars(&s.replace('_', " "), false));
     match event {
-        "goal_created" => "Goal created".into(),
-        "planning_started" => "Planning started".into(),
-        "planning_completed" => "Planning completed".into(),
-        "planning_failed" => "Planning failed".into(),
-        "worker_started" => "Worker started".into(),
-        "worker_completed" => "Worker completed".into(),
-        "worker_failed" => "Worker failed".into(),
-        "context_rotated" => "Context rotated".into(),
+        "goal_created" => "目标已创建".into(),
+        "planning_started" => "开始规划".into(),
+        "planning_completed" => "规划完成".into(),
+        "planning_failed" => "规划失败".into(),
+        "worker_started" => "工作者已启动".into(),
+        "worker_completed" => "工作者已完成".into(),
+        "worker_failed" => "工作者失败".into(),
+        "context_rotated" => "上下文已轮换".into(),
         // A plain user pause has no extra cause worth showing.
         "goal_paused" => match phrase(detail).filter(|d| d != "user") {
-            Some(d) => format!("Paused: {d}"),
+            Some(d) => format!("已暂停：{d}"),
             None => "已暂停".into(),
         },
-        "goal_resumed" => "Resumed".into(),
-        "goal_completed" => "Completed".into(),
-        "goal_cleared" => "Cleared".into(),
-        "budget_exceeded" => "Budget exceeded".into(),
+        "goal_resumed" => "已恢复".into(),
+        "goal_completed" => "已完成".into(),
+        "goal_cleared" => "已清除".into(),
+        "budget_exceeded" => "预算超限".into(),
         "premature_stop_detected" => match phrase(detail) {
-            Some(d) => format!("Stopped early: {d}"),
-            None => "Stopped early".into(),
+            Some(d) => format!("提前停止：{d}"),
+            None => "提前停止".into(),
         },
         other => {
             let mut s = strip_control_chars(&other.replace('_', " "), false);
@@ -2217,19 +2217,19 @@ mod tests {
     fn humanize_goal_event_maps_wire_vocabulary() {
         assert_eq!(
             humanize_goal_event("goal_paused", Some("back_off")),
-            "Paused: back off"
+            "已暂停：back off"
         );
         // A plain user pause shows no redundant cause.
         assert_eq!(humanize_goal_event("goal_paused", Some("user")), "已暂停");
         assert_eq!(humanize_goal_event("goal_paused", None), "已暂停");
         assert_eq!(
             humanize_goal_event("premature_stop_detected", Some("giving_up")),
-            "Stopped early: giving up"
+            "提前停止：giving up"
         );
-        assert_eq!(humanize_goal_event("goal_completed", None), "Completed");
+        assert_eq!(humanize_goal_event("goal_completed", None), "已完成");
         assert_eq!(
             humanize_goal_event("budget_exceeded", None),
-            "Budget exceeded"
+            "预算超限"
         );
         // Forward-compat: an unmapped event de-snakes + capitalizes.
         assert_eq!(

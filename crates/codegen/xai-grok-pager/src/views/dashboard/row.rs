@@ -86,11 +86,11 @@ pub enum RowBadge {
 impl RowBadge {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Worktree => "worktree",
-            Self::NeedsInput => "needs-input",
-            Self::BgTask => "bg",
-            Self::Pinned => "pinned",
-            Self::Failed => "failed",
+            Self::Worktree => "工作树",
+            Self::NeedsInput => "待输入",
+            Self::BgTask => "后台",
+            Self::Pinned => "固定",
+            Self::Failed => "失败",
         }
     }
 }
@@ -311,8 +311,8 @@ fn append_roster_rows(
             .unwrap_or_else(|| sanitize(&entry.session_id));
         let state = roster_activity_to_state(entry.activity);
         let activity = match state {
-            RowState::NeedsInput => Some("Awaiting input".to_string()),
-            RowState::Working => Some("Working".to_string()),
+            RowState::NeedsInput => Some("等待输入".to_string()),
+            RowState::Working => Some("工作中".to_string()),
             _ => None,
         };
         let mut badges = Vec::new();
@@ -820,7 +820,7 @@ fn top_level_activity(agent: &AgentView, state: RowState) -> Option<String> {
             } else if let Some(bg) = background_work_label(agent) {
                 Some(bg)
             } else {
-                Some("Working".to_string())
+                Some("工作中".to_string())
             }
         }
         _ => None,
@@ -838,7 +838,7 @@ fn subagent_activity(info: &SubagentInfo, state: RowState) -> Option<String> {
         }
         let last_tool = info.tools_used.last().map(|s| s.as_ref()).unwrap_or("");
         if last_tool.is_empty() {
-            Some("Working".to_string())
+            Some("工作中".to_string())
         } else {
             Some(sanitize(&format_activity_label(
                 &TurnActivity::ToolRunning {
@@ -851,7 +851,7 @@ fn subagent_activity(info: &SubagentInfo, state: RowState) -> Option<String> {
         let turns = info.turns.unwrap_or(0);
         let tools = info.tool_calls.unwrap_or(0);
         let toks = info.tokens_used.unwrap_or(0);
-        Some(format!("{tools} tools · {toks} tok · {turns} turns"))
+        Some(format!("{tools} 工具 · {toks} tok · {turns} 轮"))
     } else {
         None
     }

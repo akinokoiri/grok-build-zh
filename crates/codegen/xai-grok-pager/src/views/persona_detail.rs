@@ -48,13 +48,13 @@ impl PersonaField {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Name => "Name",
-            Self::Description => "Description",
-            Self::Model => "Model",
-            Self::ReasoningEffort => "Effort",
-            Self::Isolation => "Isolation",
-            Self::Instructions => "Instructions",
-            Self::InstructionsFile => "Instr. file",
+            Self::Name => "名称",
+            Self::Description => "描述",
+            Self::Model => "模型",
+            Self::ReasoningEffort => "推理强度",
+            Self::Isolation => "隔离",
+            Self::Instructions => "指令",
+            Self::InstructionsFile => "指令文件",
         }
     }
 

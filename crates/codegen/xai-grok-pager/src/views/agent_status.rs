@@ -189,18 +189,18 @@ pub fn active_phase_label(goal: &GoalDisplayState) -> String {
     if goal.verifying_completion {
         let attempts = classifier_attempts_label(goal);
         // Omit the "(n/m)" suffix until the first counter arrives so the
-        // chip reads "Verifying" instead of a confusing "Verifying (0/0)".
+        // chip reads "验证中" instead of a confusing "验证中 (0/0)".
         return if attempts.is_empty() {
-            "Verifying".into()
+            "验证中".into()
         } else {
-            format!("Verifying ({attempts})")
+            format!("验证中 ({attempts})")
         };
     }
     if goal.planning {
-        return "Planning".into();
+        return "规划中".into();
     }
     match goal.phase {
-        GoalDisplayPhase::Idle => "Idle".into(),
+        GoalDisplayPhase::Idle => "空闲".into(),
         GoalDisplayPhase::Planning => "规划中".into(),
         GoalDisplayPhase::Executing => "执行中".into(),
     }
@@ -426,7 +426,7 @@ mod tests {
             0,
             0,
         );
-        assert_eq!(goal_phase_label(&g), "Executing");
+        assert_eq!(goal_phase_label(&g), "执行中");
     }
 
     #[test]
@@ -438,7 +438,7 @@ mod tests {
             0,
             0,
         );
-        assert_eq!(goal_phase_label(&g), "Planning");
+        assert_eq!(goal_phase_label(&g), "规划中");
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod tests {
         g.verifying_completion = true;
         g.classifier_runs_attempted = Some(2);
         g.classifier_max_runs = Some(3);
-        assert_eq!(goal_phase_label(&g), "Verifying (2/3)");
+        assert_eq!(goal_phase_label(&g), "验证中 (2/3)");
 
         let t = Theme::current();
         let line = goal_status_line(&g, &t, false, 0, None, 0);
@@ -508,7 +508,7 @@ mod tests {
         g.verifying_completion = true;
         g.classifier_runs_attempted = None;
         g.classifier_max_runs = None;
-        assert_eq!(goal_phase_label(&g), "Verifying");
+        assert_eq!(goal_phase_label(&g), "验证中");
     }
 
     #[test]
@@ -577,7 +577,7 @@ mod tests {
             0,
         );
         g.planning = true;
-        assert_eq!(goal_phase_label(&g), "Planning");
+        assert_eq!(goal_phase_label(&g), "规划中");
 
         let t = Theme::current();
         let line = goal_status_line(&g, &t, false, 0, None, 0);
@@ -600,7 +600,7 @@ mod tests {
         g.verifying_completion = true;
         g.classifier_runs_attempted = Some(1);
         g.classifier_max_runs = Some(2);
-        assert_eq!(goal_phase_label(&g), "Verifying (1/2)");
+        assert_eq!(goal_phase_label(&g), "验证中 (1/2)");
     }
 
     #[test]
@@ -697,7 +697,7 @@ mod tests {
             2,
             0,
         );
-        assert_eq!(goal_phase_label(&g), "Budget");
+        assert_eq!(goal_phase_label(&g), "预算");
     }
 
     #[test]
@@ -709,7 +709,7 @@ mod tests {
             3,
             3,
         );
-        assert_eq!(goal_phase_label(&g), "Done");
+        assert_eq!(goal_phase_label(&g), "完成");
     }
 
     #[test]
@@ -721,7 +721,7 @@ mod tests {
             0,
             0,
         );
-        assert_eq!(goal_phase_label(&g), "Idle");
+        assert_eq!(goal_phase_label(&g), "空闲");
     }
 
     #[test]
@@ -733,7 +733,7 @@ mod tests {
             4,
             2,
         );
-        assert_eq!(goal_phase_label(&g), "Executing");
+        assert_eq!(goal_phase_label(&g), "执行中");
     }
 
     // The old deliverable-index parity test is removed because deliverables

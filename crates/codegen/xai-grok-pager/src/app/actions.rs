@@ -1088,8 +1088,8 @@ impl PlanModeKind {
     /// `EnumChoice.display`.
     pub fn as_display(self) -> &'static str {
         match self {
-            Self::On => "On",
-            Self::Off => "Off",
+            Self::On => "开",
+            Self::Off => "关",
         }
     }
     /// Bool projection — `On → true`, `Off → false`. Used by the
@@ -2749,8 +2749,8 @@ mod tests {
     /// `as_display` must return user-visible picker labels.
     #[test]
     fn plan_mode_kind_as_display() {
-        assert_eq!(PlanModeKind::On.as_display(), "On");
-        assert_eq!(PlanModeKind::Off.as_display(), "Off");
+        assert_eq!(PlanModeKind::On.as_display(), "开");
+        assert_eq!(PlanModeKind::Off.as_display(), "关");
     }
     /// `to_bool` must project `On → true`, `Off → false`.
     #[test]
