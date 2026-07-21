@@ -14,7 +14,7 @@
 **本项目是社区汉化分支，与 SpaceXAI / xAI 无官方隶属关系。**  
 「Grok」「Grok Build」为相关权利人商标。使用请遵守 xAI 服务条款与账号规定。
 
-[安装使用](#安装与使用) · [已汉化范围](#已汉化范围) · [与官方区别](#与官方版的区别) · [同步上游](#同步官方更新) · [参与贡献](#参与贡献)
+[一键安装](#一键安装推荐) · [使用说明](#使用说明) · [已汉化范围](#已汉化范围) · [与官方区别](#与官方版的区别) · [参与贡献](#参与贡献)
 
 </div>
 
@@ -42,92 +42,141 @@ curl -fsSL https://x.ai/cli/install.sh | bash
 
 Grok Build 的 **对话**可以用中文，但 **软件 UI**（权限弹窗、设置页、状态提示「Responding…」等）默认是英文。
 
-本仓库在源码层把这些**用户可见文案**改成中文，编译后即可使用中文界面。
+本仓库在源码层把这些**用户可见文案**改成中文，编译后即可使用中文界面。命令名为 **`grok-zh`**，不会覆盖官方的 `grok`。
 
 ---
 
-## 安装与使用
+## 一键安装（推荐）
 
-### 方式一：下载预编译二进制（推荐）
-
-1. 打开 [Releases](https://github.com/ivan6232/grok-build-zh/releases)  
-2. 按系统下载：
-   - macOS Apple Silicon：`grok-zh-aarch64-apple-darwin.tar.gz`
-   - macOS Intel：`grok-zh-x86_64-apple-darwin.tar.gz`
-   - Linux x64：`grok-zh-x86_64-unknown-linux-gnu.tar.gz`
-3. 解压并安装到 PATH：
+与官方类似的 `curl | bash` 方式：
 
 ```bash
-# 示例：macOS / Linux
-tar -xzf grok-zh-*.tar.gz
-chmod +x grok-zh
-mkdir -p ~/.local/bin
-mv grok-zh ~/.local/bin/
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # 或 ~/.bashrc
-source ~/.zshrc
-
-grok-zh --version   # 或 grok-zh
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
 ```
 
-> 若 Releases 尚无对应平台包，请用下方「源码编译」。
-
-### 方式二：源码编译
-
-依赖与官方一致：
-
-- Rust（见仓库 `rust-toolchain.toml`，建议用 rustup）
-- [DotSlash](https://dotslash-cli.com)（构建 hermetic 工具需要）
-- protoc（可通过 DotSlash 的 `bin/protoc`）
+装完后：
 
 ```bash
-# 1. 克隆汉化分支
+grok-zh
+```
+
+若提示找不到命令，先执行：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+grok-zh
+```
+
+脚本会自动：
+
+1. 识别系统架构并下载 [Releases](https://github.com/ivan6232/grok-build-zh/releases) 中的预编译包  
+2. 安装到 `~/.local/bin/grok-zh`  
+3. 写入 shell `PATH`（`~/.zshrc` / `~/.bashrc` 等）  
+4. **若暂无预编译包**，回退为本地源码编译  
+
+### 可选参数
+
+```bash
+# 安装指定版本
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.4
+
+# 强制从源码编译
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_FROM_SOURCE=1 bash
+
+# 自定义安装目录
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_BIN_DIR="$HOME/bin" bash
+```
+
+更细的说明见 [docs/zh/INSTALL.md](docs/zh/INSTALL.md)。
+
+---
+
+## 其他安装方式
+
+### 下载预编译二进制
+
+| 平台 | 资产名 |
+|------|--------|
+| macOS Apple Silicon | `grok-zh-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `grok-zh-x86_64-apple-darwin.tar.gz` |
+| Linux x64 | `grok-zh-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux ARM64 | `grok-zh-aarch64-unknown-linux-gnu.tar.gz` |
+
+在 [Releases](https://github.com/ivan6232/grok-build-zh/releases) 下载后：
+
+```bash
+tar -xzf grok-zh-*.tar.gz
+chmod +x */grok-zh
+mkdir -p ~/.local/bin && mv */grok-zh ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"
+grok-zh --version
+```
+
+### 源码编译
+
+依赖：Rust（`rust-toolchain.toml`）、[DotSlash](https://dotslash-cli.com)、`protoc`。
+
+```bash
 git clone https://github.com/ivan6232/grok-build-zh.git
-cd grok-build-zh
-git checkout zh-CN
-
-# 2. 安装 DotSlash（首次）
+cd grok-build-zh && git checkout zh-CN
 cargo install dotslash
-# 确认：
-dotslash --help
-
-# 3. 编译
+# macOS: brew install protobuf
+# Ubuntu: sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
+export PROTOC="$(command -v protoc)"
 cargo build -p xai-grok-pager-bin --release
-
-# 4. 安装为 grok-zh（不覆盖官方 grok）
 mkdir -p ~/.local/bin
 cp target/release/xai-grok-pager ~/.local/bin/grok-zh
-~/.local/bin/grok-zh
+grok-zh
 ```
 
-开发调试：
+---
 
-```bash
-cargo run -p xai-grok-pager-bin
-```
+## 使用说明
 
 ### 与官方 `grok` 并存
 
 | 命令 | 说明 |
 |------|------|
-| `grok` | 官方安装脚本安装的英文版 |
-| `grok-zh` | 本汉化版（建议这样命名，避免覆盖） |
+| `grok` | 官方英文版（`curl -fsSL https://x.ai/cli/install.sh \| bash`） |
+| `grok-zh` | **本汉化版** |
 
-登录、API Key、配置目录（如 `~/.grok`）等行为与上游一致，**请自行阅读上游文档与隐私说明**。
+登录、API Key、配置目录（`~/.grok`）等与上游一致。
 
-### 基本使用
+### 基本操作
 
 ```bash
-# 在项目目录启动 TUI
+# 在项目目录启动中文 TUI
 cd /path/to/your/project
 grok-zh
 
-# 常用（与官方 slash 命令相同，界面文案为中文）
-# /settings   打开设置
-# /model      切换模型
-# /help       帮助
+# 带初始提示
+grok-zh "帮我梳理这个仓库的结构"
+
+# 继续最近会话
+grok-zh -c
+
+# 查看版本 / 帮助
+grok-zh --version
+grok-zh --help
 ```
 
-配置文件仍为 `~/.grok/config.toml` 等，键名保持英文（与上游兼容）。
+应用内常用（界面文案为中文，斜杠命令与上游兼容）：
+
+| 命令 | 说明 |
+|------|------|
+| `/settings` | 设置 |
+| `/model` | 切换模型 |
+| `/help` | 帮助 |
+| `/docs` | 用户指南（应用内中文文档） |
+
+配置文件：`~/.grok/config.toml`（**键名保持英文**，与上游兼容）。
+
+### 卸载
+
+```bash
+rm -f ~/.local/bin/grok-zh
+# 可选：删除 shell 配置中「grok-zh 汉化版」PATH 段落
+```
 
 ---
 
@@ -158,8 +207,25 @@ grok-zh
 | 维护方 | SpaceXAI / xAI | 社区 |
 | 界面语言 | 英文 | **简体中文（硬编码）** |
 | 功能能力 | 完整上游能力 | 同步上游，另加汉化补丁 |
-| 安装包 | x.ai/cli | GitHub Releases / 源码编译 |
+| 安装 | `curl … x.ai/cli/install.sh` → `grok` | `curl … install.sh` → **`grok-zh`** |
 | 默认分支 | main | **zh-CN** |
+
+---
+
+## 发布与 CI
+
+- 推送标签 `v*`（例如 `v0.1.0-zh.4`）会触发 [Release 工作流](.github/workflows/release.yml)  
+- 为 macOS (arm64/x64)、Linux (x64/arm64) 编译并上传 `grok-zh-*.tar.gz`  
+- 也可在 Actions 里 **workflow_dispatch** 手动发版  
+
+维护者示例：
+
+```bash
+git checkout zh-CN
+git pull
+git tag v0.1.0-zh.4
+git push origin v0.1.0-zh.4
+```
 
 ---
 
@@ -181,7 +247,8 @@ git push origin zh-CN
 1. Fork 本仓库，分支建议：`i18n/xxx`  
 2. 优先改用户可见字符串，勿改 option id、配置键  
 3. 术语见 [docs/zh/TRANSLATING.md](docs/zh/TRANSLATING.md)  
-4. 提交 PR，最好附图  
+4. 安装说明见 [docs/zh/INSTALL.md](docs/zh/INSTALL.md)  
+5. 提交 PR，最好附图  
 
 高频文件：
 

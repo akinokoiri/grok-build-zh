@@ -7,12 +7,21 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.1.0-zh.1)"
+        description: "Release tag to create/publish (e.g. v0.1.0-zh.4)"
         required: true
-        default: "v0.1.0-zh.1"
+        default: "v0.1.0-zh.4"
+      ref:
+        description: "Git ref to build from (branch/SHA; default current)"
+        required: false
+        default: "zh-CN"
 
 permissions:
   contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
 
 jobs:
   build:
@@ -23,75 +32,163 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             name: grok-zh-aarch64-apple-darwin
+          # Intel macOS — use macos-13 Intel runners when available
           - os: macos-13
             target: x86_64-apple-darwin
             name: grok-zh-x86_64-apple-darwin
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             name: grok-zh-x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: grok-zh-aarch64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.ref || 'zh-CN') || github.ref }}
+
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      - name: Install Rust ${{ matrix.target }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.92.0"
           targets: ${{ matrix.target }}
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+          cache-on-failure: true
+
       - name: Install DotSlash
-        run: cargo install dotslash --locked
+        run: cargo install dotslash --locked || cargo install dotslash
 
       - name: System deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev protobuf-compiler
+          sudo apt-get install -y pkg-config libssl-dev protobuf-compiler build-essential cmake
+          protoc --version
+          echo "PROTOC=$(command -v protoc)" >> "$GITHUB_ENV"
+
+      - name: System deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install protobuf pkg-config || true
+          if command -v protoc >/dev/null 2>&1; then
+            echo "PROTOC=$(command -v protoc)" >> "$GITHUB_ENV"
+            protoc --version
+          else
+            echo "WARN: protoc not found on PATH"
+          fi
 
       - name: Build release binary
-        run: cargo build -p xai-grok-pager-bin --release --target ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          echo "PROTOC=${PROTOC:-}"
+          rustc -vV
+          cargo build -p xai-grok-pager-bin --release --target "${{ matrix.target }}"
         env:
-          CARGO_TERM_COLOR: always
+          PROTOC: ${{ env.PROTOC }}
 
       - name: Package tarball
         shell: bash
         run: |
           set -euo pipefail
           BIN="target/${{ matrix.target }}/release/xai-grok-pager"
-          if [[ ! -f "$BIN" ]]; then BIN="target/release/xai-grok-pager"; fi
+          if [[ ! -f "$BIN" ]]; then
+            BIN="target/release/xai-grok-pager"
+          fi
           test -f "$BIN"
+          # strip if available (smaller download)
+          if command -v strip >/dev/null 2>&1; then
+            strip "$BIN" || true
+          fi
           STAGE="dist/${{ matrix.name }}"
           mkdir -p "$STAGE"
           cp "$BIN" "$STAGE/grok-zh"
           chmod +x "$STAGE/grok-zh"
-          cp README.md LICENSE "$STAGE/" 2>/dev/null || true
+          cp README.md LICENSE install.sh "$STAGE/" 2>/dev/null || true
           [[ -f NOTICE ]] && cp NOTICE "$STAGE/" || true
           [[ -f ZH_VERSION ]] && cp ZH_VERSION "$STAGE/" || true
           {
             echo "Grok Build Chinese UI build (community, unofficial)"
             echo "Binary: grok-zh"
-            echo "Install: chmod +x grok-zh && mv grok-zh ~/.local/bin/"
+            echo "Platform: ${{ matrix.name }}"
+            echo ""
+            echo "One-line install:"
+            echo "  curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash"
+            echo ""
+            echo "Manual:"
+            echo "  chmod +x grok-zh && mkdir -p ~/.local/bin && mv grok-zh ~/.local/bin/"
+            echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+            echo "  grok-zh"
+            echo ""
             echo "Repo: https://github.com/ivan6232/grok-build-zh"
             echo "Upstream: https://github.com/xai-org/grok-build"
           } > "$STAGE/README-BINARY.txt"
           tar -C dist -czf "${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
           ls -lh "${{ matrix.name }}.tar.gz"
+          # checksum
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "${{ matrix.name }}.tar.gz" | tee "${{ matrix.name }}.tar.gz.sha256"
+          else
+            sha256sum "${{ matrix.name }}.tar.gz" | tee "${{ matrix.name }}.tar.gz.sha256"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ matrix.name }}.tar.gz
+          path: |
+            ${{ matrix.name }}.tar.gz
+            ${{ matrix.name }}.tar.gz.sha256
           if-no-files-found: error
+          retention-days: 14
 
   publish:
     needs: build
     runs-on: ubuntu-latest
+    # Publish even if some platforms failed — attach whatever succeeded
+    if: always() && needs.build.result != 'cancelled'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.ref || 'zh-CN') || github.ref }}
 
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: false
+
+      - name: Collect assets
+        id: assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          count=0
+          while IFS= read -r -d '' f; do
+            cp "$f" release-assets/
+            count=$((count + 1))
+            echo "asset: $(basename "$f") ($(du -h "$f" | cut -f1))"
+          done < <(find artifacts -type f \( -name 'grok-zh-*.tar.gz' -o -name 'grok-zh-*.sha256' \) -print0 2>/dev/null || true)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          ls -la release-assets || true
+          if [[ "$count" -eq 0 ]]; then
+            echo "::error::No release assets found — all build matrix jobs failed"
+            exit 1
+          fi
 
       - name: Resolve tag name
         id: tag
@@ -103,27 +200,69 @@ jobs:
             echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Ensure tag exists (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.name }}"
+          REF="${{ github.event.inputs.ref || 'zh-CN' }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists locally"
+          else
+            git fetch origin "$REF" --depth=1
+            git tag -f "$TAG" "origin/$REF" 2>/dev/null || git tag -f "$TAG" HEAD
+            git push origin "refs/tags/$TAG" --force
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
-          name: Grok Build zh ${{ steps.tag.outputs.name }}
+          name: Grok Build 汉化版 ${{ steps.tag.outputs.name }}
           prerelease: true
+          draft: false
           generate_release_notes: true
+          fail_on_unmatched_files: true
           body: |
-            ## Community Chinese UI build (unofficial)
+            ## 社区汉化构建（非官方）
 
-            Based on [xai-org/grok-build](https://github.com/xai-org/grok-build).
+            基于 [xai-org/grok-build](https://github.com/xai-org/grok-build)。**与 SpaceXAI / xAI 无官方隶属关系。**
 
-            **Not affiliated with SpaceXAI/xAI.**
+            ### 一键安装（推荐）
 
-            ### Install
             ```bash
-            tar -xzf grok-zh-*.tar.gz
-            chmod +x */grok-zh
-            mkdir -p ~/.local/bin && mv */grok-zh ~/.local/bin/
+            curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+            ```
+
+            指定本版本：
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- ${{ steps.tag.outputs.name }}
+            ```
+
+            安装完成后执行：
+
+            ```bash
             grok-zh
             ```
-          files: artifacts/**/*.tar.gz
+
+            ### 手动安装
+
+            1. 下载下方对应平台的 `grok-zh-*.tar.gz`
+            2. 解压后将 `grok-zh` 放到 `~/.local/bin/`
+            3. 确保 `~/.local/bin` 在 `PATH` 中
+
+            | 平台 | 资产名 |
+            |------|--------|
+            | macOS Apple Silicon | `grok-zh-aarch64-apple-darwin.tar.gz` |
+            | macOS Intel | `grok-zh-x86_64-apple-darwin.tar.gz` |
+            | Linux x64 | `grok-zh-x86_64-unknown-linux-gnu.tar.gz` |
+            | Linux ARM64 | `grok-zh-aarch64-unknown-linux-gnu.tar.gz` |
+
+            官方英文版请使用：`curl -fsSL https://x.ai/cli/install.sh | bash`
+          files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
