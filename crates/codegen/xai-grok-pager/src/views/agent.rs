@@ -870,7 +870,7 @@ pub fn render_todo_badge_spans(
             }
             TodoBadgeFormat::Comma => {
                 if i > 0 {
-                    spans.push(Span::styled(", ", dim_style));
+                    spans.push(Span::styled(", dim_style));
                 }
                 spans.push(Span::styled(format!("{count}"), num_style));
                 spans.push(Span::styled(" ", dim_style));

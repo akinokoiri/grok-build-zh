@@ -2080,7 +2080,7 @@ mod tests {
             "",
             "a",
             "abcdef",
-            "  \"key\": \"value with spaces\",",
+            "  \"key\": \"value with spaces\",
             "你好世界你好世界",
             "mixed 你 width 好 text",
             &"x".repeat(500),
@@ -2161,7 +2161,7 @@ mod tests {
         // identical to the plain `char_wrap` mirror.
         let description: Vec<String> = vec![
             "{".into(),
-            format!("  \"body\": \"{}\",", "x".repeat(120)),
+            format!("  \"body\": \"{}\", "x".repeat(120)),
             "  \"n\": 42".into(),
             "}".into(),
         ];
