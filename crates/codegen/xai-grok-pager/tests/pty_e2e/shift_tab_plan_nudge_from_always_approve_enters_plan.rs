@@ -55,7 +55,7 @@ async fn shift_tab_plan_nudge_from_always_approve_enters_plan() {
 
     harness.inject_keys(b"\x1b[Z").expect("inject Shift+Tab");
     harness
-        .wait_for_text("Switched to mode: Plan", Duration::from_secs(10))
+        .wait_for_text("已切换模式：计划", Duration::from_secs(10))
         .unwrap_or_else(|e| {
             panic!(
                 "nudge + Always-Approve Shift+Tab must enter Plan; {e}\nscreen:\n{}",
@@ -64,7 +64,7 @@ async fn shift_tab_plan_nudge_from_always_approve_enters_plan() {
         });
 
     assert!(
-        !harness.contains_text("Switched to mode: Normal"),
+        !harness.contains_text("已切换模式：普通"),
         "must not land on Normal while the plan nudge is showing; screen:\n{}",
         harness.screen_contents()
     );

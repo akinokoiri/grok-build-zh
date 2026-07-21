@@ -242,7 +242,7 @@ pub fn search_bar_layout(width: u16, trailing_width: u16) -> SearchBarLayout {
 /// Render a search bar row: ` search: {query}_` or ` / to search` hint.
 ///
 /// - `active`: whether the cursor blinks (search mode is engaged).
-/// - `show_hint`: show `/ to search` placeholder when query is empty and not active.
+/// - `show_hint`: show `/ 搜索` placeholder when query is empty and not active.
 /// - `query_cursor`: byte offset of the editing cursor within `query`.
 ///   The visual cursor is placed after the display-width of `query[..query_cursor]`.
 /// - `bg`: optional background color for the search text (used in Floating mode).
@@ -542,7 +542,7 @@ fn render_search_bar_with_label_viewport(
             x,
             y,
             &Line::from(Span::styled(
-                " / to search",
+                " / 搜索",
                 bg_style(Style::default().fg(theme.gray_dim)),
             )),
             width,
@@ -1705,7 +1705,7 @@ pub struct PickerHitAreas {
 pub struct PickerConfig<'a> {
     /// Title shown in fullscreen mode's title row (e.g. "恢复会话").
     pub title: Option<&'a str>,
-    /// When true, show "/ to search" hint; user must activate search explicitly.
+    /// When true, show "/ 搜索" hint; user must activate search explicitly.
     /// When false, search is always active (cursor always visible).
     pub show_search_hint: bool,
     /// Whether the picker supports e:expand and y:copy.
@@ -3266,7 +3266,7 @@ mod tests {
     #[test]
     fn always_active_slash_on_empty_query_focuses_search_without_typing() {
         // show_search_hint=false picker (e.g. the `/docs` how-to picker) shows
-        // the "/ to search" placeholder while unfocused: pressing the
+        // the "/ 搜索" placeholder while unfocused: pressing the
         // advertised `/` must focus search, not type a literal `/`.
         let config = cfg(false, false);
         let mut state = PickerState::default();
@@ -3299,7 +3299,7 @@ mod tests {
     fn always_active_slash_inserts_when_search_already_focused() {
         // Pickers that open input-focused (`input_active()`: command palette,
         // arg picker; the dashboard location picker) never show the
-        // "/ to search" placeholder, so a leading `/` there is query text
+        // "/ 搜索" placeholder, so a leading `/` there is query text
         // (e.g. an absolute path) and must insert even on an empty query.
         let config = cfg(false, false);
         let mut state = PickerState::input_active();
@@ -3366,8 +3366,8 @@ mod tests {
             "unfocused search bar must not render a cursor",
         );
         assert!(
-            unfocused_text.contains("/ to search"),
-            "unfocused search bar should show the `/ to search` placeholder, got {unfocused_text:?}",
+            unfocused_text.contains("/ 搜索"),
+            "unfocused search bar should show the `/ 搜索` placeholder, got {unfocused_text:?}",
         );
     }
 

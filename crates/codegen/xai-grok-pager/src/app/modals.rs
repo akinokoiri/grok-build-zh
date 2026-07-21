@@ -2887,8 +2887,8 @@ mod command_palette_vim_input_tests {
             "command palette search bar must not render a cursor when not search_active",
         );
         assert!(
-            unfocused_text.contains("/ to search"),
-            "unfocused command palette should show the `/ to search` placeholder, got {unfocused_text:?}",
+            unfocused_text.contains("/ 搜索"),
+            "unfocused command palette should show the `/ 搜索` placeholder, got {unfocused_text:?}",
         );
     }
 }

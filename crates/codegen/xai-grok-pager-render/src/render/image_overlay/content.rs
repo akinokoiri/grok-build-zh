@@ -18,7 +18,7 @@ pub(super) fn paint_path_line(
 ) {
     let raw = path.display().to_string();
     let label = format!(
-        "Path: {}",
+        "路径：{}",
         truncate_path_for_overlay(&raw, width.saturating_sub(6) as usize)
     );
     let clipped = crate::render::line_utils::truncate_str(&label, width as usize);

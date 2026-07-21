@@ -97,7 +97,7 @@ fn render_image_overlay_inner(
     let inner = block.inner(overlay_rect);
     block.render(overlay_rect, buf);
 
-    let title_text = format!(" Image #{} ", image.display_number);
+    let title_text = format!(" 图片 #{} ", image.display_number);
     let meta = build_meta_line(image, plan.display_path);
     let full_title = if meta.len() + title_text.len() + 6 < overlay_rect.width as usize {
         format!("{}\u{2500} {} ", title_text, meta)
@@ -108,7 +108,7 @@ fn render_image_overlay_inner(
         .fg(text_fg)
         .bg(bg)
         .add_modifier(ratatui::style::Modifier::BOLD);
-    let title_width = full_title.len() as u16;
+    let title_width = unicode_width::UnicodeWidthStr::width(full_title.as_str()) as u16;
     let title_x = overlay_rect.x + (overlay_rect.width.saturating_sub(title_width)) / 2;
     buf.set_span(
         title_x,
@@ -143,28 +143,28 @@ fn render_image_overlay_inner(
     if !plan.show_pixels {
         let mut lines = Vec::new();
         lines.push(Line::from(format!(
-            "Format: {}",
+            "格式：{}",
             format_mime(&image.mime_type)
         )));
         if let Some((w, h)) = image.preview_dimensions() {
-            lines.push(Line::from(format!("Dimensions: {} x {}", w, h)));
+            lines.push(Line::from(format!("尺寸：{} x {}", w, h)));
         }
         let status = if image.preview.is_failed() {
-            Some("Preview unavailable")
+            Some("预览不可用")
         } else if image.preview.is_pending() && protocol.supports_images() {
-            Some("Preview pending")
+            Some("预览加载中")
         } else {
             None
         };
         lines.push(Line::from(status.map(str::to_owned).unwrap_or_else(|| {
-            format!("Size: {}", format_bytes(image.byte_len))
+            format!("大小：{}", format_bytes(image.byte_len))
         })));
         // Short boxes need the path in the body because no footer fits.
         if path_footer.is_none()
             && let Some(path) = plan.display_path
         {
             lines.push(Line::from(format!(
-                "Path: {}",
+                "路径：{}",
                 truncate_path_for_overlay(&path.display().to_string(), inner.width as usize)
             )));
         }

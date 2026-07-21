@@ -246,12 +246,12 @@ impl AgentView {
         Some(sticky)
     }
 
-    /// Show a transient "Switched to mode: ..." banner above the prompt.
+    /// Show a transient mode-switch banner above the prompt.
     ///
     /// Triggered on Shift+Tab mode cycles.
     /// Renders at full visibility for 2 s, then fades out over the final 0.3 s.
     pub fn show_mode_switch_banner(&mut self, mode_name: &str) {
-        let msg = format!("Switched to mode: {}", mode_name);
+        let msg = format!("已切换模式：{}", mode_name);
         self.mode_switch_banner = Some((msg, MODE_BANNER_TOTAL_TICKS));
     }
 

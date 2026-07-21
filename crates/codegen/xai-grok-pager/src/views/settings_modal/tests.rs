@@ -3802,7 +3802,7 @@ fn render_settings_modal_routes_to_picker_when_mode_is_picking_enum() {
         all_text.push('\n');
     }
     assert!(
-        !all_text.contains("/ to search"),
+        !all_text.contains("/ 搜索"),
         "picker mode must not render the Browse-mode search bar"
     );
     // The picker's setting label should be visible.
@@ -5235,8 +5235,8 @@ fn search_bar_placeholder_matches_palette() {
         .filter_map(|x| buf.cell((x, area.y)).map(|c| c.symbol().to_string()))
         .collect();
     assert!(
-        txt.contains("/ to search"),
-        "search bar placeholder must read `/ to search`, got: {txt:?}"
+        txt.contains("/ 搜索"),
+        "search bar placeholder must read `/ 搜索`, got: {txt:?}"
     );
     // Sample BOTH ends of the hint span. The hint is
     // " / to search" (12 cells); the first slash is at col 1
@@ -6416,7 +6416,7 @@ fn search_bar_renders_divider_below() {
     let mut search_y: Option<u16> = None;
     for y in 0..area.height {
         let txt = buf_row_text(&buf, y, area.x, area.width);
-        if txt.contains("/ to search") || txt.contains(" search: ") {
+        if txt.contains("/ 搜索") || txt.contains(" search: ") {
             search_y = Some(y);
             break;
         }

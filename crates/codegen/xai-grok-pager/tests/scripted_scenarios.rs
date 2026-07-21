@@ -458,7 +458,7 @@ async fn scripted_auto_compact_resize() {
 }
 
 /// Small-screen tip happy path: a 24-row terminal (in the 21..=28 band) shows
-/// the one-shot "Tight on space? Try /compact-mode" banner, which expires on
+/// the one-shot "屏幕偏小？试试 /compact-mode" banner, which expires on
 /// its TTL and never re-shows after resizes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "scripted scenario; run with cargo test -- --ignored"]

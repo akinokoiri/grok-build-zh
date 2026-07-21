@@ -178,7 +178,7 @@ fn pty_shift_tab_cycles_to_auto_mode_banner() {
     }
 
     assert!(
-        saw_auto || screen.contains("Auto") || screen.contains("Switched to mode: Auto"),
+        saw_auto || screen.contains("Auto") || screen.contains("已切换模式：自动"),
         "after Plan → Auto cycle, screen must show Auto (distinct mode). screen=\n{screen}"
     );
     if screen.contains("Always-Approve") && !screen.contains("Auto") {
@@ -246,13 +246,13 @@ fn pty_shift_tab_skips_auto_when_gate_off() {
             eprintln!("pty_auto_mode(gate off): landed on login after key inject; env auth limit");
             return;
         }
-        if s.contains("Switched to mode: Plan") {
+        if s.contains("已切换模式：计划") {
             saw_plan = true;
         }
-        if s.contains("Switched to mode: Always-Approve") {
+        if s.contains("已切换模式：始终批准") {
             saw_always = true;
         }
-        if s.contains("Switched to mode: Auto") {
+        if s.contains("已切换模式：自动") {
             saw_auto = true;
         }
     }

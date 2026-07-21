@@ -12,7 +12,7 @@ use super::common::*;
 // (`set_chunk_delay`) so the turn genuinely outlives the ~3s TTL.
 
 /// Exact tip copy (also asserted char-for-char in the unit tests).
-const TIP_TEXT: &str = "Tight on space? Try /compact-mode";
+const TIP_TEXT: &str = "屏幕偏小？试试 /compact-mode";
 
 /// In the 21..=28 tip band (above the 20-row auto-compact threshold).
 const BAND_ROWS: u16 = 24;

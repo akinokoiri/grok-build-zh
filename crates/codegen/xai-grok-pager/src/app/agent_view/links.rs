@@ -2159,7 +2159,7 @@ mod link_click_tests {
             .map(|y| buffer_row(&buf, tall.width, y))
             .collect();
         assert!(
-            frame.contains("Switched to mode: PlanMode"),
+            frame.contains("已切换模式：PlanMode"),
             "mode-switch banner must own the slot"
         );
         assert!(

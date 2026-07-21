@@ -189,11 +189,11 @@ impl ThinkingBlock {
             Line::from(Span::styled("思考中…", label_style))
         } else if let Some(time_str) = self.format_time() {
             Line::from(vec![
-                Span::styled("Thought", label_style),
-                Span::styled(format!(" for {time_str}"), detail_style),
+                Span::styled("思考了", label_style),
+                Span::styled(format!(" {time_str}"), detail_style),
             ])
         } else {
-            Line::from(Span::styled("Thought", label_style))
+            Line::from(Span::styled("思考", label_style))
         }
     }
 

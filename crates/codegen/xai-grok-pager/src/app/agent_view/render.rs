@@ -2026,25 +2026,18 @@ impl AgentView {
                 let base_fg = theme.text_secondary;
                 let fg = crate::render::color::blend_color(theme.bg_base, base_fg, opacity)
                     .unwrap_or(base_fg);
+                // Truncate by *display columns* (not UTF-8 bytes / char count)
+                // so CJK mode names like「始终批准」are not cut to a single glyph.
                 let text = format!("  {}", msg);
                 let maxw = layout.banner.width.saturating_sub(2) as usize;
-                let display: String = if text.len() > maxw {
-                    text.chars()
-                        .take(maxw.saturating_sub(1))
-                        .collect::<String>()
-                        + "…"
-                } else {
-                    text
-                };
-                let x = layout.banner.x;
-                let y = layout.banner.y;
-                for (i, ch) in display.chars().enumerate() {
-                    if let Some(cell) = buf.cell_mut((x + i as u16, y)) {
-                        cell.set_char(ch);
-                        cell.fg = fg;
-                        cell.bg = bg;
-                    }
-                }
+                let display = crate::render::line_utils::truncate_str(&text, maxw);
+                let style = Style::default().fg(fg).bg(bg);
+                buf.set_span(
+                    layout.banner.x,
+                    layout.banner.y,
+                    &Span::styled(display.as_str(), style),
+                    layout.banner.width.saturating_sub(0),
+                );
             }
         } else {
             let announcement_banner_owns_slot =

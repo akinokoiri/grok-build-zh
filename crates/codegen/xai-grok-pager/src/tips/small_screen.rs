@@ -31,7 +31,7 @@ pub fn small_screen_band_contains(rows: u16) -> bool {
     (AUTO_COMPACT_MAX_ROWS + 1..=SMALL_SCREEN_TIP_MAX_ROWS).contains(&rows)
 }
 
-/// Build "Tight on space? Try /compact-mode", seen-gated to
+/// Build "屏幕偏小？试试 /compact-mode", seen-gated to
 /// [`SMALL_SCREEN_TIP_SEEN_CAP`] show per session (in-memory). Ambient: it is
 /// not about the draft, so submitting a prompt right after the promote must
 /// not retire it, and occlusion pauses (not burns) its TTL — otherwise a
@@ -94,7 +94,7 @@ mod tests {
     fn small_screen_tip_advertises_compact_mode() {
         let tip = small_screen_tip();
         let text: String = tip.line.spans.iter().map(|s| s.content.as_ref()).collect();
-        assert_eq!(text, "Tight on space? Try /compact-mode");
+        assert!(text.contains("屏幕偏小") && text.contains("/compact-mode"), "{text}");
     }
 
     #[test]

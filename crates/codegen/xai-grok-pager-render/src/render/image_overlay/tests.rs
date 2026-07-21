@@ -142,8 +142,8 @@ fn paint_metadata_with_path_shows_all_fields() {
         Rect::new(0, 0, 60, 20),
     );
     assert!(render.unwrap().image_placement.is_none());
-    assert!(text.contains("Format: PNG"));
-    assert!(text.contains("Dimensions: 640 x 480"));
+    assert!(text.contains("格式：PNG"));
+    assert!(text.contains("尺寸：640 x 480"));
     assert!(text.contains("Path:"));
     assert!(text.contains("logo.png"));
 }
@@ -156,7 +156,7 @@ fn failed_preview_uses_stable_metadata_fallback() {
     image.preview.mark_failed();
     let (render, text) = render_to_string(&image, Rect::new(0, 0, 80, 30));
     assert!(render.unwrap().image_placement.is_none());
-    assert!(text.contains("Format: JPEG"));
+    assert!(text.contains("格式：JPEG"));
     assert!(text.contains("Preview unavailable"));
     assert!(!text.contains("Loading..."));
 }

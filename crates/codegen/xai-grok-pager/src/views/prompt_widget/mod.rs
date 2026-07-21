@@ -2300,7 +2300,7 @@ impl PromptWidget {
         self.image_counter += 1;
         let display_number = self.image_counter;
         let placeholder = crate::prompt_images::display_text(display_number);
-        let display_line = chip_line(format!("Image #{display_number}"));
+        let display_line = chip_line(format!("图片 #{display_number}"));
 
         let buf_len_before = self.textarea.text().len();
         self.textarea.begin_undo_group();
