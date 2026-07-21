@@ -5,6 +5,6 @@ features:
   - curl | bash install.sh → grok-zh
   - Release CI: macOS arm64/x64, Linux x64/arm64
   - settings / dashboard / tasks / tips / goals / personas chrome zh-CN
-  - bundled-zh optional description overlay
-note: marketplace remote descriptions remain EN; tool short names EN; no runtime i18n yet
+  - bundled-zh: personas/roles/agents + built-in skill descriptions (IDs stay EN)
+note: marketplace remote descriptions remain EN; skill body instructions EN; no runtime i18n yet
 upstream: xai-org/grok-build

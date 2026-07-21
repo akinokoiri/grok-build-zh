@@ -29,17 +29,19 @@ grok-zh --version
 grok-zh
 ```
 
-### 可选：内置人设描述中文
+### 可选：人设 + 内置技能描述中文
 
-装完 `grok-zh` 后，若希望代理/人设列表的 **description** 也是中文（ID 仍为英文）：
+装完 `grok-zh` 后，若希望列表里的 **description** 也是中文（**ID 仍为英文**）：
 
 ```bash
 git clone https://github.com/ivan6232/grok-build-zh.git
 cd grok-build-zh && git checkout zh-CN
 bash docs/zh/bundled-zh/apply.sh
+# 覆盖人设/角色/代理，并改写本机 bundled + user 技能的 description
 ```
 
-详见 [bundled-zh/README.md](bundled-zh/README.md)。操作习惯见 [USAGE.md](USAGE.md)。
+然后**重启** `grok-zh`，打开 `/skills` 即可看到中文描述。  
+市场插件远程描述不会被改写。详见 [bundled-zh/README.md](bundled-zh/README.md)、[USAGE.md](USAGE.md)。
 
 ### 常用选项
 
