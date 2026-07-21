@@ -216,9 +216,11 @@ verify_binary() {
 
 install_from_tarball_url() {
   local url="$1"
-  local tmp dir
+  local tmp found
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/grok-zh-install.XXXXXX")"
-  trap 'rm -rf "$tmp"' RETURN
+  # Expand path now so RETURN cleanup works under `set -u`
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
 
   info "下载: $url"
   download "$url" "$tmp/pkg.tar.gz"
@@ -228,8 +230,7 @@ install_from_tarball_url() {
   tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract"
 
   # find grok-zh binary (tarball may nest one directory)
-  local found
-  found="$(find "$tmp/extract" -type f -name "$BIN_NAME" | head -1)"
+  found="$(find "$tmp/extract" -type f -name "$BIN_NAME" | head -1 || true)"
   [[ -n "$found" ]] || die "压缩包内未找到 $BIN_NAME"
 
   mkdir -p "$INSTALL_DIR"
@@ -266,7 +267,7 @@ install_from_source() {
   local src
   src="$(mktemp -d "${TMPDIR:-/tmp}/grok-zh-src.XXXXXX")"
   # shellcheck disable=SC2064
-  trap "rm -rf '$src'" RETURN
+  trap "rm -rf '$src'" EXIT
 
   git clone --depth 1 --branch zh-CN "https://github.com/${REPO}.git" "$src"
   cd "$src"
