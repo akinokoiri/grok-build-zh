@@ -11,7 +11,8 @@
 | 角色 roles | `roles/*.toml` | 同上 |
 | 代理 agents | `agents/*.md` | frontmatter description 中文 |
 | **技能 skills** | `skills/descriptions.json` | 就地改写本机 `SKILL.md` 的 description 字段 |
-| 市场插件 / 第三方技能 | 远程目录 | ⚠️ **不在本包**（上游英文，除非作者提供中文） |
+| **市场插件** | `marketplace/plugins.json` | **运行时映射**（`grok-zh` 内置，见下） |
+| 未收录的第三方 / 新上架插件 | 远程目录 | 仍显示上游英文 description；可 PR 补映射 |
 
 ## 一键应用
 
@@ -44,15 +45,24 @@ GROK_HOME=~/.grok bash docs/zh/bundled-zh/apply.sh
 | `description` / `short-description`（列表展示） | **中文** |
 | 技能正文 / 系统 instructions | 默认保留英文（模型指令） |
 
-## 市场插件为什么仍是英文？
+## 市场插件描述映射（运行时）
 
-市场插件的 description 来自远程 marketplace / 缓存（如 `~/.grok/marketplace-cache/`），  
-每次同步可能被上游覆盖。本仓库**不修改第三方远程内容**。
+**不改**远程 `marketplace.json` / 缓存文件。  
+`grok-zh` 在扩展市场 UI 展示时，按插件 **ID** 套用中文 description：
 
-若需要中文，可：
+| 文件 | 作用 |
+|------|------|
+| [marketplace/plugins.json](marketplace/plugins.json) | 人类可读映射表（文档 / 贡献入口） |
+| `crates/.../zh_overlay.rs` | 编译进二进制的同一映射 |
 
-1. 向插件作者要中文描述，或  
-2. 在本地缓存里手工改 `plugin.json` / `SKILL.md`（更新后可能丢失）
+当前已覆盖 xAI 官方市场常见插件（ID 保持英文）：
+
+`vercel` · `sentry` · `chrome-devtools` · `cloudflare` · `superpowers` · `mongodb` · `axiom` · `neon` · `firecrawl` · `figma` · `railway` · `stripe`
+
+分类标签也会显示为中文（部署 / 监控 / 开发 / 数据库 / 可观测性）。
+
+**补映射：** 在 `plugins.json` 与 `zh_overlay.rs` 各加一条同 ID 中文描述，提 PR。  
+未收录 ID 仍显示上游英文原文。
 
 ## 客户端更新后
 

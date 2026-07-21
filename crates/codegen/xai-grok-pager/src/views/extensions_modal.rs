@@ -98,11 +98,30 @@ fn word_wrap(text: &str, max_w: usize) -> Vec<&str> {
 
 /// Source-level search gate shared by the marketplace count, resolve, and
 /// navigation helpers: empty query, or any plugin name fuzzy-matches.
+/// Name fuzzy-match **or** Chinese/original description substring match.
+fn marketplace_plugin_matches(
+    plugin: &xai_hooks_plugins_types::MarketplacePluginEntry,
+    query: &str,
+) -> bool {
+    if fuzzy_matches(&plugin.name, query) {
+        return true;
+    }
+    if query.is_empty() {
+        return true;
+    }
+    let desc = crate::zh_overlay::display_plugin_description(
+        &plugin.name,
+        plugin.description.as_deref(),
+    );
+    desc.to_lowercase()
+        .contains(&query.to_lowercase())
+}
+
 pub(crate) fn source_has_matching_plugin(
     source: &xai_hooks_plugins_types::MarketplaceScanResult,
     query: &str,
 ) -> bool {
-    query.is_empty() || source.plugins.iter().any(|p| fuzzy_matches(&p.name, query))
+    query.is_empty() || source.plugins.iter().any(|p| marketplace_plugin_matches(p, query))
 }
 
 /// Count marketplace plugins that match the search query.
@@ -278,7 +297,7 @@ pub fn resolve_marketplace_index<'a>(
             continue;
         }
         for plugin in &source.plugins {
-            if idx == target && fuzzy_matches(&plugin.name, query) {
+            if idx == target && marketplace_plugin_matches(plugin, query) {
                 return Some(MarketplaceHit::Plugin {
                     source_index: si,
                     source,
@@ -327,7 +346,7 @@ pub fn next_matching_marketplace(
             continue;
         }
         for plugin in &source.plugins {
-            if fuzzy_matches(&plugin.name, query) && idx >= start {
+            if marketplace_plugin_matches(plugin, query) && idx >= start {
                 return Some(idx);
             }
             idx += 1;
@@ -361,7 +380,7 @@ pub fn prev_matching_marketplace(
             continue;
         }
         for plugin in &source.plugins {
-            if fuzzy_matches(&plugin.name, query) && idx <= start {
+            if marketplace_plugin_matches(plugin, query) && idx <= start {
                 result = Some(idx);
             }
             idx += 1;
@@ -2662,10 +2681,12 @@ pub fn render_extensions_modal(
                             entry_summary_lines.push(vec![]);
                             // Fields for expanded view.
                             let mut fields = Vec::new();
-                            if let Some(ref desc) = plugin.description
-                                && !desc.is_empty()
-                            {
-                                fields.push(("description".to_string(), desc.clone()));
+                            let desc = crate::zh_overlay::display_plugin_description(
+                                &plugin.name,
+                                plugin.description.as_deref(),
+                            );
+                            if !desc.is_empty() {
+                                fields.push(("描述".to_string(), desc));
                             }
                             fields.push(("路径".to_string(), plugin.root.clone()));
                             entry_fields.push(fields);
@@ -2827,7 +2848,7 @@ pub fn render_extensions_modal(
                             continue;
                         }
                         for plugin in &source.plugins {
-                            if !fuzzy_matches(&plugin.name, state.picker_state.query()) {
+                            if !marketplace_plugin_matches(plugin, state.picker_state.query()) {
                                 continue;
                             }
                             let status_label = match plugin.install_status.as_str() {
@@ -2844,11 +2865,14 @@ pub fn render_extensions_modal(
                                 (None, None) => String::new(),
                             };
                             entry_right_labels.push(right);
-                            let desc = plugin.description.as_deref().unwrap_or("");
+                            let desc = crate::zh_overlay::display_plugin_description(
+                                &plugin.name,
+                                plugin.description.as_deref(),
+                            );
                             if desc.is_empty() {
                                 entry_desc_lines.push(vec![]);
                             } else {
-                                entry_desc_lines.push(vec![desc.to_string()]);
+                                entry_desc_lines.push(vec![desc]);
                             }
                             match marketplace_components_summary(plugin) {
                                 Some(summary) => entry_summary_lines.push(vec![summary]),
@@ -2856,6 +2880,13 @@ pub fn render_extensions_modal(
                             }
                             // Fields for expanded view.
                             let mut fields = Vec::new();
+                            let desc_full = crate::zh_overlay::display_plugin_description(
+                                &plugin.name,
+                                plugin.description.as_deref(),
+                            );
+                            if !desc_full.is_empty() {
+                                fields.push(("描述".to_string(), desc_full));
+                            }
                             if let Some(ref version) = plugin.version {
                                 fields.push(("版本".to_string(), version.clone()));
                             }
@@ -2863,7 +2894,11 @@ pub fn render_extensions_modal(
                                 fields.push(("作者".to_string(), author.clone()));
                             }
                             if let Some(ref category) = plugin.category {
-                                fields.push(("分类".to_string(), category.clone()));
+                                fields.push((
+                                    "分类".to_string(),
+                                    crate::zh_overlay::marketplace_category_label(category)
+                                        .to_string(),
+                                ));
                             }
                             if !plugin.tags.is_empty() {
                                 fields.push(("标签".to_string(), plugin.tags.join(", ")));

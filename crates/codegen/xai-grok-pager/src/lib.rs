@@ -51,6 +51,8 @@ pub mod share_cmd;
 pub mod slash;
 pub mod startup;
 pub mod tips;
+/// Chinese description overlays (marketplace plugins, etc.).
+pub mod zh_overlay;
 pub mod wrap_clipboard_image;
 pub mod wrap_cmd;
 pub(crate) mod wrap_filter;

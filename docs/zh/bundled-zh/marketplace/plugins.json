@@ -1,0 +1,53 @@
+{
+  "_comment": "常见 xAI 官方市场插件 description 中文映射。key = 插件 ID/name（不改）。运行时由 grok-zh UI 覆盖展示；远程 marketplace.json 本身不修改。",
+  "marketplace": {
+    "xai-official": {
+      "description": "xAI 官方插件市场"
+    }
+  },
+  "categories": {
+    "deployment": "部署",
+    "monitoring": "监控",
+    "development": "开发",
+    "database": "数据库",
+    "observability": "可观测性"
+  },
+  "plugins": {
+    "vercel": {
+      "description": "Vercel 部署平台集成。可在 Grok 中管理部署、查看构建状态与日志、配置域名，并控制前端基础设施。"
+    },
+    "sentry": {
+      "description": "Sentry 错误监控集成。可查看错误报告、分析堆栈、按指纹搜索问题，并在开发环境中调试生产错误。"
+    },
+    "chrome-devtools": {
+      "description": "Chrome DevTools 集成。控制并检查实时 Chrome 浏览器：录制性能轨迹、分析网络请求、查看带 source map 的控制台消息，并自动化浏览器操作。"
+    },
+    "cloudflare": {
+      "description": "Cloudflare 开发者平台技能：Workers、Durable Objects、Agents SDK、MCP 服务器、Wrangler CLI 与 Web 性能。"
+    },
+    "superpowers": {
+      "description": "软件开发核心技能库：测试驱动开发、系统化调试、协作模式，以及经过验证的工程工作流与技巧。"
+    },
+    "mongodb": {
+      "description": "MongoDB 官方插件（MCP Server + Skills）。连接数据库、浏览数据、管理集合、优化查询、生成可靠代码、实践最佳做法并开发高级功能等。"
+    },
+    "axiom": {
+      "description": "Axiom 可观测性官方集成（MCP Server + Skills）。用 APL 查询日志与指标、假设驱动的 SRE 排查、构建仪表盘、管理监控与告警、翻译 Splunk SPL，并分析与优化成本。"
+    },
+    "neon": {
+      "description": "Neon Serverless Postgres 集成（MCP Server + Skills）。上手 Neon、管理项目与数据库、选择连接方式，并创建分支用于迁移测试与隔离开发。"
+    },
+    "firecrawl": {
+      "description": "将任意网站转为干净、适合 LLM 的 Markdown 或结构化数据。通过内置托管 Firecrawl MCP 搜索、抓取、映射、爬取与提取实时网页数据——合格网络可无 Key 使用（每月 1000 免费额度），也可选免费 API Key 提高用量。自动 JS 渲染、反爬与代理轮换；另有 CLI 技能作回退。"
+    },
+    "figma": {
+      "description": "Figma 官方 MCP 服务器与技能，面向设计到代码工作流。读取 Figma 设计上下文、实现设计、使用 Code Connect、写入画布，以及从网页生成 Figma 设计。"
+    },
+    "railway": {
+      "description": "Railway 部署平台集成（MCP + 技能）。创建项目、开通服务与数据库、部署代码、管理环境/变量/卷/对象存储与功能开关、配置域名、排查构建失败，并在 Grok 中查看状态与指标。"
+    },
+    "stripe": {
+      "description": "面向 Grok Build 的 Stripe 开发插件：最佳实践、API/SDK 升级指引，以及 Stripe MCP 服务器。"
+    }
+  }
+}
