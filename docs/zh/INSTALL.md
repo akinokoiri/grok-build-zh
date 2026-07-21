@@ -136,6 +136,85 @@ cargo run -p xai-grok-pager-bin
 
 ---
 
+## 更新 / 升级
+
+汉化版**不会自动升级**。GitHub 仓库或 [Releases](https://github.com/ivan6232/grok-build-zh/releases) 有新版本后，按你的安装方式选一种即可。
+
+### 1. 一键安装用户（最常见）
+
+**重复执行安装命令**即可覆盖旧二进制：
+
+```bash
+# 装最新 Release（没有预编译包时会源码编译）
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+
+# 指定版本
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.5
+
+# 强制按当前 zh-CN 源码编译（跟踪最新提交，不依赖 Release 资产）
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_FROM_SOURCE=1 bash
+```
+
+检查：
+
+```bash
+which grok-zh          # 一般是 ~/.local/bin/grok-zh
+grok-zh --version
+```
+
+### 2. 手动下载 tar.gz 的用户
+
+1. 打开 [Releases](https://github.com/ivan6232/grok-build-zh/releases)  
+2. 下载对应平台的 `grok-zh-*.tar.gz`  
+3. 解压后覆盖原路径：
+
+```bash
+tar -xzf grok-zh-*.tar.gz
+chmod +x */grok-zh
+mv -f */grok-zh ~/.local/bin/grok-zh
+grok-zh --version
+```
+
+### 3. 本地 git clone + 源码编译的用户
+
+```bash
+cd /path/to/grok-build-zh
+git checkout zh-CN
+git pull origin zh-CN
+export PROTOC="$(command -v protoc)"
+cargo build -p xai-grok-pager-bin --release
+cp target/release/xai-grok-pager ~/.local/bin/grok-zh
+```
+
+### 4. 更新后：中文描述覆盖包（可选）
+
+若曾执行过 `docs/zh/bundled-zh/apply.sh`（人设 / 内置技能中文描述），  
+升级二进制或 bundled 被还原后建议再跑一次：
+
+```bash
+cd /path/to/grok-build-zh   # 或重新 clone zh-CN
+bash docs/zh/bundled-zh/apply.sh
+```
+
+市场插件的中文描述映射在二进制内（运行时），**只要升级了 `grok-zh` 即生效**，不必 apply。
+
+### 5. 如何获知有更新？
+
+- 关注 [Releases](https://github.com/ivan6232/grok-build-zh/releases)（GitHub 仓库 **Watch → Custom → Releases**）  
+- 或关注 [zh-CN 分支提交](https://github.com/ivan6232/grok-build-zh/commits/zh-CN)  
+- 本机用 `grok-zh --version` 与页面上的版本/说明对照  
+
+### 6. 和「同步官方上游」的区别
+
+| 角色 | 做什么 |
+|------|--------|
+| **普通用户** | 重跑 `install.sh` / `git pull` + 编译，更新本机 `grok-zh` |
+| **维护者** | `git merge upstream/main` 把 xAI 官方仓库合进汉化分支，再打 tag 发版 |
+
+普通用户**不需要**配置 `upstream` 远程。
+
+---
+
 ## 卸载
 
 ```bash

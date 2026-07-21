@@ -173,6 +173,24 @@ A: `export PATH="$HOME/.local/bin:$PATH"`，或重新执行 [install.sh](../../i
 **Q: 如何完全卸载？**  
 A: `rm -f ~/.local/bin/grok-zh`，并删除 shell 配置中「grok-zh 汉化版」PATH 段。不必删 `~/.grok`（会同时影响官方版）。
 
+**Q: GitHub 更新了，我怎么升级本机的 `grok-zh`？**  
+A: **再执行一次安装命令即可**（会覆盖旧二进制）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+grok-zh --version
+```
+
+- 有 [Release](https://github.com/ivan6232/grok-build-zh/releases) 预编译包 → 直接下载覆盖  
+- 没有包 → 脚本自动源码编译  
+- 若要**始终跟 zh-CN 最新提交**：加 `GROK_ZH_FROM_SOURCE=1`  
+- 用过 `bundled-zh` 中文描述：升级后可再跑 `bash docs/zh/bundled-zh/apply.sh`  
+
+完整说明见 [INSTALL.md · 更新/升级](INSTALL.md#更新升级) 与 README「如何更新 / 升级」。
+
+**Q: 会自动更新吗？会不会动到官方 `grok`？**  
+A: **不会**自动更新；也不会覆盖官方 `grok`。两者命令与二进制路径分离，配置共享 `~/.grok/`。
+
 ---
 
 ## 6. 从源码编译（开发者）

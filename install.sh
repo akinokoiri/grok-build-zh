@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 #
-# Grok Build 汉化版（grok-build-zh）一键安装脚本
+# Grok Build 汉化版（grok-build-zh）一键安装 / 升级脚本
 # 社区维护 · 非官方 · 与 SpaceXAI / xAI 无隶属关系
 #
-# 用法（推荐）:
+# 首次安装与后续升级使用同一条命令（会覆盖 ~/.local/bin/grok-zh）：
 #   curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
 #
 # 指定版本标签:
 #   curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.4
+#
+# 强制从当前 zh-CN 源码编译（跟踪最新提交，不依赖 Release 资产）:
+#   curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_FROM_SOURCE=1 bash
 #
 # 环境变量:
 #   GROK_ZH_BIN_DIR   安装目录（默认: ~/.local/bin）
@@ -15,6 +18,8 @@
 #   GROK_ZH_VERSION   版本标签，例如 v0.1.0-zh.4（也可用脚本第一个参数）
 #   GROK_ZH_FROM_SOURCE=1  强制从源码编译
 #   GROK_ZH_NO_PATH=1      不修改 shell 配置
+#
+# 文档: https://github.com/ivan6232/grok-build-zh/blob/zh-CN/docs/zh/INSTALL.md
 #
 set -euo pipefail
 
@@ -315,7 +320,7 @@ EOF
 print_done() {
   cat <<EOF
 
-${C_GREEN}${C_BOLD}安装完成${C_RESET}
+${C_GREEN}${C_BOLD}安装 / 升级完成${C_RESET}
 
   启动汉化界面:
     ${BIN_NAME}
@@ -328,7 +333,10 @@ ${C_GREEN}${C_BOLD}安装完成${C_RESET}
     grok      → 官方英文版（若已安装）
     grok-zh   → 本汉化版
 
-  文档: https://github.com/${REPO}#安装与使用
+  以后升级（仓库/Release 有更新时再跑同一条命令即可）:
+    curl -fsSL https://raw.githubusercontent.com/${REPO}/zh-CN/install.sh | bash
+
+  文档: https://github.com/${REPO}/blob/zh-CN/docs/zh/INSTALL.md#更新升级
 
 EOF
 }

@@ -14,7 +14,7 @@
 **本项目是社区汉化分支，与 SpaceXAI / xAI 无官方隶属关系。**  
 「Grok」「Grok Build」为相关权利人商标。使用请遵守 xAI 服务条款与账号规定。
 
-[一键安装](#一键安装推荐) · [使用说明](#使用说明) · [操作教程](docs/zh/USAGE.md) · [已汉化范围](#已汉化范围) · [与官方区别](#与官方版的区别) · [参与贡献](#参与贡献)
+[一键安装](#一键安装推荐) · [如何更新](#如何更新升级) · [使用说明](#使用说明) · [操作教程](docs/zh/USAGE.md) · [已汉化范围](#已汉化范围) · [与官方区别](#与官方版的区别) · [参与贡献](#参与贡献)
 
 </div>
 
@@ -88,6 +88,69 @@ curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/instal
 ```
 
 更细的说明见 [docs/zh/INSTALL.md](docs/zh/INSTALL.md)。
+
+---
+
+## 如何更新 / 升级
+
+仓库或 [Releases](https://github.com/ivan6232/grok-build-zh/releases) 有新版本后，**普通用户**按下面方式更新即可（无需卸载）。
+
+### 方式 A：再跑一遍一键安装（推荐）
+
+与首次安装**同一条命令**。脚本会拉取最新 Release（或指定标签），覆盖 `~/.local/bin/grok-zh`：
+
+```bash
+# 升级到最新预编译包（无包时回退源码编译）
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+
+# 升级到指定 Release 标签
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.5
+
+# 始终从当前 zh-CN 分支源码编译安装（跟进最新汉化提交）
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_FROM_SOURCE=1 bash
+```
+
+验证：
+
+```bash
+grok-zh --version
+```
+
+### 方式 B：你是从源码 clone 安装的
+
+```bash
+cd /path/to/grok-build-zh
+git fetch origin
+git checkout zh-CN
+git pull origin zh-CN
+export PROTOC="$(command -v protoc)"
+cargo build -p xai-grok-pager-bin --release
+cp target/release/xai-grok-pager ~/.local/bin/grok-zh
+grok-zh --version
+```
+
+### 更新后可选步骤
+
+若你用过中文人设 / 技能描述覆盖包，客户端或 bundled 被还原后请再执行一次：
+
+```bash
+# 在仓库目录内
+bash docs/zh/bundled-zh/apply.sh
+```
+
+然后**重启** `grok-zh`。
+
+### 怎么知道有新版本？
+
+| 渠道 | 说明 |
+|------|------|
+| [Releases](https://github.com/ivan6232/grok-build-zh/releases) | 预编译包与版本说明（**Watch → Custom → Releases** 可订阅） |
+| 分支 [zh-CN](https://github.com/ivan6232/grok-build-zh/tree/zh-CN) | 日常汉化与修复提交（源码用户 `git pull`） |
+| 本机 | `grok-zh --version` 对照 Release 标签或提交说明 |
+
+> **说明：** 汉化版**不会**自动后台升级。官方 `grok` 与 `grok-zh` 各自独立更新；更新官方不会覆盖 `grok-zh`，反之亦然。配置仍在 `~/.grok/`，一般**不必**重登。
+
+更细步骤见 [docs/zh/INSTALL.md#更新升级](docs/zh/INSTALL.md#更新升级)。
 
 ---
 
@@ -244,7 +307,10 @@ git push origin v0.1.0-zh.4
 
 ---
 
-## 同步官方更新
+## 同步官方上游（维护者）
+
+> 面向**仓库维护者**：把 [xai-org/grok-build](https://github.com/xai-org/grok-build) 新功能合入本汉化分支。  
+> **普通用户请用上面的 [如何更新 / 升级](#如何更新升级)**，不要做 merge upstream。
 
 ```bash
 git remote add upstream https://github.com/xai-org/grok-build.git  # 只需一次
@@ -253,6 +319,7 @@ git checkout zh-CN
 git merge upstream/main   # 或 rebase
 # 解决冲突后：
 git push origin zh-CN
+# 如需发预编译包：打标签 v* 触发 Release CI
 ```
 
 ---
