@@ -106,74 +106,78 @@ impl XaiProtoBuilder {
         let includes = Vec::from_iter(includes);
 
         if let Some(protoc) = protoc {
-            println!(
-                "cargo:rerun-if-changed={}",
-                protoc.to_str().context("protoc path not UTF-8")?
-            );
+            if let Some(protoc_str) = protoc.to_str() {
+                println!("cargo:rerun-if-changed={protoc_str}");
+            }
         }
 
         let tmp_dir = tempfile::TempDir::new()?;
         let desc_out = tmp_dir.path().join("desc.pbbin");
         let dep_out = tmp_dir.path().join("deps.d");
 
-        // Can only process one input file when using --dependency_out=FILE.
         for proto in protos {
+            println!("cargo:rerun-if-changed={}", proto.display());
+
             let mut command = Command::new(protoc.unwrap_or(Path::new("protoc")));
             command
                 .arg(format!("--dependency_out={}", dep_out.display()))
                 .arg(format!("--descriptor_set_out={}", desc_out.display()))
                 .arg("--experimental_allow_proto3_optional");
 
-            // Add protoc's well-known types include directory first (if found).
-            // This is needed for Bazel sandboxed builds where protoc and its
-            // include files are in different locations.
             if let Some(include_dir) = protoc_include_dir {
-                command.arg(format!(
-                    "-I{}",
-                    include_dir.to_str().context("include path not UTF-8")?
-                ));
+                if let Some(s) = include_dir.to_str() {
+                    command.arg(format!("-I{s}"));
+                }
             }
 
             for include in &includes {
-                command.arg(format!("-I{}", include.to_str().context("path not UTF-8")?));
+                if let Some(s) = include.to_str() {
+                    command.arg(format!("-I{s}"));
+                }
             }
 
             command.arg(proto);
-
             command.stdin(Stdio::null());
             command.stderr(Stdio::inherit());
 
-            let output = command.output().context("protoc command failed")?;
+            let output = match command.output() {
+                Ok(out) => out,
+                Err(e) => {
+                    eprintln!("protoc rerun check warning: failed to execute: {e:#}");
+                    continue;
+                }
+            };
+
             if !output.status.success() {
-                return Err(anyhow::anyhow!("protoc command failed"));
+                eprintln!("protoc rerun check warning: exited with failure");
+                continue;
             }
 
-            let dep_content = fs::read_to_string(&dep_out)
-                .with_context(|| format!("failed to read dependency file {}", dep_out.display()))?;
-
-            let mut lines = dep_content.lines();
-            let first_line = lines.next().context("protoc command output is empty")?;
-            let (_, rem) = first_line.split_once(':').with_context(|| {
-                format!("protoc command output must contain colon: {dep_content:?}")
-            })?;
-            for line in iter::once(rem).chain(lines) {
-                let line = line.trim();
-                let line = line.strip_suffix('\\').unwrap_or(line).trim();
-                if line.is_empty() {
-                    continue;
+            if let Ok(dep_content) = fs::read_to_string(&dep_out) {
+                let mut lines = dep_content.lines();
+                if let Some(first_line) = lines.next() {
+                    let rem = if let Some((_, r)) = first_line.split_once(':') {
+                        r
+                    } else {
+                        first_line
+                    };
+                    for raw_line in iter::once(rem).chain(lines) {
+                        let mut line = raw_line.trim();
+                        line = line.strip_suffix('\\').unwrap_or(line).trim();
+                        if line.is_empty() {
+                            continue;
+                        }
+                        let unescaped = line.replace(r"\:", ":").replace(r"\ ", " ");
+                        if unescaped.contains("/include/google/protobuf/")
+                            || unescaped.contains(r"\include\google\protobuf\")
+                        {
+                            continue;
+                        }
+                        if let Ok(true) = fs::exists(&unescaped) {
+                            println!("cargo:rerun-if-changed={unescaped}");
+                        }
+                    }
                 }
-                // Depending on absolute paths like
-                // /Users/user/homebrew/Cellar/protobuf/29.1/include/google/protobuf/timestamp.proto
-                // is valid, but we want to have output more deterministic.
-                if line.contains("/include/google/protobuf/") || line.contains(r"\include\google\protobuf\") {
-                    continue;
-                }
-
-                if !fs::exists(line)? {
-                    return Err(anyhow::anyhow!("dependency file not found: {line}"));
-                }
-
-                println!("cargo:rerun-if-changed={line}");
             }
         }
 
