@@ -35,10 +35,6 @@ jobs:
           - os: macos-14
             target: aarch64-apple-darwin
             name: grok-zh-aarch64-apple-darwin
-          # Intel macOS — use macos-13 Intel runners when available
-          - os: macos-13
-            target: x86_64-apple-darwin
-            name: grok-zh-x86_64-apple-darwin
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             name: grok-zh-x86_64-unknown-linux-gnu
@@ -77,39 +73,30 @@ jobs:
       - name: Install DotSlash
         run: cargo install dotslash --locked || cargo install dotslash
 
+      - name: Setup Protoc (All Platforms)
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "29.3"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: System deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev protobuf-compiler build-essential cmake
+          sudo apt-get install -y pkg-config libssl-dev build-essential cmake
           protoc --version
-          echo "PROTOC=$(command -v protoc)" >> "$GITHUB_ENV"
 
       - name: System deps (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install protobuf pkg-config || true
-          if command -v protoc >/dev/null 2>&1; then
-            echo "PROTOC=$(command -v protoc)" >> "$GITHUB_ENV"
-            protoc --version
-          else
-            echo "WARN: protoc not found on PATH"
-          fi
-
-      - name: System deps (Windows)
-        if: runner.os == 'Windows'
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          brew install pkg-config || true
+          protoc --version
 
       - name: Build release binary
         shell: bash
         run: |
           set -euo pipefail
-          if command -v protoc >/dev/null 2>&1; then
-            export PROTOC="$(which protoc)"
-            echo "PROTOC=$PROTOC"
-          fi
+          protoc --version
           rustc -vV
           cargo build -p xai-grok-pager-bin --release --target "${{ matrix.target }}"
 
@@ -214,8 +201,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    # Publish even if some platforms failed — attach whatever succeeded
-    if: always() && needs.build.result != 'cancelled'
+    if: always() && !cancelled()
     steps:
       - uses: actions/checkout@v4
         with:
@@ -304,7 +290,6 @@ jobs:
           |------|--------|------|
           | **Windows x64** | \`grok-zh-x86_64-pc-windows-msvc.zip\` | 解压将 \`grok-zh.exe\` 放入 \`~/.grok/bin/\` |
           | macOS Apple Silicon | \`grok-zh-aarch64-apple-darwin.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
-          | macOS Intel | \`grok-zh-x86_64-apple-darwin.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
           | Linux x64 | \`grok-zh-x86_64-unknown-linux-gnu.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
           | Linux ARM64 | \`grok-zh-aarch64-unknown-linux-gnu.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
 

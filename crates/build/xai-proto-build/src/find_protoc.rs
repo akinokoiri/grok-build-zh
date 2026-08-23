@@ -42,8 +42,11 @@ pub fn find_protoc() -> anyhow::Result<Option<PathBuf>> {
     //    protoc binary instead of the dotslash wrapper.
     if let Ok(protoc_env) = env::var("PROTOC") {
         let protoc = PathBuf::from(&protoc_env);
-        if protoc.try_exists()? {
-            check_protoc_good(&protoc)?;
+        if protoc.try_exists().unwrap_or(false) {
+            if check_protoc_good(&protoc).is_ok() {
+                return Ok(Some(protoc));
+            }
+        } else if check_protoc_good(&protoc).is_ok() {
             return Ok(Some(protoc));
         }
     }
@@ -55,7 +58,7 @@ pub fn find_protoc() -> anyhow::Result<Option<PathBuf>> {
     loop {
         // Return relative path to make build more deterministic.
         let protoc = dir_rel.join("bin/protoc");
-        if protoc.try_exists()? {
+        if protoc.try_exists().unwrap_or(false) {
             match check_protoc_good(&protoc) {
                 Ok(()) => return Ok(Some(protoc)),
                 Err(e) => {
@@ -80,6 +83,9 @@ pub fn find_protoc() -> anyhow::Result<Option<PathBuf>> {
     // 3. Try protoc from PATH (system install or other tooling).
     if check_protoc_good(Path::new("protoc")).is_ok() {
         return Ok(Some(PathBuf::from("protoc")));
+    }
+    if cfg!(windows) && check_protoc_good(Path::new("protoc.exe")).is_ok() {
+        return Ok(Some(PathBuf::from("protoc.exe")));
     }
 
     // 4. Not found anywhere.

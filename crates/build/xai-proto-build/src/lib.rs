@@ -112,12 +112,17 @@ impl XaiProtoBuilder {
             );
         }
 
+        let tmp_dir = tempfile::TempDir::new()?;
+        let desc_out = tmp_dir.path().join("desc.pbbin");
+        let dep_out = tmp_dir.path().join("deps.d");
+
         // Can only process one input file when using --dependency_out=FILE.
         for proto in protos {
             let mut command = Command::new(protoc.unwrap_or(Path::new("protoc")));
             command
-                .arg("--dependency_out=/dev/stdout")
-                .arg("--descriptor_set_out=/dev/null");
+                .arg(format!("--dependency_out={}", dep_out.display()))
+                .arg(format!("--descriptor_set_out={}", desc_out.display()))
+                .arg("--experimental_allow_proto3_optional");
 
             // Add protoc's well-known types include directory first (if found).
             // This is needed for Bazel sandboxed builds where protoc and its
@@ -143,22 +148,24 @@ impl XaiProtoBuilder {
                 return Err(anyhow::anyhow!("protoc command failed"));
             }
 
-            let output =
-                String::from_utf8(output.stdout).context("protoc command output not UTF-8")?;
+            let dep_content = fs::read_to_string(&dep_out)
+                .with_context(|| format!("failed to read dependency file {}", dep_out.display()))?;
 
-            let mut lines = output.lines();
+            let mut lines = dep_content.lines();
             let first_line = lines.next().context("protoc command output is empty")?;
-            let prefix = "/dev/null:";
-            let rem = first_line.strip_prefix(prefix).with_context(|| {
-                format!("protoc command output must start with /dev/null: {output:?}")
+            let (_, rem) = first_line.split_once(':').with_context(|| {
+                format!("protoc command output must contain colon: {dep_content:?}")
             })?;
             for line in iter::once(rem).chain(lines) {
                 let line = line.trim();
-                let line = line.strip_suffix("\\").unwrap_or(line);
+                let line = line.strip_suffix('\\').unwrap_or(line).trim();
+                if line.is_empty() {
+                    continue;
+                }
                 // Depending on absolute paths like
                 // /Users/user/homebrew/Cellar/protobuf/29.1/include/google/protobuf/timestamp.proto
                 // is valid, but we want to have output more deterministic.
-                if line.contains("/include/google/protobuf/") {
+                if line.contains("/include/google/protobuf/") || line.contains(r"\include\google\protobuf\") {
                     continue;
                 }
 
