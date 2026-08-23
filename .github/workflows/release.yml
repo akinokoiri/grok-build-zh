@@ -29,6 +29,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: grok-zh-x86_64-pc-windows-msvc
           - os: macos-14
             target: aarch64-apple-darwin
             name: grok-zh-aarch64-apple-darwin
@@ -93,16 +96,69 @@ jobs:
             echo "WARN: protoc not found on PATH"
           fi
 
+      - name: System deps (Windows)
+        if: runner.os == 'Windows'
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build release binary
+        shell: bash
         run: |
           set -euo pipefail
-          echo "PROTOC=${PROTOC:-}"
+          if command -v protoc >/dev/null 2>&1; then
+            export PROTOC="$(which protoc)"
+            echo "PROTOC=$PROTOC"
+          fi
           rustc -vV
           cargo build -p xai-grok-pager-bin --release --target "${{ matrix.target }}"
-        env:
-          PROTOC: ${{ env.PROTOC }}
 
-      - name: Package tarball
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="target/${{ matrix.target }}/release/xai-grok-pager.exe"
+          if [[ ! -f "$BIN" ]]; then
+            BIN="target/release/xai-grok-pager.exe"
+          fi
+          test -f "$BIN"
+          STAGE="dist/${{ matrix.name }}"
+          mkdir -p "$STAGE"
+          cp "$BIN" "$STAGE/grok-zh.exe"
+          cp README.md LICENSE install.ps1 "$STAGE/" 2>/dev/null || true
+          [[ -f NOTICE ]] && cp NOTICE "$STAGE/" || true
+          [[ -f ZH_VERSION ]] && cp ZH_VERSION "$STAGE/" || true
+          if [[ -d docs/zh/bundled-zh ]]; then
+            mkdir -p "$STAGE/bundled-zh"
+            cp -r docs/zh/bundled-zh/* "$STAGE/bundled-zh/" 2>/dev/null || true
+          fi
+          {
+            echo "Grok Build Chinese UI build (community, unofficial)"
+            echo "Binary: grok-zh.exe"
+            echo "Platform: ${{ matrix.name }}"
+            echo ""
+            echo "One-line install (PowerShell):"
+            echo "  irm https://raw.githubusercontent.com/${{ github.repository }}/zh-CN/install.ps1 | iex"
+            echo ""
+            echo "Manual:"
+            echo "  Move grok-zh.exe to %USERPROFILE%\.grok\bin\grok-zh.exe"
+            echo "  Ensure %USERPROFILE%\.grok\bin is in PATH"
+            echo "  Run: grok-zh"
+            echo ""
+            echo "Repo: https://github.com/${{ github.repository }}"
+            echo "Upstream: https://github.com/xai-org/grok-build"
+          } > "$STAGE/README-BINARY.txt"
+          (cd dist && 7z a -tzip "../${{ matrix.name }}.zip" "${{ matrix.name }}")
+          ls -lh "${{ matrix.name }}.zip"
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 "${{ matrix.name }}.zip" | tee "${{ matrix.name }}.zip.sha256"
+          else
+            sha256sum "${{ matrix.name }}.zip" | tee "${{ matrix.name }}.zip.sha256"
+          fi
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -128,14 +184,14 @@ jobs:
             echo "Platform: ${{ matrix.name }}"
             echo ""
             echo "One-line install:"
-            echo "  curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash"
+            echo "  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/zh-CN/install.sh | bash"
             echo ""
             echo "Manual:"
             echo "  chmod +x grok-zh && mkdir -p ~/.local/bin && mv grok-zh ~/.local/bin/"
             echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
             echo "  grok-zh"
             echo ""
-            echo "Repo: https://github.com/ivan6232/grok-build-zh"
+            echo "Repo: https://github.com/${{ github.repository }}"
             echo "Upstream: https://github.com/xai-org/grok-build"
           } > "$STAGE/README-BINARY.txt"
           tar -C dist -czf "${{ matrix.name }}.tar.gz" "${{ matrix.name }}"
@@ -151,8 +207,7 @@ jobs:
         with:
           name: ${{ matrix.name }}
           path: |
-            ${{ matrix.name }}.tar.gz
-            ${{ matrix.name }}.tar.gz.sha256
+            ${{ matrix.name }}.*
           if-no-files-found: error
           retention-days: 14
 
@@ -182,7 +237,7 @@ jobs:
             cp "$f" release-assets/
             count=$((count + 1))
             echo "asset: $(basename "$f") ($(du -h "$f" | cut -f1))"
-          done < <(find artifacts -type f \( -name 'grok-zh-*.tar.gz' -o -name 'grok-zh-*.sha256' \) -print0 2>/dev/null || true)
+          done < <(find artifacts -type f \( -name 'grok-zh-*.tar.gz' -o -name 'grok-zh-*.zip' -o -name 'grok-zh-*.sha256' \) -print0 2>/dev/null || true)
           echo "count=$count" >> "$GITHUB_OUTPUT"
           ls -la release-assets || true
           if [[ "$count" -eq 0 ]]; then
@@ -225,36 +280,35 @@ jobs:
         run: |
           set -euo pipefail
           NOTES="$(cat <<EOF
-          ## 社区汉化构建（非官方）
+          ## 社区汉化构建（非官方 · 支持 Windows 11 / macOS / Linux）
 
           基于 [xai-org/grok-build](https://github.com/xai-org/grok-build)。**与 SpaceXAI / xAI 无官方隶属关系。**
 
-          ### 一键安装（推荐）
+          ### Windows 11 一键安装（PowerShell）
 
-          \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/${{ github.repository }}/zh-CN/install.ps1 | iex
           \`\`\`
 
-          指定本版本：
+          ### Linux / macOS 一键安装
 
           \`\`\`bash
-          curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- ${TAG}
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/zh-CN/install.sh | bash
           \`\`\`
 
           安装完成后执行：\`grok-zh\`
 
-          ### 手动安装
+          ### 手动安装（下载附件）
 
-          下载下方对应平台的 \`grok-zh-*.tar.gz\`，解压后将 \`grok-zh\` 放到 \`~/.local/bin/\` 并加入 PATH。
+          | 平台 | 资产包 | 说明 |
+          |------|--------|------|
+          | **Windows x64** | \`grok-zh-x86_64-pc-windows-msvc.zip\` | 解压将 \`grok-zh.exe\` 放入 \`~/.grok/bin/\` |
+          | macOS Apple Silicon | \`grok-zh-aarch64-apple-darwin.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
+          | macOS Intel | \`grok-zh-x86_64-apple-darwin.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
+          | Linux x64 | \`grok-zh-x86_64-unknown-linux-gnu.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
+          | Linux ARM64 | \`grok-zh-aarch64-unknown-linux-gnu.tar.gz\` | 解压将 \`grok-zh\` 放入 \`~/.local/bin/\` |
 
-          | 平台 | 资产名 |
-          |------|--------|
-          | macOS Apple Silicon | \`grok-zh-aarch64-apple-darwin.tar.gz\` |
-          | macOS Intel | \`grok-zh-x86_64-apple-darwin.tar.gz\` |
-          | Linux x64 | \`grok-zh-x86_64-unknown-linux-gnu.tar.gz\` |
-          | Linux ARM64 | \`grok-zh-aarch64-unknown-linux-gnu.tar.gz\` |
-
-          官方英文版请使用：\`curl -fsSL https://x.ai/cli/install.sh | bash\`
+          官方英文原版请使用：\`curl -fsSL https://x.ai/cli/install.sh | bash\`
           EOF
           )"
           # strip leading spaces from heredoc indent

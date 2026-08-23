@@ -48,10 +48,20 @@ Grok Build 的 **对话**可以用中文，但 **软件 UI**（权限弹窗、�
 
 ## 一键安装（推荐）
 
+### Windows 11 (PowerShell)
+
+在 PowerShell 中直接运行：
+
+```powershell
+irm https://raw.githubusercontent.com/akinokoiri/grok-build-zh/zh-CN/install.ps1 | iex
+```
+
+### Linux / macOS (bash)
+
 与官方类似的 `curl | bash` 方式：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/akinokoiri/grok-build-zh/zh-CN/install.sh | bash
 ```
 
 装完后：
@@ -158,12 +168,13 @@ bash docs/zh/bundled-zh/apply.sh
 
 ### 下载预编译二进制
 
-| 平台 | 资产名 |
-|------|--------|
-| macOS Apple Silicon | `grok-zh-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `grok-zh-x86_64-apple-darwin.tar.gz` |
-| Linux x64 | `grok-zh-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux ARM64 | `grok-zh-aarch64-unknown-linux-gnu.tar.gz` |
+| 平台 | 资产名 | 说明 |
+|------|--------|------|
+| **Windows x64** | `grok-zh-x86_64-pc-windows-msvc.zip` | 解压至 `~/.grok/bin/grok-zh.exe` |
+| macOS Apple Silicon | `grok-zh-aarch64-apple-darwin.tar.gz` | 解压至 `~/.local/bin/grok-zh` |
+| macOS Intel | `grok-zh-x86_64-apple-darwin.tar.gz` | 解压至 `~/.local/bin/grok-zh` |
+| Linux x64 | `grok-zh-x86_64-unknown-linux-gnu.tar.gz` | 解压至 `~/.local/bin/grok-zh` |
+| Linux ARM64 | `grok-zh-aarch64-unknown-linux-gnu.tar.gz` | 解压至 `~/.local/bin/grok-zh` |
 
 在 [Releases](https://github.com/ivan6232/grok-build-zh/releases) 下载后：
 
