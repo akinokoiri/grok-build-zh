@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Grok Build 社区汉化版 Windows 11 一键安装 / 更新脚本
 .DESCRIPTION
@@ -60,7 +60,6 @@ try {
         $Release = Invoke-RestMethod -Uri $ReleaseUrl -Headers $Headers -Method Get
     }
 } catch {
-    # 如果 latest 404 (比如只有 prerelease)，获取所有 releases 中的第一个
     try {
         $AllReleasesUrl = "https://api.github.com/repos/$Repo/releases"
         $AllReleases = Invoke-RestMethod -Uri $AllReleasesUrl -Headers $Headers -Method Get
@@ -95,7 +94,9 @@ $ZipPath = Join-Path $TempDir $ZipAsset.name
 
 try {
     # 3. 下载资产包
-    Write-Info "正在下载 $($ZipAsset.name) ($([math]::Round($ZipAsset.size / 1MB, 2)) MB)..."
+    $ZipName = $ZipAsset.name
+    $SizeMB = [math]::Round($ZipAsset.size / 1MB, 2)
+    Write-Info ("正在下载 {0} ({1} MB)..." -f $ZipName, $SizeMB)
     Invoke-WebRequest -Uri $ZipAsset.browser_download_url -OutFile $ZipPath -UseBasicParsing
 
     # 校验和验证（如果存在 sha256 文件）
@@ -166,7 +167,7 @@ try {
             # 如果存在 Python，运行技能描述补丁
             $PyScript = Join-Path $BundledZhDir.FullName "apply_skill_descriptions.py"
             if (Test-Path $PyScript) {
-                $PythonCmd = Get-Command python, python3 -ErrorAction SilentlyContinue | Select-Object -First 1
+                $PythonCmd = Get-Command py, python, python3 -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($PythonCmd) {
                     try {
                         & $PythonCmd.Source $PyScript $GrokHome | Out-Null
@@ -197,7 +198,6 @@ try {
     Write-Host ""
 
 } finally {
-    # 清理临时文件
     if (Test-Path -Path $TempDir) {
         Remove-Item -Path $TempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
