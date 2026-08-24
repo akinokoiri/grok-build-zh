@@ -135,23 +135,6 @@ pub(crate) fn format_still_running<'a>(
     kinds: impl IntoIterator<Item = (usize, &'a str)>,
 ) -> Option<String> {
     use std::fmt::Write as _;
-<<<<<<< HEAD
-    let mut label = String::with_capacity(32);
-    label.push_str("监视中");
-    if watchers.commands > 0 {
-        let _ = write!(label, " \u{00b7} {} 条命令", watchers.commands);
-    }
-    if watchers.monitors > 0 {
-        let _ = write!(label, " \u{00b7} {} 个监视器", watchers.monitors);
-    }
-    if watchers.loops > 0 {
-        let _ = write!(label, " \u{00b7} {} 个循环", watchers.loops);
-    }
-    if watchers.subagents > 0 {
-        let _ = write!(label, " \u{00b7} {} 个子代理", watchers.subagents);
-    }
-    label
-=======
     let mut label = String::with_capacity(48);
     for (count, noun) in kinds {
         if count == 0 {
@@ -177,13 +160,12 @@ pub(crate) fn format_still_running<'a>(
 /// watchers are live.
 fn still_running_label(watchers: Watchers) -> Option<String> {
     format_still_running([
-        (watchers.commands, "command"),
-        (watchers.monitors, "monitor"),
-        (watchers.loops, "loop"),
-        (watchers.subagents, "subagent"),
-        (watchers.workflows, "workflow"),
+        (watchers.commands, "命令"),
+        (watchers.monitors, "监控"),
+        (watchers.loops, "循环"),
+        (watchers.subagents, "子代理"),
+        (watchers.workflows, "工作流"),
     ])
->>>>>>> official/main
 }
 
 /// Whether the turn is blocked in a wait the shell aborts as soon as the

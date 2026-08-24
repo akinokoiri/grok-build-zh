@@ -63,23 +63,7 @@ pub enum RewindPhase {
     CancelOffer {
         active_idx: usize,
     },
-<<<<<<< HEAD
-    ModeSelect {
-        target_prompt_index: usize,
-        has_file_changes: bool,
-        /// Whether the "仅文件变更" row exists at all. `false` in the
-        /// inline edit-and-resubmit context, where the conversation rewind is
-        /// a given and the only question is whether to also revert files.
-        offer_files_only: bool,
-        active_idx: usize,
-    },
-    Previewing {
-        target_prompt_index: usize,
-        mode: RewindMode,
-    },
-=======
     /// Confirm before executing a conversation-only rewind.
->>>>>>> official/main
     Confirm {
         target_prompt_index: usize,
         active_idx: usize,
@@ -335,35 +319,8 @@ pub fn rewind_overlay_height(phase: &RewindPhase, screen_h: u16) -> u16 {
             .height(screen_h);
         }
         RewindPhase::CancelOffer { .. } => 5,
-<<<<<<< HEAD
-        // One row shorter when the "仅文件变更" row is hidden
-        // (inline edit-and-resubmit context).
-        RewindPhase::ModeSelect {
-            offer_files_only, ..
-        } => {
-            if *offer_files_only {
-                5
-            } else {
-                4
-            }
-        }
-        RewindPhase::Previewing { .. } | RewindPhase::Executing { .. } => 2,
-        RewindPhase::Confirm {
-            clean_files,
-            conflicts,
-            ..
-        } => {
-            let file_lines = clean_files.len().min(5) + conflicts.len().min(5);
-            let extra_clean = if clean_files.len() > 5 { 1 } else { 0 };
-            let extra_conflicts = if conflicts.len() > 5 { 1 } else { 0 };
-            let gap = if file_lines > 0 { 1 } else { 0 };
-            (4 + file_lines + extra_clean + extra_conflicts + gap) as u16
-        }
-        RewindPhase::ConversationOnlyConfirm { .. } => 5,
-=======
         RewindPhase::Executing { .. } => 2,
         RewindPhase::Confirm { .. } => 5,
->>>>>>> official/main
         RewindPhase::Error { .. } => 4,
     };
     content + 1
@@ -482,85 +439,6 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 &theme,
             );
         }
-<<<<<<< HEAD
-        RewindPhase::ModeSelect {
-            has_file_changes,
-            offer_files_only,
-            active_idx,
-            ..
-        } => {
-            let mut y = area.y + 1;
-            // Inline edit-and-resubmit: the conversation rewind is a given —
-            // the only question is whether files come along.
-            let title = if *offer_files_only {
-                "What do you want to rewind?"
-            } else {
-                "Resubmit from here \u{2014} what should be rewound?"
-            };
-            buf.set_line(
-                content_x,
-                y,
-                &Line::from(Span::styled(title, title_style)),
-                content_w,
-            );
-            y += 1;
-            render_radio_row(
-                buf,
-                content_x,
-                y,
-                content_w,
-                'a',
-                "Both conversation and file changes",
-                true,
-                *active_idx == 0,
-                focused,
-                &theme,
-            );
-            y += 1;
-            render_radio_row(
-                buf,
-                content_x,
-                y,
-                content_w,
-                // Sequential lettering in the two-row inline variant; the
-                // mnemonic 'c' only reads right with the 'f' row present.
-                if *offer_files_only { 'c' } else { 'b' },
-                "Conversation only",
-                true,
-                *active_idx == 1,
-                focused,
-                &theme,
-            );
-            if *offer_files_only {
-                y += 1;
-                render_radio_row(
-                    buf,
-                    content_x,
-                    y,
-                    content_w,
-                    'f',
-                    "仅文件变更",
-                    *has_file_changes,
-                    *active_idx == 2,
-                    focused,
-                    &theme,
-                );
-            }
-        }
-        RewindPhase::Previewing { .. } => {
-            let y = area.y + 1;
-            buf.set_line(
-                content_x,
-                y,
-                &Line::from(Span::styled(
-                    "Previewing file changes...",
-                    Style::default().fg(theme.gray),
-                )),
-                content_w,
-            );
-        }
-=======
->>>>>>> official/main
         RewindPhase::Executing { .. } => {
             let y = area.y + 1;
             buf.set_line(
@@ -574,147 +452,6 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
             );
         }
         RewindPhase::Confirm {
-<<<<<<< HEAD
-            clean_files,
-            conflicts,
-            mode,
-            active_idx,
-            prompt_preview,
-            ..
-        } => {
-            let mut y = area.y + 1;
-            let file_total = clean_files.len() + conflicts.len();
-            let preview_text = prompt_preview.as_deref().unwrap_or("this turn");
-            let (prefix, suffix) = match mode {
-                RewindMode::All => {
-                    if file_total > 0 {
-                        (
-                            "Rewind file changes and conversation to \u{201C}",
-                            format!("\u{201D}? ({file_total} files)"),
-                        )
-                    } else {
-                        (
-                            "Rewind file changes and conversation to \u{201C}",
-                            "\u{201D}?".to_string(),
-                        )
-                    }
-                }
-                RewindMode::ConversationOnly => (
-                    "Rewind conversation only to \u{201C}",
-                    "\u{201D}?".to_string(),
-                ),
-                RewindMode::FilesOnly => {
-                    if file_total > 0 {
-                        (
-                            "Rewind file changes only to \u{201C}",
-                            format!("\u{201D}? ({file_total} files)"),
-                        )
-                    } else {
-                        (
-                            "Rewind file changes only to \u{201C}",
-                            "\u{201D}?".to_string(),
-                        )
-                    }
-                }
-            };
-            let chrome = prefix.chars().count() + suffix.chars().count();
-            let max_preview = (content_w as usize).saturating_sub(chrome + 1);
-            let preview_trunc: String = if preview_text.chars().count() > max_preview {
-                let truncated: String = preview_text
-                    .chars()
-                    .take(max_preview.saturating_sub(1))
-                    .collect();
-                format!("{truncated}\u{2026}")
-            } else {
-                preview_text.to_string()
-            };
-            let title = format!("{prefix}{preview_trunc}{suffix}");
-            buf.set_line(
-                content_x,
-                y,
-                &Line::from(Span::styled(title, title_style)),
-                content_w,
-            );
-            y += 1;
-
-            for (i, path) in clean_files.iter().enumerate() {
-                if i >= 5 {
-                    let more = format!("+{} more", clean_files.len() - 5);
-                    buf.set_line(
-                        content_x,
-                        y,
-                        &Line::from(Span::styled(more, Style::default().fg(theme.gray))),
-                        content_w,
-                    );
-                    y += 1;
-                    break;
-                }
-                buf.set_line(
-                    content_x,
-                    y,
-                    &Line::from(Span::styled(
-                        path.to_string(),
-                        Style::default().fg(theme.gray),
-                    )),
-                    content_w,
-                );
-                y += 1;
-            }
-            for (i, conflict) in conflicts.iter().enumerate() {
-                if i >= 5 {
-                    let more = format!("+{} more", conflicts.len() - 5);
-                    buf.set_line(
-                        content_x,
-                        y,
-                        &Line::from(Span::styled(more, Style::default().fg(theme.gray))),
-                        content_w,
-                    );
-                    y += 1;
-                    break;
-                }
-                let line_text = format!("! {} ({})", conflict.path, conflict.label);
-                buf.set_line(
-                    content_x,
-                    y,
-                    &Line::from(Span::styled(line_text, Style::default().fg(theme.warning))),
-                    content_w,
-                );
-                y += 1;
-            }
-
-            if !clean_files.is_empty() || !conflicts.is_empty() {
-                y += 1;
-            }
-
-            render_radio_row(
-                buf,
-                content_x,
-                y,
-                content_w,
-                'y',
-                "确认回退",
-                true,
-                *active_idx == 0,
-                focused,
-                &theme,
-            );
-            y += 1;
-            render_radio_row(
-                buf,
-                content_x,
-                y,
-                content_w,
-                '\x08',
-                "返回",
-                true,
-                *active_idx == 1,
-                focused,
-                &theme,
-            );
-        }
-        RewindPhase::ConversationOnlyConfirm {
-=======
->>>>>>> official/main
             active_idx,
             prompt_preview,
             ..

@@ -401,16 +401,12 @@ pub(crate) fn default_palette_entries(
             command: PaletteCommand::Home,
         },
         PaletteEntry {
-<<<<<<< HEAD
-            label: "恢复会话".into(),
-=======
-            label: "Delete This Session".into(),
+label: "删除此会话".into(),
             shortcut: "/delete".into(),
             command: PaletteCommand::SlashCommand("/delete".into()),
         },
         PaletteEntry {
-            label: "Resume Session".into(),
->>>>>>> official/main
+            label: "恢复会话".into(),
             shortcut: "/resume".into(),
             command: PaletteCommand::SlashCommand("/resume".into()),
         },
@@ -482,17 +478,13 @@ pub(crate) fn default_palette_entries(
             command: PaletteCommand::SlashCommand("/multiline".into()),
         },
         PaletteEntry {
-<<<<<<< HEAD
-            label: "工具".into(),
-=======
-            label: "Edit Prompt in External Editor".into(),
+label: "在外部编辑器中编辑提示词".into(),
             shortcut: "Ctrl+G".into(),
             command: PaletteCommand::EditPromptExternal,
         },
         // ── Tools ──
         PaletteEntry {
-            label: "Tools".into(),
->>>>>>> official/main
+            label: "工具".into(),
             shortcut: String::new(),
             command: PaletteCommand::SectionHeader("工具".into()),
         },
@@ -525,18 +517,14 @@ pub(crate) fn default_palette_entries(
             ),
         },
         PaletteEntry {
-<<<<<<< HEAD
-            label: "MCP 服务器".into(),
-=======
-            label: "Workflows".into(),
+label: "工作流".into(),
             shortcut: "/workflows".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::Workflows,
             ),
         },
         PaletteEntry {
-            label: "MCP Servers".into(),
->>>>>>> official/main
+            label: "MCP 服务器".into(),
             shortcut: "/mcps".into(),
             command: PaletteCommand::OpenExtensionsTab(
                 crate::views::extensions_modal::ExtensionsTab::McpServers,
@@ -578,16 +566,12 @@ pub(crate) fn default_palette_entries(
             command: PaletteCommand::HowTo,
         },
         PaletteEntry {
-<<<<<<< HEAD
-            label: "退出".into(),
-=======
-            label: "Tutorial".into(),
+label: "教程".into(),
             shortcut: "/tutorial".into(),
             command: PaletteCommand::SlashCommand("/tutorial".into()),
         },
         PaletteEntry {
-            label: "Quit".into(),
->>>>>>> official/main
+            label: "退出".into(),
             shortcut: "Ctrl+Q".into(),
             command: PaletteCommand::Quit,
         },
