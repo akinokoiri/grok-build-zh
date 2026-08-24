@@ -400,7 +400,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
             buf.set_line(
                 content_x,
                 y,
-                &Line::from(Span::styled("A turn is currently running.", title_style)),
+                &Line::from(Span::styled("当前有正在运行的回合。", title_style)),
                 content_w,
             );
             y += 1;
@@ -408,7 +408,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 content_x,
                 y,
                 &Line::from(Span::styled(
-                    "Would you like to cancel it before rewinding?",
+                    "回退前是否先取消该回合？",
                     Style::default().fg(theme.gray),
                 )),
                 content_w,
@@ -420,8 +420,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 y,
                 content_w,
                 'y',
-"取消回合并回退",
-                true,
+                "取消回合并回退",
                 *active_idx == 0,
                 focused,
                 &theme,
@@ -433,7 +432,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 y,
                 content_w,
                 'n',
-                "Let it finish",
+                "让其继续运行",
                 *active_idx == 1,
                 focused,
                 &theme,
@@ -445,7 +444,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 content_x,
                 y,
                 &Line::from(Span::styled(
-                    "Rewinding...",
+                    "正在回退...",
                     Style::default().fg(theme.gray),
                 )),
                 content_w,
@@ -457,9 +456,9 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
             ..
         } => {
             let mut y = area.y + 1;
-            let preview_text = prompt_preview.as_deref().unwrap_or("this turn");
-            let prefix = "Rewind conversation to \u{201C}";
-            let suffix = "\u{201D}?";
+            let preview_text = prompt_preview.as_deref().unwrap_or("当前回合");
+            let prefix = "将对话回退至“";
+            let suffix = "”？";
             let chrome = prefix.chars().count() + suffix.chars().count();
             let max_preview = (content_w as usize).saturating_sub(chrome + 1);
             let preview_trunc: String = if preview_text.chars().count() > max_preview {
@@ -485,8 +484,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 y,
                 content_w,
                 'y',
-"是",
-                true,
+                "是",
                 *active_idx == 0,
                 focused,
                 &theme,
@@ -497,9 +495,8 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 content_x,
                 y,
                 content_w,
-'a',
+                'a',
                 "是，且不再询问",
-                true,
                 *active_idx == 1,
                 focused,
                 &theme,
@@ -511,7 +508,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 y,
                 content_w,
                 'n',
-                "No",
+                "否",
                 *active_idx == 2,
                 focused,
                 &theme,
@@ -523,7 +520,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
                 content_x,
                 y,
                 &Line::from(Span::styled(
-                    "Rewind failed",
+                    "回退失败",
                     Style::default()
                         .fg(theme.accent_error)
                         .add_modifier(Modifier::BOLD),
@@ -543,7 +540,7 @@ pub fn render_rewind_overlay(buf: &mut Buffer, area: Rect, phase: &RewindPhase, 
             );
             y += 1;
             render_radio_row(
-                buf, content_x, y, content_w, '\x1b', "Dismiss", true, focused, &theme,
+                buf, content_x, y, content_w, '\x1b', "关闭", true, focused, &theme,
             );
         }
     }
