@@ -5,7 +5,7 @@
 * **项目名称**：`grok-build-zh` (Grok Build 社区汉化版 Windows 11 适配与云端自动化构建分发)
 * **当前仓库地址**：[https://github.com/akinokoiri/grok-build-zh](https://github.com/akinokoiri/grok-build-zh)
 * **默认分支**：`zh-CN`
-* **最新 Release 版本**：`v0.1.0-zh.4`
+* **最新 Release 版本**：`v0.1.0-zh.5`
 * **代码上下游拓扑**：
   $$\text{xai-org/grok-build (官方英文原版)} \xrightarrow{\text{汉化维护}} \text{ivan6232/grok-build-zh (社区汉化)} \xrightarrow{\text{Windows适配与CI}} \text{akinokoiri/grok-build-zh (本仓库)}$$
 

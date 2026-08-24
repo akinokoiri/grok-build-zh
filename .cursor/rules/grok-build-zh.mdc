@@ -20,4 +20,4 @@ globs: ["**/*"]
 - 编译生成的目标程序命名为 `grok-zh` / `grok-zh.exe`，绝不直接覆盖官方的 `grok.exe`。
 - 配置与凭证共享：汉化版与官方版共用 `~/.grok/` 目录（`config.toml`、`auth.json` 等）。
 - 跨平台代码修改时，严禁引入 Unix-only 专有系统调用（如 `/dev/stdout` 或未做 Windows 兼容的路径解析）。
-- 发版流程：推送 `v*` tag（如 `v0.1.0-zh.4`）或在 GitHub Actions 触发 `workflow_dispatch`。
+- 发版流程：推送 `v*` tag（如 `v0.1.0-zh.5`）或在 GitHub Actions 触发 `workflow_dispatch`。

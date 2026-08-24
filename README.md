@@ -88,7 +88,7 @@ grok-zh
 
 ```bash
 # 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.4
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.5
 
 # 强制从源码编译
 curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_FROM_SOURCE=1 bash
@@ -303,8 +303,8 @@ rm -f ~/.local/bin/grok-zh
 
 ## 发布与 CI
 
-- 推送标签 `v*`（例如 `v0.1.0-zh.4`）会触发 [Release 工作流](.github/workflows/release.yml)  
-- 为 macOS (arm64/x64)、Linux (x64/arm64) 编译并上传 `grok-zh-*.tar.gz`  
+- 推送标签 `v*`（例如 `v0.1.0-zh.5`）会触发 [Release 工作流](.github/workflows/release.yml)  
+- 为 Windows (x64)、macOS (arm64/x64)、Linux (x64/arm64) 编译并上传发布包  
 - 也可在 Actions 里 **workflow_dispatch** 手动发版  
 
 维护者示例：
@@ -312,8 +312,8 @@ rm -f ~/.local/bin/grok-zh
 ```bash
 git checkout zh-CN
 git pull
-git tag v0.1.0-zh.4
-git push origin v0.1.0-zh.4
+git tag v0.1.0-zh.5
+git push origin v0.1.0-zh.5
 ```
 
 ---

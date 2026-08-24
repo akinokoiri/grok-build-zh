@@ -47,7 +47,7 @@ bash docs/zh/bundled-zh/apply.sh
 
 | 用法 | 说明 |
 |------|------|
-| `bash -s -- v0.1.0-zh.4` | 安装指定 Release 标签 |
+| `bash -s -- v0.1.0-zh.5` | 安装指定 Release 标签 |
 | `GROK_ZH_BIN_DIR=~/bin bash` | 自定义安装目录 |
 | `GROK_ZH_FROM_SOURCE=1 bash` | 强制源码编译 |
 | `GROK_ZH_NO_PATH=1 bash` | 不修改 shell 配置文件 |
@@ -56,7 +56,7 @@ bash docs/zh/bundled-zh/apply.sh
 
 ```bash
 # 指定版本
-curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.4
+curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | bash -s -- v0.1.0-zh.5
 
 # 强制源码
 curl -fsSL https://raw.githubusercontent.com/ivan6232/grok-build-zh/zh-CN/install.sh | GROK_ZH_FROM_SOURCE=1 bash

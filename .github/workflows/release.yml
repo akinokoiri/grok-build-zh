@@ -9,7 +9,7 @@ on:
       tag:
         description: "Release tag to create/publish (e.g. v0.1.0-zh.4)"
         required: true
-        default: "v0.1.0-zh.4"
+        default: "v0.1.0-zh.5"
       ref:
         description: "Git ref to build from (branch/SHA; default current)"
         required: false
