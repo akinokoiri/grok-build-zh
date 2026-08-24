@@ -134,6 +134,134 @@
         assert!(!app.voice_mode_enabled);
     }
 
+    /// Build an `x.ai/settings/update` carrying only the scheduler flag.
+    fn scheduler_background_loops_update(value: bool) -> acp::ExtNotification {
+        acp::ExtNotification::new(
+            "x.ai/settings/update",
+            std::sync::Arc::from(
+                serde_json::value::to_raw_value(&serde_json::json!({
+                    "scheduler_background_loops": value
+                }))
+                .unwrap(),
+            ),
+        )
+    }
+
+    /// Drain the `/loop` instruction the pager actually stored for a session.
+    fn loop_instruction(app: &mut AppView, args: &str) -> String {
+        use crate::app::actions::Action;
+
+        // `/loop` is `required_tools()`-gated and the registry fails closed
+        // until the toolset is advertised, so a bare test agent never reaches
+        // the command.
+        if let Some(agent) = app.agents.get_mut(&AgentId(0)) {
+            agent
+                .prompt
+                .slash_controller
+                .registry_mut()
+                .set_available_tools(
+                    [xai_grok_tools::implementations::grok_build::SCHEDULER_CREATE_TOOL_NAME]
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect(),
+                );
+        }
+        let effects =
+            crate::app::dispatch::dispatch(Action::SendPrompt(format!("/loop {args}")), app);
+        let blocks = effects
+            .iter()
+            .find_map(|e| match e {
+                Effect::SendPromptBlocks { blocks, .. } => Some(blocks),
+                _ => None,
+            })
+            .expect("/loop must enqueue an instruction and drain it");
+        match &blocks[0] {
+            acp::ContentBlock::Text(text) => text.text.clone(),
+            other => panic!("expected a text prompt block, got {other:?}"),
+        }
+    }
+
+    /// `/loop`'s wording must describe THIS session's fires. The shell pins the
+    /// fire mode when a session's actor spawns, so a mid-session settings push
+    /// carrying the opposite value must not change the instruction: describing
+    /// detached fires as in-session drops the self-contained state those fires
+    /// need.
+    #[test]
+    fn loop_fire_mode_follows_session_not_later_settings_push() {
+        use crate::app::actions::{Action, TaskResult};
+        use xai_grok_tools::implementations::grok_build::{
+            LoopFireMode, loop_schedule_instruction,
+        };
+
+        let mut app = make_app_with_agent("sess-loop");
+        // Seed says detached; only the session's own answer can produce the
+        // in-session wording asserted below.
+        app.scheduler_background_loops_seed = true;
+        crate::app::dispatch::dispatch(
+            Action::TaskComplete(TaskResult::SessionCreated {
+                agent_id: AgentId(0),
+                session_id: acp::SessionId::new("sess-loop"),
+                models: None,
+                scheduler_background_loops: Some(false),
+            }),
+            &mut app,
+        );
+
+        assert!(handle_ext_notification(
+            &scheduler_background_loops_update(true),
+            &mut app
+        ));
+
+        assert_eq!(
+            loop_instruction(&mut app, "5m check ci"),
+            loop_schedule_instruction("5m check ci", LoopFireMode::InSession),
+            "a pushed flip must not re-describe fires this session already pinned"
+        );
+    }
+
+    /// The value is session-scoped, not frozen for the process: resuming a
+    /// session adopts the mode that resume's spawn pinned.
+    #[test]
+    fn loop_fire_mode_adopts_the_loaded_session_value() {
+        use crate::app::actions::{Action, TaskResult};
+        use xai_grok_tools::implementations::grok_build::{
+            LoopFireMode, loop_schedule_instruction,
+        };
+
+        let mut app = make_app_with_agent("sess-loop-load");
+        // Opposite of both the seed and the pre-resume value, so only the load
+        // response can produce the detached wording asserted below.
+        app.scheduler_background_loops_seed = false;
+        crate::app::dispatch::dispatch(
+            Action::TaskComplete(TaskResult::SessionCreated {
+                agent_id: AgentId(0),
+                session_id: acp::SessionId::new("sess-loop-load"),
+                models: None,
+                scheduler_background_loops: Some(false),
+            }),
+            &mut app,
+        );
+        crate::app::dispatch::dispatch(
+            Action::TaskComplete(TaskResult::SessionLoaded {
+                agent_id: AgentId(0),
+                session_id: acp::SessionId::new("sess-loop-load"),
+                models: None,
+                code_restored: false,
+                restore_summary: None,
+                restore_degree: None,
+                running_prompt_id: None,
+                scheduler_background_loops: Some(true),
+            }),
+            &mut app,
+        );
+
+        assert_eq!(
+            loop_instruction(&mut app, "5m check ci"),
+            loop_schedule_instruction("5m check ci", LoopFireMode::Detached),
+            "resume must adopt the value its own spawn pinned"
+        );
+    }
+
     #[test]
     fn settings_update_clearing_group_tool_verbs_reverts_to_default() {
         // Expected values come from the same chain the handler resolves, so the
@@ -437,7 +565,7 @@
         let notif = acp::ExtNotification::new(
             "x.ai/settings/update",
             serde_json::value::to_raw_value(&serde_json::json!({
-                "sharing_enabled": true,
+                "show_resolved_model": false,
                 "announcements": [critical_announcement("from-settings")],
             }))
             .unwrap()
@@ -451,7 +579,46 @@
             "settings/update must not replace the pushed announcements"
         );
         assert_eq!(app.announcements_last_gen, 7, "watermark untouched");
-        assert!(app.sharing_enabled, "other settings fields still apply");
+        assert!(!app.show_resolved_model, "other settings fields still apply");
+    }
+
+    /// Temporary client kill switch: remote `sharing_enabled: true` must not
+    /// re-enable share UI. Agents stay off and `/share` stays menu-hidden
+    /// (typed `/share` still dispatches for the disable message).
+    #[test]
+    fn settings_update_sharing_enabled_true_stays_forced_off() {
+        let mut app = make_app_with_agent("sess-share-kill");
+        app.sharing_enabled = true;
+        for agent in app.agents.values_mut() {
+            agent.set_sharing_enabled(true);
+        }
+
+        let notif = acp::ExtNotification::new(
+            "x.ai/settings/update",
+            serde_json::value::to_raw_value(&serde_json::json!({
+                "sharing_enabled": true,
+            }))
+            .unwrap()
+            .into(),
+        );
+        let _ = handle_ext_notification(&notif, &mut app);
+
+        assert!(
+            !app.sharing_enabled,
+            "remote true must not lift the temporary kill switch"
+        );
+        for agent in app.agents.values() {
+            assert!(!agent.sharing_enabled);
+            let reg = agent.prompt.slash_controller.registry();
+            assert!(
+                reg.get("share").is_none(),
+                "/share stays out of the completion menu"
+            );
+            assert!(
+                reg.get_for_dispatch("share").is_some(),
+                "typed /share still resolves so the disable path can run"
+            );
+        }
     }
 
     /// User-owned mode must not re-arm default_yolo or rewrite UI from remote.
@@ -589,7 +756,9 @@
     }
 
     /// Explicit `null` recomputes with remote=None (unlike field omission):
-    /// with no TOML permission key the soft always-approve drops back to Ask.
+    /// with no TOML permission key the soft always-approve drops back to the
+    /// interactive default — auto with the gate on (ask when the gate is off,
+    /// covered by `permission_mode_soft_default_respects_pin_and_gate`).
     #[test]
     fn permission_mode_explicit_null_clears_soft_always_approve() {
         let mut app = make_app_with_agent("sess-null-pm");
@@ -600,12 +769,33 @@
 
         super::super::settings::apply_soft_default_permission_mode(&mut app, None, None);
         assert!(!app.default_yolo, "remote null must disarm a soft always-approve");
-        assert_eq!(app.current_ui.permission_mode.as_deref(), Some("ask"));
+        assert_eq!(app.current_ui.permission_mode.as_deref(), Some("auto"));
         assert!(app.permission_mode_from_soft_default);
         assert!(
             app.pending_effects.is_empty(),
             "a soft default must never be persisted to disk"
         );
+    }
+
+    /// A failed config load is an explicit Ask, never the auto soft default —
+    /// same fail-safe as the launch resolver's `load_selected_permission_mode`.
+    /// The handler substitutes `broken_config_ask_fallback` on load failure.
+    #[test]
+    fn permission_mode_config_load_failure_re_arms_ask_not_auto() {
+        let mut app = make_app_with_agent("sess-broken-cfg");
+        app.auto_mode_gate = true;
+        app.permission_mode_from_soft_default = true;
+        app.current_ui.permission_mode = Some("always-approve".into());
+        app.default_yolo = true;
+
+        let fallback = super::super::settings::broken_config_ask_fallback();
+        super::super::settings::apply_soft_default_permission_mode(
+            &mut app,
+            fallback.get("ui"),
+            None,
+        );
+        assert!(!app.default_yolo);
+        assert_eq!(app.current_ui.permission_mode.as_deref(), Some("ask"));
     }
 
     /// Policy pin and auto gate clamp a soft re-arm to Ask enforcement/display.

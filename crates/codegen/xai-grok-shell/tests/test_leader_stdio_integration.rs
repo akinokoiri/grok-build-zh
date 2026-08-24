@@ -581,10 +581,9 @@ async fn test_runtime_profile_start_status_stop_across_clients() {
             return; // pprof can't start in sandbox — skip
         };
         assert!(matches!(
-                    started,
-                    ControlPayload::CpuProfileStarted { svg_path, .. }
-        if svg_path == output_path
-                ));
+            started,
+            ControlPayload::CpuProfileStarted { svg_path, .. } if svg_path == output_path
+        ));
 
         let status = client_b
             .send_control(ControlCommand::CpuProfileStatus)
@@ -596,16 +595,15 @@ async fn test_runtime_profile_start_status_stop_across_clients() {
             "registration should stay consistent with status behavior"
         );
         assert!(matches!(
-                    status,
-                    ControlPayload::CpuProfileStatus {
-                        active: true,
-                        stopping: false,
-                        svg_path: Some(path),
-                        frequency_hz: Some(200),
-                        ..
-                    }
-        if path == output_path
-                ));
+            status,
+            ControlPayload::CpuProfileStatus {
+                active: true,
+                stopping: false,
+                svg_path: Some(path),
+                frequency_hz: Some(200),
+                ..
+            } if path == output_path
+        ));
 
         let stopped = client_b
             .send_control(ControlCommand::StopCpuProfile)
@@ -613,10 +611,9 @@ async fn test_runtime_profile_start_status_stop_across_clients() {
             .unwrap()
             .unwrap();
         assert!(matches!(
-                    stopped,
-                    ControlPayload::CpuProfileStopped { svg_path, .. }
-        if svg_path == output_path
-                ));
+            stopped,
+            ControlPayload::CpuProfileStopped { svg_path, .. } if svg_path == output_path
+        ));
         assert!(output_path.exists());
     } else {
         let error = client_a
@@ -729,10 +726,9 @@ async fn test_runtime_profile_creates_missing_parent_directory_end_to_end() {
             return; // pprof can't start in sandbox — skip
         };
         assert!(matches!(
-                    started,
-                    ControlPayload::CpuProfileStarted { svg_path, .. }
-        if svg_path == nested_output
-                ));
+            started,
+            ControlPayload::CpuProfileStarted { svg_path, .. } if svg_path == nested_output
+        ));
 
         let stopped = client
             .send_control(ControlCommand::StopCpuProfile)
@@ -740,10 +736,9 @@ async fn test_runtime_profile_creates_missing_parent_directory_end_to_end() {
             .unwrap()
             .unwrap();
         assert!(matches!(
-                    stopped,
-                    ControlPayload::CpuProfileStopped { svg_path, .. }
-        if svg_path == nested_output
-                ));
+            stopped,
+            ControlPayload::CpuProfileStopped { svg_path, .. } if svg_path == nested_output
+        ));
         assert!(nested_output.exists());
     } else {
         let error = client
@@ -1801,7 +1796,7 @@ async fn test_session_ownership_cleanup_on_disconnect() {
     // in sync. Also verifies the eviction was actually sent.
     let eviction = acp_rx.recv().await.unwrap();
     let eviction_json: serde_json::Value = serde_json::from_str(&eviction).unwrap();
-    assert_eq!(eviction_json["method"], "x.ai/internal/evict_sessions");
+    assert_eq!(eviction_json["method"], "_x.ai/internal/evict_sessions");
 
     // Connect a NEW client — server should still be running
     let mut client2 = LeaderClient::connect(
@@ -3221,7 +3216,7 @@ async fn test_sever_mid_rpc_orphans_response_and_replay_recovers() {
     // signal that the server processed the disconnect.
     let evict = acp_rx.recv().await.unwrap();
     let evict_json: serde_json::Value = serde_json::from_str(&evict).unwrap();
-    assert_eq!(evict_json["method"], "x.ai/internal/evict_sessions");
+    assert_eq!(evict_json["method"], "_x.ai/internal/evict_sessions");
 
     // The agent completes the turn anyway: durable terminal notification plus
     // the RPC response addressed to the dead client.

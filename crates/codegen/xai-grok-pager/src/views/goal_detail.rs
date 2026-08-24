@@ -59,7 +59,7 @@ fn budget_color(pct: f32, theme: &Theme) -> Color {
 
 /// Format elapsed milliseconds as a compact human-readable duration.
 /// Same style as `goal_orchestrator::format_elapsed` — keep in sync.
-fn format_elapsed(ms: u64) -> String {
+pub(crate) fn format_elapsed(ms: u64) -> String {
     let total_secs = ms / 1000;
     let hours = total_secs / 3600;
     let mins = (total_secs % 3600) / 60;
@@ -86,6 +86,8 @@ fn status_label(goal: &GoalDisplayState) -> (&'static str, Color, String) {
         | GoalDisplayStatus::NoProgressPaused
         | GoalDisplayStatus::InfraPaused
         | GoalDisplayStatus::Blocked => (goal.status.pause_label(), theme.warning, String::new()),
+        GoalDisplayStatus::Failed => ("Failed", theme.accent_error, String::new()),
+        GoalDisplayStatus::Interrupted => ("Interrupted", theme.accent_error, String::new()),
         GoalDisplayStatus::BudgetLimited => ("Budget Limited", theme.accent_error, String::new()),
         GoalDisplayStatus::Complete => ("Complete", theme.accent_success, String::new()),
     }
@@ -194,7 +196,7 @@ fn wrap_pause_message_lines(text: &str, width: u16) -> Vec<String> {
 /// ellipsis if truncated. Uses display width (not char count) so CJK
 /// and emoji characters measure correctly — matches the
 /// `wrap_pause_message_lines` pattern.
-fn truncate_to_width(text: &str, budget: usize) -> String {
+pub(crate) fn truncate_to_width(text: &str, budget: usize) -> String {
     use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
     if UnicodeWidthStr::width(text) <= budget {
@@ -220,7 +222,7 @@ fn truncate_to_width(text: &str, budget: usize) -> String {
 /// timestamp, pause reason) can't break a rendered row even if ratatui's own
 /// filter regresses. `keep_newlines` preserves `\n` for the pause-reason
 /// wrapper (which splits on it before render); single-row sinks pass `false`.
-fn strip_control_chars(s: &str, keep_newlines: bool) -> String {
+pub(crate) fn strip_control_chars(s: &str, keep_newlines: bool) -> String {
     s.chars()
         .map(|c| {
             if c.is_control() && !(keep_newlines && c == '\n') {
@@ -265,13 +267,13 @@ fn has_classifier_activity(goal: &GoalDisplayState) -> bool {
 /// Display string for the classifier details-path row: the path when it
 /// exists (existence resolved once on receipt and passed as `exists`),
 /// `(unavailable)` when a path was reported but the file is missing (a
-/// fail-open run may not have written it), or an em-dash when no path was
+/// fail-open run may not have written it), or a hyphen when no path was
 /// reported at all.
 fn classifier_details_display(path: Option<&str>, exists: bool) -> &str {
     match path {
         Some(p) if exists => p,
         Some(_) => "(unavailable)",
-        None => "\u{2014}",
+        None => "-",
     }
 }
 
@@ -383,7 +385,15 @@ pub fn goal_detail_area(screen: Rect, goal: &GoalDisplayState, todos: &[TodoItem
     //   1  commands hint
     let has_budget = goal.token_budget.is_some_and(|b| b > 0);
     let budget_bar = if has_budget { 1u16 } else { 0 };
-    let pause_hint = if goal.status.is_paused() { 1u16 } else { 0 };
+    let recovery_hint = if goal.status.is_paused()
+        || matches!(
+            goal.status,
+            GoalDisplayStatus::Failed | GoalDisplayStatus::Interrupted
+        ) {
+        1u16
+    } else {
+        0
+    };
     // Reason block renders as `Reason: <pause_message>` wrapped to the
     // inner column width. Prefix is part of the wrapped content so
     // continuation rows just continue at column 0 without alignment
@@ -391,7 +401,11 @@ pub fn goal_detail_area(screen: Rect, goal: &GoalDisplayState, todos: &[TodoItem
     // `is_paused()` to stay in sync with the renderer — a future shell
     // bug that leaks `pause_message` on a non-paused snapshot must not
     // grow the modal box without also rendering content into it.
-    let reason_lines = if goal.status.is_paused() {
+    let reason_lines = if goal.status.is_paused()
+        || matches!(
+            goal.status,
+            GoalDisplayStatus::Failed | GoalDisplayStatus::Interrupted
+        ) {
         goal.pause_message
             .as_deref()
             .map(|m| {
@@ -448,7 +462,7 @@ pub fn goal_detail_area(screen: Rect, goal: &GoalDisplayState, todos: &[TodoItem
     let content_h = 2
         + 1
         + reason_lines
-        + pause_hint
+        + recovery_hint
         + 1
         + budget_bar
         + 1
@@ -592,7 +606,7 @@ pub fn render_goal_detail(
     ];
     if !phase_text.is_empty() {
         status_spans.push(Span::styled(
-            format!(" \u{2014} {phase_text}"),
+            format!(" \u{00b7} {phase_text}"),
             Style::default().fg(theme.gray_bright),
         ));
     }
@@ -604,12 +618,28 @@ pub fn render_goal_detail(
         return Some(close_rect);
     }
 
-    // ── Pause hint (only for any paused variant) ──
     if goal.status.is_paused() {
         let hint = format!(
-            "Status: {} \u{2014} type /goal resume to continue",
+            "Status: {}. Type /goal resume to continue",
             goal.status.pause_label()
         );
+        buf.set_line_safe(
+            x,
+            y,
+            &Line::from(Span::styled(hint, Style::default().fg(theme.warning))),
+            w,
+        );
+        y += 1;
+    } else if matches!(
+        goal.status,
+        GoalDisplayStatus::Failed | GoalDisplayStatus::Interrupted
+    ) {
+        let label = if goal.status == GoalDisplayStatus::Interrupted {
+            "Interrupted"
+        } else {
+            "Failed"
+        };
+        let hint = format!("Status: {label}. Type /goal clear, then start a new goal");
         buf.set_line_safe(
             x,
             y,
@@ -623,13 +653,12 @@ pub fn render_goal_detail(
         }
     }
 
-    // ── Reason block (only when paused AND pause_message is set) ──
     //
-    // Double-gate on `is_paused()`: the shell clears `pause_message` on
-    // every transition out of a paused state, but defending against a
-    // stale value on the wire is cheap and means a future shell bug
-    // can't make the modal render `Reason:` next to a non-paused status.
-    if goal.status.is_paused()
+    if (goal.status.is_paused()
+        || matches!(
+            goal.status,
+            GoalDisplayStatus::Failed | GoalDisplayStatus::Interrupted
+        ))
         && let Some(msg) = goal.pause_message.as_deref()
     {
         let formatted = format_pause_reason(msg);
@@ -920,10 +949,10 @@ pub fn render_goal_detail(
 
         if y < inner.y + inner.height {
             // Shared label with the chip; empty (no run reserved yet) falls
-            // back to an em-dash so the row never reads "Attempts: ".
+            // back to a hyphen so the row never reads "Attempts: ".
             let attempts = classifier_attempts_label(goal);
             let attempts_display = if attempts.is_empty() {
-                "\u{2014}".to_owned()
+                "-".to_owned()
             } else {
                 attempts
             };
@@ -1011,15 +1040,15 @@ pub fn render_goal_detail(
     // ── Commands hint ──
     if y < inner.y + inner.height {
         let hint_style = Style::default().fg(theme.gray_dim);
-        buf.set_line_safe(
-            x,
-            y,
-            &Line::from(Span::styled(
-                "Esc: close  /goal resume | pause | status | clear",
-                hint_style,
-            )),
-            w,
-        );
+        let hint = if matches!(
+            goal.status,
+            GoalDisplayStatus::Failed | GoalDisplayStatus::Interrupted
+        ) {
+            "Esc: close  /goal clear, then start a new goal"
+        } else {
+            "Esc: close  /goal resume | pause | status | clear"
+        };
+        buf.set_line_safe(x, y, &Line::from(Span::styled(hint, hint_style)), w);
     }
 
     Some(close_rect)
@@ -1127,7 +1156,7 @@ mod tests {
 
     #[test]
     fn goal_detail_area_widens_for_pause_hint() {
-        // A paused goal renders one extra row (the "type /goal resume"
+        // A paused goal renders one extra row (the "Type /goal resume"
         // hint), so the modal's content height must be exactly +1 row
         // larger than the same goal in the Active state.
         let screen = Rect::new(0, 0, 120, 40);
@@ -1243,7 +1272,7 @@ mod tests {
         assert!(text.contains("Completion review:"));
         assert!(text.contains("Last verdict: Not yet evaluated"));
         assert!(text.contains("Attempts: 0/3"));
-        assert!(text.contains("Details: \u{2014}"));
+        assert!(text.contains("Details: -"));
     }
 
     #[test]
@@ -1257,7 +1286,7 @@ mod tests {
 
         let text = render_to_text(&goal);
         assert!(
-            text.contains("Active \u{2014} Verifying (2/3)"),
+            text.contains("Active \u{00b7} Verifying (2/3)"),
             "status line must show the verifying overlay with counter, got:\n{text}"
         );
         assert!(
@@ -1273,7 +1302,7 @@ mod tests {
 
         let text = render_to_text(&goal);
         assert!(
-            text.contains("Active \u{2014} Planning"),
+            text.contains("Active \u{00b7} Planning"),
             "status line must show the planning overlay, got:\n{text}"
         );
     }
@@ -1293,7 +1322,7 @@ mod tests {
             "verifying overlay must win over planning, got:\n{text}"
         );
         assert!(
-            !text.contains("\u{2014} Planning"),
+            !text.contains("\u{00b7} Planning"),
             "planning must not render when verifying is also set, got:\n{text}"
         );
     }
@@ -1306,7 +1335,7 @@ mod tests {
 
         let text = render_to_text(&goal);
         assert!(
-            text.contains("Active \u{2014} Executing"),
+            text.contains("Active \u{00b7} Executing"),
             "steady-state status line must show Executing, got:\n{text}"
         );
     }
@@ -1638,6 +1667,11 @@ mod tests {
             assert_eq!(p, "", "phase_text for {status:?}");
         }
 
+        goal.status = GoalDisplayStatus::Failed;
+        let (s, color, _) = status_label(&goal);
+        assert_eq!(s, "Failed");
+        assert_eq!(color, theme.accent_error);
+
         goal.status = GoalDisplayStatus::BudgetLimited;
         let (s, _, _) = status_label(&goal);
         assert_eq!(s, "Budget Limited");
@@ -1674,7 +1708,7 @@ mod tests {
         render_goal_detail(&mut buf, area, &goal, &[], 0, None, 0, false);
 
         let text = buffer_text(&buf);
-        assert!(text.contains("type /goal resume to continue"));
+        assert!(text.contains("Type /goal resume to continue"));
     }
 
     #[test]
@@ -1686,7 +1720,7 @@ mod tests {
         render_goal_detail(&mut buf, area, &goal, &[], 0, None, 0, false);
 
         let text = buffer_text(&buf);
-        assert!(!text.contains("type /goal resume to continue"));
+        assert!(!text.contains("Type /goal resume to continue"));
     }
 
     #[test]
@@ -1724,7 +1758,7 @@ mod tests {
             "modal must render the pause_message text, got:\n{text}"
         );
         assert!(
-            text.contains("type /goal resume to continue"),
+            text.contains("Type /goal resume to continue"),
             "InfraPaused is paused so the resume hint must render, got:\n{text}"
         );
     }
@@ -1749,7 +1783,7 @@ mod tests {
             "modal must render the pause_message text, got:\n{text}"
         );
         assert!(
-            text.contains("type /goal resume to continue"),
+            text.contains("Type /goal resume to continue"),
             "Blocked is paused so the resume hint must render, got:\n{text}"
         );
     }
@@ -1804,7 +1838,7 @@ mod tests {
 
     #[test]
     fn render_blocked_reason_line_appears_after_pause_hint() {
-        // Modal visual order: Status → "type /goal resume" pause hint →
+        // Modal visual order: Status → "Type /goal resume" pause hint →
         // "Reason: ...". Pin both the presence of each line and their
         // relative position so a future refactor that reorders the
         // render blocks gets caught.
@@ -1818,7 +1852,7 @@ mod tests {
 
         let text = buffer_text(&buf);
         let hint_pos = text
-            .find("type /goal resume to continue")
+            .find("Type /goal resume to continue")
             .expect("pause hint must render");
         let reason_pos = text
             .find("Reason: no windows sdk")
@@ -2160,8 +2194,8 @@ mod tests {
     #[test]
     fn classifier_details_display_handles_missing_present_and_none() {
         // Existence is a precomputed bool, so the display is pure: no path →
-        // em-dash; path + !exists → "(unavailable)"; path + exists → the path.
-        assert_eq!(classifier_details_display(None, false), "\u{2014}");
+        // hyphen; path + !exists → "(unavailable)"; path + exists → the path.
+        assert_eq!(classifier_details_display(None, false), "-");
         assert_eq!(
             classifier_details_display(Some("/no/such/path/zzz-details.md"), false),
             "(unavailable)"
@@ -2190,10 +2224,10 @@ mod tests {
         );
     }
 
-    // -- Attempts em-dash branch --------------------------------------------
+    // -- Attempts hyphen branch --------------------------------------------
 
     #[test]
-    fn modal_attempts_shows_em_dash_when_classifier_active_without_counts() {
+    fn modal_attempts_shows_hyphen_when_classifier_active_without_counts() {
         // Completion review renders (a verdict is present) but no run counter
         // has arrived (both counts absent) → "Attempts: —", never "Attempts: ".
         let mut goal = make_goal();
@@ -2206,8 +2240,8 @@ mod tests {
             "section must render, got:\n{text}"
         );
         assert!(
-            text.contains("Attempts: \u{2014}"),
-            "empty counter must fall back to an em-dash, got:\n{text}"
+            text.contains("Attempts: -"),
+            "empty counter must fall back to a hyphen, got:\n{text}"
         );
     }
 

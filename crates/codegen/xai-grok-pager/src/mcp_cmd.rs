@@ -80,6 +80,16 @@ pub enum McpCommand {
         #[arg(short = 's', long, value_enum)]
         scope: Option<McpScope>,
     },
+    /// Enable an MCP server
+    Enable {
+        /// Server name
+        name: String,
+    },
+    /// Disable an MCP server
+    Disable {
+        /// Server name
+        name: String,
+    },
     /// Diagnose MCP server configuration and connectivity
     Doctor {
         /// Emit machine-readable JSON output
@@ -107,7 +117,8 @@ pub struct AddArgs {
     #[arg(value_name = "ARGS")]
     args: Vec<String>,
 
-    /// Transport type. Defaults to stdio.
+    /// Transport type. Defaults to stdio, or to http when the positional
+    /// argument is an http(s):// URL.
     #[arg(short = 't', long, value_enum)]
     transport: Option<McpTransport>,
 
@@ -142,6 +153,8 @@ pub async fn run(mcp_args: McpArgs) -> Result<()> {
         McpCommand::List { json } => run_list(json),
         McpCommand::Add(args) => run_add(args).await,
         McpCommand::Remove { name, scope } => run_remove(&name, scope).await,
+        McpCommand::Enable { name } => run_set_enabled(&name, true).await,
+        McpCommand::Disable { name } => run_set_enabled(&name, false).await,
         McpCommand::Doctor { json, name } => run_doctor(json, name).await,
     }
 }
@@ -151,6 +164,7 @@ fn run_list(json: bool) -> Result<()> {
     // a session started in this directory would load from config.toml files.
     let cwd = current_dir_or_exit();
     let servers = xai_grok_shell::util::config::load_mcp_server_configs_with_project(&cwd);
+    let disabled = xai_grok_shell::util::config::disabled_mcp_server_names(&cwd);
 
     if json {
         let payload: serde_json::Value = servers
@@ -160,6 +174,10 @@ fn run_list(json: bool) -> Result<()> {
                 if let Some(obj) = entry.as_object_mut() {
                     obj.insert("name".into(), serde_json::Value::String(name.clone()));
                     obj.insert("scope".into(), serde_json::Value::String(scope.to_string()));
+                    obj.insert(
+                        "enabled".into(),
+                        serde_json::Value::Bool(!disabled.contains(name)),
+                    );
                 }
                 entry
             })
@@ -179,7 +197,11 @@ fn run_list(json: bool) -> Result<()> {
                 }
                 McpServerTransportConfig::StreamableHttp { url, .. } => url.clone(),
             };
-            let status = if config.enabled { "" } else { " (disabled)" };
+            let status = if disabled.contains(name) {
+                " (disabled)"
+            } else {
+                ""
+            };
             let scope_note = if *scope == "project" {
                 " (project)"
             } else {
@@ -249,10 +271,23 @@ async fn run_add(args: AddArgs) -> Result<()> {
 
 /// Validate an `mcp add` request and build the transport config.
 ///
-/// The transport flag fully determines how `command_or_url` is interpreted;
-/// URL-looking commands only produce a warning, never a behavior change.
+/// An explicit transport flag fully determines how `command_or_url` is
+/// interpreted. Without one, a bare positional http(s):// URL is inferred to
+/// be an HTTP server; other URL-looking commands stay stdio with a warning.
 fn resolve_add(args: &AddArgs) -> Result<ResolvedAdd> {
     validate_server_name(&args.name)?;
+
+    // Extra args or --env mean the user is describing a command, and the
+    // legacy --command/--url flags keep their own semantics, so only a bare
+    // positional http(s):// URL triggers inference.
+    let inferred_http = args.transport.is_none()
+        && args.url.is_none()
+        && args.args.is_empty()
+        && args.env.is_empty()
+        && args
+            .command_or_url
+            .as_deref()
+            .is_some_and(|s| s.starts_with("http://") || s.starts_with("https://"));
 
     let transport = match args.transport {
         Some(t) => t,
@@ -261,6 +296,7 @@ fn resolve_add(args: &AddArgs) -> Result<ResolvedAdd> {
             Some(t) if t.eq_ignore_ascii_case("sse") => McpTransport::Sse,
             _ => McpTransport::Http,
         },
+        None if inferred_http => McpTransport::Http,
         None => McpTransport::Stdio,
     };
     let explicit_transport = args.transport.is_some();
@@ -367,6 +403,13 @@ fn resolve_add(args: &AddArgs) -> Result<ResolvedAdd> {
             }
             let headers = parse_headers(&args.header)?;
 
+            let mut warnings = Vec::new();
+            if inferred_http {
+                warnings.push(format!(
+                    "No --transport given; '{url}' starts with http(s)://, adding as an HTTP server. Use --transport sse for an SSE server, or --transport stdio to force a stdio command."
+                ));
+            }
+
             Ok(ResolvedAdd {
                 kind: transport,
                 transport: McpServerTransportConfig::StreamableHttp {
@@ -378,7 +421,7 @@ fn resolve_add(args: &AddArgs) -> Result<ResolvedAdd> {
                     oauth_client_secret_env_var: None,
                     oauth_scopes: None,
                 },
-                warnings: Vec::new(),
+                warnings,
             })
         }
     }
@@ -522,6 +565,88 @@ fn surviving_definition(
                 )
             })
         })
+}
+
+/// TOML / disabled list / compat JSON / plugin names. Gateway connectors are
+/// rejected earlier (colon names).
+fn mcp_server_is_known(name: &str, cwd: &Path) -> bool {
+    xai_grok_shell::util::config::cli_known_mcp_server_names(cwd).contains(name)
+}
+
+fn is_gateway_cli_toggle_name(name: &str) -> bool {
+    name.starts_with("managed_gateway:") || name.contains(':')
+}
+
+fn available_mcp_server_names(cwd: &Path) -> Vec<String> {
+    let mut names: Vec<String> = xai_grok_shell::util::config::cli_known_mcp_server_names(cwd)
+        .into_iter()
+        .collect();
+    names.sort();
+    names
+}
+
+async fn run_set_enabled(name: &str, enabled: bool) -> Result<()> {
+    // Do not use validate_server_name (add-only: [A-Za-z0-9_-]). Enable/disable
+    // also targets compat/plugin names that may contain dots or other keys.
+    if name.is_empty() {
+        bail!("Server name cannot be empty.");
+    }
+    if is_gateway_cli_toggle_name(name) {
+        eprintln!(
+            "Gateway connectors (e.g. managed_gateway:…) cannot be toggled via CLI; use Space in /mcps."
+        );
+        std::process::exit(1);
+    }
+    let cwd = current_dir_or_exit();
+
+    if !mcp_server_is_known(name, &cwd) {
+        eprintln!("No MCP server named '{name}'.");
+        let available = available_mcp_server_names(&cwd);
+        if !available.is_empty() {
+            eprintln!("Available servers: {}", available.join(", "));
+        } else {
+            eprintln!("No MCP servers configured. Run `grok mcp add --help` to get started.");
+        }
+        std::process::exit(1);
+    }
+
+    let was_disabled = xai_grok_shell::util::config::disabled_mcp_server_names(&cwd).contains(name);
+
+    let modified =
+        xai_grok_shell::util::config::save_mcp_server_enabled_in(name, enabled, &cwd).await?;
+
+    let now_disabled = xai_grok_shell::util::config::disabled_mcp_server_names(&cwd).contains(name);
+    let now_enabled = !now_disabled;
+
+    if enabled && now_disabled {
+        eprintln!(
+            "Warning: '{name}' is still disabled after enable (check project-scoped config)."
+        );
+        std::process::exit(1);
+    }
+    if !enabled && now_enabled {
+        eprintln!("Warning: '{name}' is still enabled after disable.");
+        std::process::exit(1);
+    }
+
+    if was_disabled == now_disabled {
+        let state = if now_enabled { "enabled" } else { "disabled" };
+        println!("MCP server '{name}' is already {state}.");
+    } else if now_enabled {
+        println!("Enabled MCP server '{name}'.");
+    } else {
+        println!("Disabled MCP server '{name}'.");
+    }
+
+    let user_config = xai_grok_shell::util::config::user_config_path();
+    for path in &modified {
+        if path == &user_config {
+            println!("File modified: {}", display_user_grok_path("config.toml"));
+        } else {
+            println!("File modified: {}", path.display());
+        }
+    }
+    Ok(())
 }
 
 async fn run_remove(name: &str, requested_scope: Option<McpScope>) -> Result<()> {
@@ -712,6 +837,8 @@ mod tests {
         ]);
 
         let resolved = resolve_add(&add).expect("resolves to http");
+        // Explicit --transport http must not fire the inference info line.
+        assert!(resolved.warnings.is_empty());
         match resolved.transport {
             McpServerTransportConfig::StreamableHttp {
                 url,
@@ -792,9 +919,85 @@ mod tests {
     }
 
     #[test]
+    fn add_infers_http_for_bare_positional_url() {
+        for url in ["https://mcp.example.com/mcp", "http://mcp.example.com/mcp"] {
+            let add = parse_add(&["grok", "mcp", "add", "api", url]);
+            let resolved = resolve_add(&add).expect("bare http(s) URL infers http");
+            assert_eq!(resolved.kind, McpTransport::Http);
+            match resolved.transport {
+                McpServerTransportConfig::StreamableHttp {
+                    url: stored,
+                    transport_type,
+                    ..
+                } => {
+                    assert_eq!(stored, url);
+                    assert_eq!(transport_type, None);
+                }
+                other => panic!("expected http transport, got {other:?}"),
+            }
+            assert_eq!(resolved.warnings.len(), 1);
+            assert!(
+                resolved.warnings[0].contains("No --transport given"),
+                "got: {}",
+                resolved.warnings[0]
+            );
+        }
+    }
+
+    #[test]
+    fn add_infers_http_with_headers() {
+        // Previously this bailed: stdio was assumed and --header is remote-only.
+        let add = parse_add(&[
+            "grok",
+            "mcp",
+            "add",
+            "api",
+            "https://mcp.example.com/mcp",
+            "--header",
+            "Authorization: Bearer tok",
+        ]);
+        let resolved = resolve_add(&add).expect("URL with headers infers http");
+        assert_eq!(resolved.kind, McpTransport::Http);
+        match resolved.transport {
+            McpServerTransportConfig::StreamableHttp { headers, .. } => {
+                let headers = headers.expect("headers should be set");
+                assert_eq!(
+                    headers.get("Authorization").map(String::as_str),
+                    Some("Bearer tok")
+                );
+            }
+            other => panic!("expected http transport, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn add_default_transport_warns_on_url_looking_command() {
-        let add = parse_add(&["grok", "mcp", "add", "api", "https://mcp.example.com/mcp"]);
-        let resolved = resolve_add(&add).expect("defaults to stdio with a warning");
+        // Scheme-less URL-looking commands are not inferred; they get
+        // http:// prepended so the suggested command passes URL validation.
+        let add = parse_add(&["grok", "mcp", "add", "local", "localhost:3000"]);
+        let resolved = resolve_add(&add).expect("localhost command warns");
+        assert!(matches!(
+            resolved.transport,
+            McpServerTransportConfig::Stdio { .. }
+        ));
+        assert_eq!(resolved.warnings.len(), 1);
+        assert!(
+            resolved.warnings[0].contains("--transport http local http://localhost:3000"),
+            "got: {}",
+            resolved.warnings[0]
+        );
+
+        // Extra args or --env mean a command; URLs stay stdio with a warning.
+        let add = parse_add(&[
+            "grok",
+            "mcp",
+            "add",
+            "api",
+            "https://mcp.example.com/mcp",
+            "--",
+            "extra",
+        ]);
+        let resolved = resolve_add(&add).expect("URL with args stays stdio");
         assert!(matches!(
             resolved.transport,
             McpServerTransportConfig::Stdio { .. }
@@ -802,15 +1005,21 @@ mod tests {
         assert_eq!(resolved.warnings.len(), 1);
         assert!(resolved.warnings[0].contains("--transport http"));
 
-        // Scheme-less commands get http:// prepended so the suggested
-        // command passes URL validation verbatim.
-        let add = parse_add(&["grok", "mcp", "add", "local", "localhost:3000"]);
-        let resolved = resolve_add(&add).expect("localhost command warns");
-        assert!(
-            resolved.warnings[0].contains("--transport http local http://localhost:3000"),
-            "got: {}",
-            resolved.warnings[0]
-        );
+        let add = parse_add(&[
+            "grok",
+            "mcp",
+            "add",
+            "api",
+            "-e",
+            "K=v",
+            "https://mcp.example.com/mcp",
+        ]);
+        let resolved = resolve_add(&add).expect("URL with env stays stdio");
+        assert!(matches!(
+            resolved.transport,
+            McpServerTransportConfig::Stdio { .. }
+        ));
+        assert_eq!(resolved.warnings.len(), 1);
     }
 
     #[test]
@@ -860,6 +1069,8 @@ mod tests {
             "sse",
         ]);
         let resolved = resolve_add(&add).expect("legacy url form resolves");
+        // Legacy --url defaults to HTTP on its own path, not via inference.
+        assert!(resolved.warnings.is_empty());
         match resolved.transport {
             McpServerTransportConfig::StreamableHttp {
                 url,
@@ -1045,6 +1256,80 @@ mod tests {
             }
             other => panic!("expected mcp remove, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn gateway_cli_toggle_names_are_rejected() {
+        assert!(is_gateway_cli_toggle_name("managed_gateway:linear"));
+        assert!(is_gateway_cli_toggle_name("other:colon"));
+        assert!(!is_gateway_cli_toggle_name("grok_com_slack"));
+        assert!(!is_gateway_cli_toggle_name("user-slack"));
+    }
+
+    #[test]
+    fn grok_com_known_only_with_toml_definition() {
+        // Unique name: `grok_home()` is process-wide OnceLock, so GROK_HOME
+        // EnvGuard is a no-op if another test already resolved it. A leftover
+        // `grok_com_*` in the real ~/.grok disabled list would fail an orphan
+        // assertion on a well-known name.
+        let name = format!("grok_com_orphan_{}", uuid::Uuid::new_v4().as_simple());
+
+        let orphan = tempfile::tempdir().unwrap();
+        git2::Repository::init(orphan.path()).unwrap();
+        assert!(
+            !mcp_server_is_known(&name, orphan.path()),
+            "orphan grok_com_* must not be known by prefix"
+        );
+
+        let defined = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(defined.path().join(".grok")).unwrap();
+        std::fs::write(
+            defined.path().join(".grok").join("config.toml"),
+            format!(
+                r#"
+[mcp_servers.{name}]
+url = "https://mcp.example.test/sse"
+"#
+            ),
+        )
+        .unwrap();
+        git2::Repository::init(defined.path()).unwrap();
+        assert!(
+            mcp_server_is_known(&name, defined.path()),
+            "TOML-defined {name} must be known"
+        );
+    }
+
+    #[test]
+    fn enable_and_disable_parse_name() {
+        let args = PagerArgs::try_parse_from(["grok", "mcp", "enable", "user-grafana"])
+            .expect("enable should parse");
+        match args.command {
+            Some(Command::Mcp(McpArgs {
+                command: McpCommand::Enable { name },
+            })) => assert_eq!(name, "user-grafana"),
+            other => panic!("expected mcp enable, got {other:?}"),
+        }
+
+        let args = PagerArgs::try_parse_from(["grok", "mcp", "disable", "user-slack"])
+            .expect("disable should parse");
+        match args.command {
+            Some(Command::Mcp(McpArgs {
+                command: McpCommand::Disable { name },
+            })) => assert_eq!(name, "user-slack"),
+            other => panic!("expected mcp disable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn enable_disable_require_name() {
+        let err = PagerArgs::try_parse_from(["grok", "mcp", "enable"])
+            .expect_err("enable without name must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+
+        let err = PagerArgs::try_parse_from(["grok", "mcp", "disable"])
+            .expect_err("disable without name must fail");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
     }
 
     #[test]

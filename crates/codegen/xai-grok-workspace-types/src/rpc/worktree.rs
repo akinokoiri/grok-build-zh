@@ -1,8 +1,8 @@
 //! Worktree lifecycle methods (`workspace.create_worktree`,
 //! `workspace.remove_worktree`, `workspace.apply_worktree`,
 //! `workspace.worktree_*`).
-use super::WorkspaceRpc;
 use super::git::{ChangeType, GitFileChange};
+use super::{RpcActivityClass, WorkspaceRpc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 /// Worktree creation strategy.
@@ -89,9 +89,14 @@ pub struct CreateWorktreeRequest {
     /// When absent, an automatic `YYYY-MM-DD-<uuid>` label is generated.
     #[serde(default)]
     pub label: Option<String>,
+    /// When `Some(true)`, enable the grove worktree arm on the builder.
+    /// Absent/false → copy. `nfsWorktree` / `nfs_worktree` are deserialize aliases.
+    #[serde(default, alias = "nfsWorktree", alias = "nfs_worktree")]
+    pub grove_worktree: Option<bool>,
 }
 impl WorkspaceRpc for CreateWorktreeRequest {
     const METHOD: &'static str = "workspace.create_worktree";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
     type Response = Value;
 }
 fn default_copy_mode() -> WorktreeCopyMode {
@@ -133,6 +138,7 @@ pub enum CreateWorktreeResponse {
 pub struct WorktreeCreateSyncReq(pub CreateWorktreeRequest);
 impl WorkspaceRpc for WorktreeCreateSyncReq {
     const METHOD: &'static str = "workspace.worktree_create_sync";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
     type Response = Value;
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -151,6 +157,7 @@ pub struct RemoveWorktreeRequest {
 }
 impl WorkspaceRpc for RemoveWorktreeRequest {
     const METHOD: &'static str = "workspace.remove_worktree";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
     type Response = Value;
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -197,6 +204,8 @@ pub struct CreateWorktreeFromWorktreeRequestWire {
     pub worktree_type: Option<WorktreeType>,
     #[serde(default)]
     pub label: Option<String>,
+    #[serde(default, alias = "nfsWorktree", alias = "nfs_worktree")]
+    pub grove_worktree: Option<bool>,
 }
 /// `workspace.worktree_create_from_worktree_sync` — synchronous worktree fork.
 ///
@@ -208,6 +217,7 @@ pub struct CreateWorktreeFromWorktreeSyncReq {
 }
 impl WorkspaceRpc for CreateWorktreeFromWorktreeSyncReq {
     const METHOD: &'static str = "workspace.worktree_create_from_worktree_sync";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
     type Response = CreateWorktreeFromWorktreeResponse;
 }
 /// Serializable version of `PrepareWorktreeResult` for wire transport.
@@ -235,6 +245,7 @@ pub struct ApplyWorktreeRequest {
 }
 impl WorkspaceRpc for ApplyWorktreeRequest {
     const METHOD: &'static str = "workspace.apply_worktree";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
     type Response = Value;
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -268,6 +279,7 @@ pub struct WorktreeShowReq {
 }
 impl WorkspaceRpc for WorktreeShowReq {
     const METHOD: &'static str = "workspace.worktree_show";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Read;
     type Response = Value;
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,6 +292,7 @@ pub struct WorktreeGcReq {
 }
 impl WorkspaceRpc for WorktreeGcReq {
     const METHOD: &'static str = "workspace.worktree_gc";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Read;
     type Response = Value;
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -292,18 +305,21 @@ pub struct WorktreeListReq {
 }
 impl WorkspaceRpc for WorktreeListReq {
     const METHOD: &'static str = "workspace.worktree_list";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Read;
     type Response = Value;
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreeDbRebuildReq {}
 impl WorkspaceRpc for WorktreeDbRebuildReq {
     const METHOD: &'static str = "workspace.worktree_db_rebuild";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Read;
     type Response = Value;
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreeDbPathReq {}
 impl WorkspaceRpc for WorktreeDbPathReq {
     const METHOD: &'static str = "workspace.worktree_db_path";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Read;
     type Response = WorktreeDbPathResponse;
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +330,40 @@ pub struct WorktreeDbPathResponse {
 pub struct WorktreeDbStatsReq {}
 impl WorkspaceRpc for WorktreeDbStatsReq {
     const METHOD: &'static str = "workspace.worktree_db_stats";
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Read;
+    type Response = Value;
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeDetachReq {
+    pub id_or_path: String,
+    #[serde(default)]
+    pub allow_copy: bool,
+}
+impl WorkspaceRpc for WorktreeDetachReq {
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
+    const METHOD: &'static str = "workspace.worktree_detach";
+    type Response = Value;
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeSalvageReq {
+    pub id_or_path: String,
+    pub out: String,
+}
+impl WorkspaceRpc for WorktreeSalvageReq {
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
+    const METHOD: &'static str = "workspace.worktree_salvage";
+    type Response = Value;
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeCleanArtifactsReq {
+    pub id_or_path: String,
+}
+impl WorkspaceRpc for WorktreeCleanArtifactsReq {
+    const ACTIVITY: RpcActivityClass = RpcActivityClass::Mutation;
+    const METHOD: &'static str = "workspace.worktree_clean_artifacts";
     type Response = Value;
 }
 #[cfg(test)]
@@ -352,6 +402,7 @@ mod tests {
                 git_ref: None,
                 worktree_type: None,
                 label: None,
+                grove_worktree: None,
             },
         };
         let json = serde_json::to_value(&req).unwrap();
@@ -373,6 +424,7 @@ mod tests {
             ignored_skip_patterns: vec![],
             worktree_type: None,
             label: None,
+            grove_worktree: None,
         });
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["sessionId"], "s1");

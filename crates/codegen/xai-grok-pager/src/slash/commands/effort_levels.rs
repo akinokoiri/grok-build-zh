@@ -15,12 +15,13 @@ pub(crate) const EFFORT_LEVELS: &[ReasoningEffort] = &[
 
 pub(crate) fn effort_description(level: ReasoningEffort) -> &'static str {
     match level {
-        ReasoningEffort::None => "不使用推理",
+ReasoningEffort::None => "不使用推理",
         ReasoningEffort::Minimal => "最低推理",
         ReasoningEffort::Low => "更快、更轻量的推理",
         ReasoningEffort::Medium => "均衡推理",
         ReasoningEffort::High => "高强度推理",
-        ReasoningEffort::Xhigh => "最强推理",
+        ReasoningEffort::Xhigh => "超强推理",
+        ReasoningEffort::Max => "最强推理",
     }
 }
 

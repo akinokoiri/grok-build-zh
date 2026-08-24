@@ -21,19 +21,16 @@ use super::token_output::{expiry_after_seconds, parse_token_output};
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default)]
 pub struct AuthProviderConfig {
-    /// Command that prints a bearer token on stdout, bare or as JSON
-    /// `{access_token, expires_in}`. Without `args` it runs via `sh -c`.
+    /// Command to run; without `args` it uses the platform shell, with `args` it execs directly.
     pub command: String,
-    /// Arguments for `command`. When present (even empty), the command runs
-    /// directly with no shell; `command` is a program name on `PATH`, or a path.
+    /// Command arguments; when set (even empty) the command execs directly.
     pub args: Option<Vec<String>>,
-    /// Fallback token lifetime in seconds, used when the command's output
-    /// carries no `expires_in`. Takes precedence over a JWT `exp` claim.
+    /// Fallback token lifetime used when the output carries no `expires_in`.
     pub token_ttl_secs: Option<u64>,
-    /// Maximum seconds to wait for the command (default 30, clamped to 1..=600).
-    /// A turn waits up to this long on a mint, so keep helpers fast and
-    /// non-interactive.
+    /// Max seconds to wait for the command (default 30, clamped to 1..=600).
     pub timeout_secs: Option<u64>,
+    /// Working directory for the command; a leading `~` expands to home.
+    pub cwd: Option<String>,
 }
 
 impl AuthProviderConfig {
@@ -53,17 +50,23 @@ pub struct AuthProviderRef {
     /// `false` and never mints or reads until [`AuthProviderRef::attach_trusted_config`]
     /// joins the shared slot for its name.
     resolved: bool,
+    fail_closed: bool,
 }
 
-/// Serialized form: the name only, so persisted bytes never carry a command.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct AuthProviderRefData {
     name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    fail_closed: bool,
 }
 
 impl From<AuthProviderRefData> for AuthProviderRef {
     fn from(data: AuthProviderRefData) -> Self {
-        AuthProviderRef::unresolved(data.name)
+        if data.fail_closed {
+            AuthProviderRef::fail_closed(data.name)
+        } else {
+            AuthProviderRef::unresolved(data.name)
+        }
     }
 }
 
@@ -71,6 +74,7 @@ impl From<AuthProviderRef> for AuthProviderRefData {
     fn from(provider: AuthProviderRef) -> Self {
         Self {
             name: provider.name,
+            fail_closed: provider.fail_closed,
         }
     }
 }
@@ -85,6 +89,7 @@ impl AuthProviderRef {
             config,
             slot,
             resolved: true,
+            fail_closed: false,
         }
     }
 
@@ -96,13 +101,31 @@ impl AuthProviderRef {
             config: AuthProviderConfig::default(),
             slot: ProviderSlot::default(),
             resolved: false,
+            fail_closed: false,
         }
+    }
+
+    pub(crate) fn fail_closed(name: String) -> Self {
+        Self {
+            name,
+            config: AuthProviderConfig::default(),
+            slot: ProviderSlot::default(),
+            resolved: true,
+            fail_closed: true,
+        }
+    }
+
+    pub(crate) fn is_fail_closed(&self) -> bool {
+        self.fail_closed
     }
 
     /// Re-attach the trusted config for this name at model resolution
     /// (`None` = the table was removed, leaving an unusable config). The ref
     /// becomes authoritative, joins the shared slot for its name, and may mint.
     pub(crate) fn attach_trusted_config(&mut self, config: Option<&AuthProviderConfig>) {
+        if self.fail_closed {
+            return;
+        }
         self.config = config.cloned().unwrap_or_default();
         self.slot = provider_slot(&self.name);
         self.resolved = true;
@@ -184,14 +207,17 @@ const PROVIDER_STDERR_CAP_BYTES: u64 = 64 << 10; // 64 KiB
 /// new `AuthProviderConfig` field is a compile error until it is classified as
 /// token-shaping (add it here) or an execution knob like `timeout_secs`
 /// (editing it never invalidates).
-fn token_identity(config: &AuthProviderConfig) -> (&str, Option<&[String]>, Option<u64>) {
+fn token_identity(
+    config: &AuthProviderConfig,
+) -> (&str, Option<&[String]>, Option<u64>, Option<&str>) {
     let AuthProviderConfig {
         command,
         args,
         token_ttl_secs,
         timeout_secs: _,
+        cwd,
     } = config;
-    (command, args.as_deref(), *token_ttl_secs)
+    (command, args.as_deref(), *token_ttl_secs, cwd.as_deref())
 }
 
 fn minted_token_is_stale(minted: &MintedProviderToken, config: &AuthProviderConfig) -> bool {
@@ -256,6 +282,7 @@ async fn run_capped(
     cmd: &mut tokio::process::Command,
     timeout: std::time::Duration,
 ) -> anyhow::Result<std::process::Output> {
+    #[allow(clippy::disallowed_methods)] // killed at the timeout this call reports
     let mut child = cmd
         .spawn()
         .map_err(|e| anyhow::anyhow!("command failed to start: {e}"))?;
@@ -307,6 +334,19 @@ async fn run_capped(
     })
 }
 
+fn resolve_program(command: &str, cwd: Option<&std::path::Path>) -> std::path::PathBuf {
+    let path = std::path::Path::new(command);
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    if path.components().count() > 1
+        && let Some(dir) = cwd
+    {
+        return dir.join(path);
+    }
+    std::path::PathBuf::from(command)
+}
+
 async fn mint_provider_token(
     provider: &AuthProviderRef,
     mark_expired: bool,
@@ -330,20 +370,25 @@ async fn mint_provider_token(
         "auth provider: running helper command"
     );
 
+    let cwd = config
+        .cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(crate::util::expand_home);
+
     let mut cmd = match config.args {
         Some(ref args) => {
-            // Direct exec: the program name is a PATH lookup, so trim stray
-            // whitespace that would otherwise fail to resolve.
-            let mut cmd = tokio::process::Command::new(config.command.trim());
+            let program = resolve_program(config.command.trim(), cwd.as_deref());
+            let mut cmd = tokio::process::Command::new(program);
             cmd.args(args);
             cmd
         }
-        None => {
-            let mut cmd = tokio::process::Command::new("sh");
-            cmd.args(["-c", &config.command]);
-            cmd
-        }
+        None => crate::util::subprocess::shell_c(config.command.as_str()),
     };
+    if let Some(ref dir) = cwd {
+        cmd.current_dir(dir);
+    }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         // Capture stderr for the failure log; inheriting corrupts the TUI.
@@ -441,7 +486,9 @@ impl AuthProviderRef {
                     "auth provider removed from config: dropping its cached token"
                 );
             }
-            warn_empty_command(&self.name);
+            if !self.fail_closed {
+                warn_empty_command(&self.name);
+            }
             return None;
         }
         Some(slot)
@@ -455,7 +502,9 @@ impl AuthProviderRef {
             return None;
         }
         if !self.config.is_usable() {
-            warn_empty_command(&self.name);
+            if !self.fail_closed {
+                warn_empty_command(&self.name);
+            }
             return None;
         }
         // A mint in progress holds the lock; treat it as a miss rather than
@@ -583,6 +632,7 @@ pub(crate) fn test_counting_provider(name: &str, dir: &std::path::Path) -> AuthP
             args: None,
             token_ttl_secs: Some(3600),
             timeout_secs: None,
+            cwd: None,
         },
     )
 }

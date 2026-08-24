@@ -1,21 +1,14 @@
-//! PTY: the parked look is not sticky — when a parked sendable wait RETURNS
-//! and the model resumes streaming in the SAME turn, the running chrome
-//! (turn-status row + cancel keybar) must come back while the continuation
-//! streams (regression: stale tracker waits kept the idle look after resume).
-//!
-//! Flag-file driven like `endline_park_two_static_markers`: background a
-//! flag-gated command, hold the turn on a flag-gated foreground command while
-//! the runtime task id is extracted, then block on
-//! `get_command_or_subagent_output(timeout_ms: 600000)` — the pager parks.
-//! Releasing the flag completes the task, the wait returns, and the scripted
-//! slow continuation streams in the same turn.
+//! PTY, flag-file driven like `endline_park_is_markerless`: the pager parks
+//! on a blocking wait; releasing the flag completes the task and a slow
+//! continuation streams in the SAME turn. Asserts the running chrome returns
+//! (regression: stale tracker waits kept the idle look after resume).
 #[allow(unused_imports)]
 use super::common::*;
 
 /// Running-turn keybar hint; absent while the parked look is active
 /// (see `wait_for_turn_idle` in common.rs for the same sentinel).
 #[cfg(unix)]
-const CANCEL_HINT: &str = "Ctrl+c:cancel";
+const CANCEL_HINT: &str = "Esc:cancel";
 
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -36,22 +29,8 @@ async fn spinner_reappears_after_wait_resumes() {
         "is_background": true
     })
     .to_string();
-    content.enqueue_response(
-        "/v1/responses",
-        ScriptedResponse::sse(responses_api_tool_call_events(
-            "call_spinner_bg",
-            "run_terminal_command",
-            &bg_args,
-        )),
-    );
-    content.enqueue_response(
-        "/v1/chat/completions",
-        ScriptedResponse::sse(chat_completions_tool_call_events_with_id(
-            "call_spinner_bg",
-            "run_terminal_command",
-            &bg_args,
-        )),
-    );
+    let _background_turn =
+        expect_tool_turn(&content, "call_spinner_bg", "run_terminal_command", bg_args);
 
     // Tool call 2: the flag-gated foreground hold for id extraction.
     let id_hold_args = json!({
@@ -59,21 +38,11 @@ async fn spinner_reappears_after_wait_resumes() {
         "description": "hold for id extraction"
     })
     .to_string();
-    content.enqueue_response(
-        "/v1/responses",
-        ScriptedResponse::sse(responses_api_tool_call_events(
-            "call_spinner_id_hold",
-            "run_terminal_command",
-            &id_hold_args,
-        )),
-    );
-    content.enqueue_response(
-        "/v1/chat/completions",
-        ScriptedResponse::sse(chat_completions_tool_call_events_with_id(
-            "call_spinner_id_hold",
-            "run_terminal_command",
-            &id_hold_args,
-        )),
+    let _id_hold_turn = expect_tool_turn(
+        &content,
+        "call_spinner_id_hold",
+        "run_terminal_command",
+        id_hold_args,
     );
 
     // Fallback for the post-wait continuation: a slow stream (~5s at the
@@ -120,42 +89,32 @@ async fn spinner_reappears_after_wait_resumes() {
         "timeout_ms": 600_000
     })
     .to_string();
-    content.enqueue_response(
-        "/v1/responses",
-        ScriptedResponse::sse(responses_api_tool_call_events(
-            "call_spinner_wait",
-            "get_command_or_subagent_output",
-            &wait_args,
-        )),
-    );
-    content.enqueue_response(
-        "/v1/chat/completions",
-        ScriptedResponse::sse(chat_completions_tool_call_events_with_id(
-            "call_spinner_wait",
-            "get_command_or_subagent_output",
-            &wait_args,
-        )),
+    let _wait_turn = expect_tool_turn(
+        &content,
+        "call_spinner_wait",
+        "get_command_or_subagent_output",
+        wait_args,
     );
 
     std::fs::write(&id_ready_flag, b"ready").expect("release id-extraction hold");
 
-    // Parked look: the plain marker renders, the "watching · …" cue takes
-    // the status row, and the running chrome (cancel keybar) drops — the
+    // Parked look: the parked cue takes the status row (parks write no
+    // transcript row) and the running chrome (cancel keybar) drops — the
     // session reads as stopped.
     harness
-        .wait_for_text("已工作", Duration::from_secs(60))
+        .wait_for_text("1 command still running", Duration::from_secs(60))
         .unwrap_or_else(|_| {
             panic!(
-                "parked marker never appeared; screen:\n{}\n--- non-system messages ---\n{}",
+                "parked watching cue never appeared; screen:\n{}\n--- non-system messages ---\n{}",
                 harness.screen_contents(),
                 dump_non_system_messages(&content.request_bodies())
             )
         });
     harness
-        .wait_for_text("watching · 1 command", Duration::from_secs(30))
+        .wait_for_text("send a message to interrupt", Duration::from_secs(30))
         .unwrap_or_else(|_| {
             panic!(
-                "parked watching cue never appeared; screen:\n{}",
+                "parked interrupt cue never appeared; screen:\n{}",
                 harness.screen_contents()
             )
         });

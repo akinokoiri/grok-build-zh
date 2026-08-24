@@ -41,6 +41,10 @@ impl SlashCommand for PluginsCommand {
         "plugins"
     }
 
+    fn aliases(&self) -> &[&str] {
+        &["plugin"]
+    }
+
     fn description(&self) -> &str {
         "查看插件"
     }

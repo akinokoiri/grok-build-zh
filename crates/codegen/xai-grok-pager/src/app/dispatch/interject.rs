@@ -1,9 +1,9 @@
-//! Mid-turn interjection dispatch: optimistic local echo, the
-//! `x.ai/interject` effect, and prompt-history recording. Split out of
-//! `dispatch.rs` verbatim (pure code motion).
+//! Mid-turn interjection dispatch: optimistic local echo, the `x.ai/interject` effect, and prompt-history recording.
 
+use super::ctx::NO_SESSION_NOTICE;
+use super::voice::voice_stop_on_submit;
 use crate::app::actions::Effect;
-use crate::app::agent_view::AgentView;
+use crate::app::agent::AgentId;
 use crate::app::app_view::{ActiveView, AppView};
 use crate::scrollback::block::RenderBlock;
 
@@ -26,6 +26,24 @@ pub(super) fn dispatch_interject(
     let ActiveView::Agent(id) = app.active_view else {
         return vec![];
     };
+    dispatch_interject_on(app, id, text, images)
+}
+
+/// Same as [`dispatch_interject`], but targets `agent_id` instead of the
+/// focused pane. Used when a `/btw` answer lands on a non-active session.
+pub(super) fn dispatch_interject_on(
+    app: &mut AppView,
+    id: AgentId,
+    text: String,
+    images: Vec<crate::prompt_images::PastedImage>,
+) -> Vec<Effect> {
+    // Voice is app-wide and bound to the focused composer. A /btw answer
+    // on another session must not commit interim text or kill dictation
+    // on the pane the user is actually talking into.
+    if matches!(app.active_view, ActiveView::Agent(active) if active == id) {
+        // Hard-reset only — `text` may not be from the composer.
+        let _ = voice_stop_on_submit(app);
+    }
     let Some(agent) = app.agents.get_mut(&id) else {
         return vec![];
     };
@@ -36,11 +54,11 @@ pub(super) fn dispatch_interject(
     agent.ephemeral_tip.clear_on_submit();
 
     let Some(session_id) = agent.session.session_id.clone() else {
-        agent.show_toast("无活动会话");
+        agent.show_toast(NO_SESSION_NOTICE);
         return vec![];
     };
 
-    record_interject_prompt_history(agent, &text);
+    crate::app::agent::remember_prompt(&mut agent.session.prompt_history, &text);
 
     // Push a standard user prompt block locally for instant feedback, and
     // record its id so the broadcast echo (`x.ai/session/interjection`) is
@@ -50,9 +68,6 @@ pub(super) fn dispatch_interject(
     agent
         .scrollback
         .push_block(RenderBlock::interjection_prompt(&text));
-    // Interjecting into a parked wait continues the turn below this block —
-    // the withheld "Worked for …" marker must not fire late beneath it.
-    agent.suppress_parked_marker_on_interject();
 
     // The composer is NOT touched here: the producer that consumed composer
     // text (the InterjectPrompt registry arm) clears it at the call site;
@@ -90,6 +105,8 @@ pub(super) fn dispatch_send_prompt_now(
     text: String,
     images: Vec<crate::prompt_images::PastedImage>,
 ) -> Vec<Effect> {
+    // Hard-reset only — `text` may be a queue row, not the composer.
+    let _ = voice_stop_on_submit(app);
     let ActiveView::Agent(id) = app.active_view else {
         return vec![];
     };
@@ -123,24 +140,18 @@ pub(super) fn dispatch_send_prompt_now(
     agent.ephemeral_tip.clear_on_submit();
 
     let Some(session_id) = agent.session.session_id.clone() else {
-        agent.show_toast("无活动会话");
+        agent.show_toast(NO_SESSION_NOTICE);
         return vec![];
     };
 
-    record_interject_prompt_history(agent, &text);
+    crate::app::agent::remember_prompt(&mut agent.session.prompt_history, &text);
 
     let prompt_id = uuid::Uuid::new_v4().to_string();
     // Self-originated: the ACP gate must treat this prompt's deltas as ours.
     agent.note_self_originated_prompt(&prompt_id);
     // Expect the shell's send-now cancel so the turn-end rails suppress its
-    // marker — only when the shell will actually cancel (goal turns promote
-    // without cancelling; a stale arm would mute a later real cancel marker).
-    if agent.expects_send_now_cancel() {
-        agent.arm_send_now_expectation(prompt_id.clone());
-        // The arm hides the queue echo pushed below — paint the block now.
-        super::queue::push_send_now_user_block(agent, &prompt_id, "prompt", &text, false);
-    }
-    agent.suppress_parked_marker_on_interject();
+    // marker.
+    super::queue::arm_send_now_and_paint_dispatched(agent, &prompt_id, &text);
 
     let blocks = crate::prompt_images::build_content_blocks_with_workspace(
         text.clone(),
@@ -163,24 +174,6 @@ pub(super) fn dispatch_send_prompt_now(
         blocks,
         prompt_id,
     }]
-}
-
-/// Record an interjection in prompt history (Ctrl+R finds interjections).
-/// Shared by `dispatch_interject` and the edited-queued-interject arm — the
-/// user typed both, so both must be recallable.
-pub(super) fn record_interject_prompt_history(agent: &mut AgentView, text: &str) {
-    let trimmed_key = text.trim().to_string();
-    if trimmed_key.is_empty() {
-        return;
-    }
-    agent
-        .session
-        .prompt_history
-        .retain(|p| p.trim() != trimmed_key);
-    agent.session.prompt_history.insert(0, text.to_string());
-    if agent.session.prompt_history.len() > 200 {
-        agent.session.prompt_history.truncate(200);
-    }
 }
 
 #[cfg(test)]

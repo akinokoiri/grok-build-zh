@@ -19,7 +19,9 @@ pub enum ProtocolError {
     ConnectionClosed,
 }
 
-pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, ProtocolError> {
+pub(crate) async fn read_frame<R: AsyncRead + Unpin>(
+    reader: &mut R,
+) -> Result<Vec<u8>, ProtocolError> {
     let mut len_buf = [0u8; 4];
     match reader.read_exact(&mut len_buf).await {
         Ok(_) => {}
@@ -39,7 +41,7 @@ pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>,
     Ok(buf)
 }
 
-pub async fn write_frame<W: AsyncWrite + Unpin>(
+pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
     writer: &mut W,
     data: &[u8],
 ) -> Result<(), ProtocolError> {
@@ -167,6 +169,14 @@ pub struct ClientCapabilities {
     pub fs_read: bool,
     #[serde(default)]
     pub fs_write: bool,
+
+    /// Whether this client will draw a status row (`x.ai/statusLine`). When
+    /// true, the leader injects `clientStatusLine: true` so the agent builds the
+    /// payload for a client that asked rather than for whichever one started the
+    /// process. The flag it sets is per session, so other subscribers of a
+    /// shared session receive the payload too.
+    #[serde(default)]
+    pub status_line: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -391,6 +401,71 @@ pub enum ServerMessage {
     LeaderReady,
 }
 
+/// Extension methods injected into the agent, named as the agent matches them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::EnumIter)]
+pub(crate) enum InternalMethod {
+    AuthCleared,
+    EvictSessions,
+    ReloadAllMcpServers,
+    ReloadModels,
+    ReloadModelsCache,
+    ReloadProjectMcpServers,
+    ReloadSkills,
+    ReloadWorkflows,
+}
+
+impl InternalMethod {
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::AuthCleared => "x.ai/internal/auth_cleared",
+            Self::EvictSessions => "x.ai/internal/evict_sessions",
+            Self::ReloadAllMcpServers => "x.ai/internal/reload_all_mcp_servers",
+            Self::ReloadModels => "x.ai/internal/reload_models",
+            Self::ReloadModelsCache => "x.ai/internal/reload_models_cache",
+            Self::ReloadProjectMcpServers => "x.ai/internal/reload_project_mcp_servers",
+            Self::ReloadSkills => "x.ai/internal/reload_skills",
+            Self::ReloadWorkflows => "x.ai/internal/reload_workflows",
+        }
+    }
+
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
+        use strum::IntoEnumIterator;
+
+        Self::iter().find(|method| method.name() == name)
+    }
+
+    /// The decoder routes a custom method to `ext_method` / `ext_notification`
+    /// only when it carries the `_` prefix, and rejects the bare name.
+    fn wire_name(self) -> String {
+        format!("_{}", self.name())
+    }
+}
+
+/// Not newline-terminated: the `acp_tx` forwarding loop appends the terminator.
+pub(crate) fn internal_notification(method: InternalMethod, params: serde_json::Value) -> String {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": method.wire_name(),
+        "params": params,
+    })
+    .to_string()
+}
+
+/// Newline-terminated for direct injection.
+pub(crate) fn internal_request_line(
+    id: &str,
+    method: InternalMethod,
+    params: serde_json::Value,
+) -> String {
+    let msg = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": method.wire_name(),
+        "params": params,
+    });
+    format!("{msg}\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,16 +520,15 @@ mod tests {
         let received: ClientMessage = read_message(&mut server).await.unwrap();
 
         assert!(matches!(
-                    received,
-                    ClientMessage::Control {
-                        request_id,
-                        command: ControlCommand::StartCpuProfile {
-                            output: Some(output),
-                            frequency_hz: Some(250),
-                        },
-                    }
-        if request_id == "req-1" && output == "/tmp/profile.folded"
-                ));
+            received,
+            ClientMessage::Control {
+                request_id,
+                command: ControlCommand::StartCpuProfile {
+                    output: Some(output),
+                    frequency_hz: Some(250),
+                },
+            } if request_id == "req-1" && output == "/tmp/profile.folded"
+        ));
     }
 
     #[tokio::test]
@@ -540,22 +614,21 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         let decoded: ServerMessage = serde_json::from_str(&json).unwrap();
         assert!(matches!(
-                    decoded,
-                    ServerMessage::Registered {
-                        client_id: 7,
-                        ready: true,
-                        leader_protocol_version: Some(LEADER_PROTOCOL_VERSION),
-                        leader_binary_version: Some(_),
-                        leader_capabilities: Some(LeaderCapabilities {
-                            control_v1: true,
-                            runtime_cpu_profile: true,
-                            profile_formats,
-                            workspace_exposure: true,
-                            relaunch_v1: true,
-                        }),
-                    }
-        if profile_formats == vec![ProfileArtifactFormat::Svg]
-                ));
+            decoded,
+            ServerMessage::Registered {
+                client_id: 7,
+                ready: true,
+                leader_protocol_version: Some(LEADER_PROTOCOL_VERSION),
+                leader_binary_version: Some(_),
+                leader_capabilities: Some(LeaderCapabilities {
+                    control_v1: true,
+                    runtime_cpu_profile: true,
+                    profile_formats,
+                    workspace_exposure: true,
+                    relaunch_v1: true,
+                }),
+            } if profile_formats == vec![ProfileArtifactFormat::Svg]
+        ));
     }
 
     #[test]
@@ -639,15 +712,14 @@ mod tests {
         let received: ClientMessage = read_message(&mut server).await.unwrap();
 
         assert!(matches!(
-                    received,
-                    ClientMessage::Control {
-                        request_id,
-                        command: ControlCommand::WorkspaceStart { hub_url: Some(url), cwd },
-                    }
-        if request_id == "ws-1"
-                        && url == "wss://hub.example/v1/tools"
-                        && cwd == "/home/u/proj"
-                ));
+            received,
+            ClientMessage::Control {
+                request_id,
+                command: ControlCommand::WorkspaceStart { hub_url: Some(url), cwd },
+            } if request_id == "ws-1"
+                && url == "wss://hub.example/v1/tools"
+                && cwd == "/home/u/proj"
+        ));
     }
 
     #[test]
@@ -672,16 +744,15 @@ mod tests {
         let json = r#"{"type":"workspace_status","state":"none","uptime_ms":0,"active_tool_calls":0,"pid":1}"#;
         let decoded: ControlPayload = serde_json::from_str(json).unwrap();
         assert!(matches!(
-                    decoded,
-                    ControlPayload::WorkspaceStatus {
-                        state,
-                        hub_url: None,
-                        cwd: None,
-                        sessions,
-                        ..
-                    }
-        if state == "none" && sessions.is_empty()
-                ));
+            decoded,
+            ControlPayload::WorkspaceStatus {
+                state,
+                hub_url: None,
+                cwd: None,
+                sessions,
+                ..
+            } if state == "none" && sessions.is_empty()
+        ));
     }
 
     #[test]
@@ -717,6 +788,25 @@ mod tests {
                 assert_eq!(delay_ms, 2000);
             }
             _ => panic!("Expected ShuttingDown, got {:?}", received),
+        }
+    }
+
+    #[test]
+    fn every_internal_method_carries_the_routable_prefix() {
+        use strum::IntoEnumIterator;
+
+        for method in InternalMethod::iter() {
+            for line in [
+                internal_notification(method, serde_json::json!({})),
+                internal_request_line("id", method, serde_json::json!({})),
+            ] {
+                let json: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+                assert_eq!(
+                    json["method"].as_str().and_then(|m| m.strip_prefix('_')),
+                    Some(method.name()),
+                    "unroutable wire method: {line}"
+                );
+            }
         }
     }
 

@@ -135,7 +135,7 @@ pub fn token_arrow() -> &'static str {
 /// U+25CE BULLSEYE, U+25C9 FISHEYE, U+25CE BULLSEYE) normally; a 1-column
 /// dot pulse (`·`, `○`, `•`, `○`) on legacy ConHost.
 ///
-/// Animates the "watching · N monitors" cue in the turn-status line: a
+/// Animates the "N monitors still running" cue in the turn-status line: a
 /// concentric circle that breathes open → shut like a scanning scope. Of
 /// the fancy frames only the white circle `○` (U+25CB, CP437 `0x09`) is
 /// part of CP437 — the bullseye `◎` and fisheye `◉` live in the Geometric
@@ -482,6 +482,21 @@ pub fn legacy_glyph_fallback(s: &str) -> Cow<'_, str> {
     Cow::Owned(to_legacy_glyphs(s))
 }
 
+/// Single-row toast sinks: glyph fallback, then map control chars to spaces.
+/// Borrows when the input is already clean (common path).
+pub fn sanitize_toast_message(msg: &str) -> Cow<'_, str> {
+    let glyph = legacy_glyph_fallback(msg);
+    if !glyph.chars().any(char::is_control) {
+        return glyph;
+    }
+    Cow::Owned(
+        glyph
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect(),
+    )
+}
+
 /// Pure glyph → legacy-safe mapping behind [`legacy_glyph_fallback`], split
 /// out so tests can exercise the substitution without faking the host probe.
 /// `√` matches [`check_mark`]'s fallback; `x` matches [`ballot_x`]'s.
@@ -732,6 +747,22 @@ mod tests {
             legacy_glyph_fallback("\u{2713} Saved"),
             Cow::Borrowed("\u{2713} Saved")
         ));
+    }
+
+    #[test]
+    fn sanitize_toast_message_borrows_when_clean() {
+        assert!(!is_legacy_windows_console());
+        assert!(matches!(
+            sanitize_toast_message("plain toast"),
+            Cow::Borrowed("plain toast")
+        ));
+    }
+
+    #[test]
+    fn sanitize_toast_message_maps_controls_to_spaces() {
+        let out = sanitize_toast_message("a\nb\tc");
+        assert_eq!(out.as_ref(), "a b c");
+        assert!(!out.chars().any(char::is_control));
     }
 
     #[test]

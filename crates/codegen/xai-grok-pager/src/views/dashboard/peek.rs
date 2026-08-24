@@ -260,19 +260,34 @@ pub fn compute_peek_fields(
                 if let Some(p) = agent.permission_queue.front() {
                     let q = sanitize_display_text(&p.title).into_owned();
                     // Live scope-aware labels: the peek's answer path attaches
-                    // the same selection meta, so the label must match it.
-                    let selected_words: Option<String> = p
+                    // the same selection meta, so each row's label must match
+                    // its own count (allow and deny scopes are independent).
+                    let selected_words = p.bash_highlights.as_ref().map(|h| {
+                        crate::views::permission_view::allow_scope_label(
+                            h,
+                            p.bash_command_raw.as_deref(),
+                            p.bash_selection_count,
+                        )
+                    });
+                    let deny_selected_words = p
                         .bash_highlights
                         .as_ref()
-                        .filter(|_| p.bash_selection_count > 0)
-                        .map(|h| h.highlighted_words[..p.bash_selection_count].join(" "));
+                        .filter(|_| p.bash_deny_selection_count > 0)
+                        .map(|h| h.highlighted_words[..p.bash_deny_selection_count].join(" "));
                     let opts = p
                         .options
                         .iter()
                         .map(|opt| {
+                            let row_words = if opt.option_id.0.as_ref()
+                                == crate::views::permission_view::REJECT_ALWAYS_COMMAND_OPTION_ID
+                            {
+                                deny_selected_words.as_deref()
+                            } else {
+                                selected_words.as_deref()
+                            };
                             let name = crate::views::permission_view::option_label_for_selection(
                                 opt,
-                                selected_words.as_deref(),
+                                row_words,
                                 p.mcp_scope.as_ref(),
                             );
                             (
@@ -571,7 +586,7 @@ pub fn render_peek_panel(
     live_tail: Option<PeekLiveTailArgs<'_>>,
     empty_hint: Option<&str>,
 ) -> PeekRenderResult {
-    use crate::views::prompt_widget::PromptStyle;
+    use crate::views::prompt_widget::{PromptBg, PromptStyle};
     use ratatui::widgets::{Block, BorderType, Borders, Widget};
     use unicode_width::UnicodeWidthStr;
     if area.area() == 0 || area.height < 3 || area.width < 20 {
@@ -724,7 +739,7 @@ pub fn render_peek_panel(
                             show_prefix: false,
                             vpad_top: 0,
                             chrome: false,
-                            bg_override: Some(theme.bg_base),
+                            bg: PromptBg::Canvas(theme.bg_base),
                             image_preview: false,
                             ..PromptStyle::default()
                         };
@@ -863,17 +878,14 @@ pub fn render_peek_panel(
         show_prefix: false,
         vpad_top: 0,
         chrome: false,
-        bg_override: Some(theme.bg_base),
+        bg: PromptBg::Canvas(theme.bg_base),
         placeholder_override: Some("reply\u{2026}"),
         image_preview: false,
         ..PromptStyle::default()
     };
-    // Stream the interim transcript into the reply box (and hide the caret)
-    // while dictating, so voice on the dashboard is visible even with a row's
-    // peek panel open — it stands in for the dispatch box's voice overlay.
+    // Interim STT into the reply box so voice stays visible with a peek open.
     let voice_overlay = (voice_listening || voice_interim.is_some()).then_some(
         crate::views::prompt_widget::VoicePromptOverlay {
-            listening: voice_listening,
             interim: voice_interim,
             color: theme.accent_running,
         },
@@ -936,8 +948,8 @@ pub fn reply_row_count(
         .max(1)
 }
 
-/// The header label for the peek panel, e.g. `"思考中"` / `"Thought"`,
-/// `"Response"`, `"Edit"`, `"Read"`, `"Bash"`, `"Working"`, …
+/// The header label for the peek panel, e.g. `"Thinking"` / `"Thought"`,
+/// `"Response"`, `"Edit"`, `"Read"`, `"Bash"`, `"Preparing"`, `"Working"`, …
 ///
 /// While the turn is RUNNING the label follows the live turn activity
 /// (`Thinking` / `Responding` / a running tool / `Working` when waiting),
@@ -972,8 +984,9 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
             // generic "工作中" fallback below.
             Some(TurnActivity::ToolRunning { .. }) => {}
             // Blocked on a suppressed tool (task output / wait / sleep) → keep
-            // the compact "工作中" the peek showed before this was surfaced.
-            Some(TurnActivity::Waiting(_)) => return "工作中".to_string(),
+            // the compact "Working" the peek showed before this was surfaced.
+            Some(TurnActivity::Waiting(_)) => return "Working".to_string(),
+            Some(TurnActivity::WritingToolCall(_)) => return "Preparing".to_string(),
             // Turn running but no live activity (e.g. just granted a
             // permission and waiting for tool results / the next inference) →
             // "工作中", never a stale response.
@@ -1021,11 +1034,12 @@ pub fn extract_last_response_type(agent: &AgentView) -> String {
                     return label.to_string();
                 }
             }
-            RenderBlock::Subagent(_) => return "子代理".to_string(),
-            RenderBlock::BgTask(_) => return "任务".to_string(),
-            RenderBlock::Btw(_) => return "旁注".to_string(),
-            RenderBlock::ContextInfo(_) => return "上下文".to_string(),
-            RenderBlock::CreditLimit(_) => return "额度限制".to_string(),
+            RenderBlock::Subagent(_) => return "Subagent".to_string(),
+            RenderBlock::Workflow(_) => return "Workflow".to_string(),
+            RenderBlock::BgTask(_) => return "Task".to_string(),
+            RenderBlock::Btw(_) => return "Btw".to_string(),
+            RenderBlock::ContextInfo(_) => return "Context".to_string(),
+            RenderBlock::CreditLimit(_) => return "Credit limit".to_string(),
             // The user's latest input marks the turn boundary — there's
             // no agent response after it yet.
             RenderBlock::UserPrompt(_) => break,
@@ -1151,6 +1165,7 @@ fn block_short_text(block: &crate::scrollback::block::RenderBlock) -> Option<Str
         RenderBlock::ToolCall(_) => Some("(tool call)".to_string()),
         RenderBlock::BgTask(_) => Some("(background task)".to_string()),
         RenderBlock::Subagent(_) => Some("(subagent)".to_string()),
+        RenderBlock::Workflow(_) => Some("(workflow)".to_string()),
         RenderBlock::Btw(_) => Some("(btw)".to_string()),
         RenderBlock::ContextInfo(_) => Some("(context info)".to_string()),
         RenderBlock::CreditLimit(_) => Some("(credit limit)".to_string()),

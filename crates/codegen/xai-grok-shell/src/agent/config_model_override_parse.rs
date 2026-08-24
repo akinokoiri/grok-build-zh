@@ -63,6 +63,15 @@ pub enum WarningTarget {
         #[serde(skip_serializing_if = "Option::is_none")]
         field: Option<String>,
     },
+    ModelProviderSection,
+    ModelProvider {
+        id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        field: Option<String>,
+    },
+    ConfigKey {
+        path: String,
+    },
 }
 
 impl WarningTarget {
@@ -73,13 +82,21 @@ impl WarningTarget {
             Self::Model { key, .. } => format!("model.\"{key}\""),
             Self::AuthProviderSection => "auth_provider".to_owned(),
             Self::AuthProvider { name, .. } => format!("auth_provider.\"{name}\""),
+            Self::ModelProviderSection => "model_providers".to_owned(),
+            Self::ModelProvider { id, .. } => format!("model_providers.\"{id}\""),
+            Self::ConfigKey { path } => path.clone(),
         }
     }
 
     pub(crate) fn field(&self) -> Option<&str> {
         match self {
-            Self::Model { field, .. } | Self::AuthProvider { field, .. } => field.as_deref(),
-            Self::ModelSection | Self::AuthProviderSection => None,
+            Self::Model { field, .. }
+            | Self::AuthProvider { field, .. }
+            | Self::ModelProvider { field, .. } => field.as_deref(),
+            Self::ModelSection
+            | Self::AuthProviderSection
+            | Self::ModelProviderSection
+            | Self::ConfigKey { .. } => None,
         }
     }
 }
@@ -140,6 +157,38 @@ impl ConfigWarning {
     pub(crate) fn auth_provider_section(kind: ConfigWarningKind, reason: String) -> Self {
         Self {
             target: WarningTarget::AuthProviderSection,
+            kind,
+            reason,
+        }
+    }
+
+    pub(crate) fn model_provider(
+        id: &str,
+        field: Option<&str>,
+        kind: ConfigWarningKind,
+        reason: String,
+    ) -> Self {
+        Self {
+            target: WarningTarget::ModelProvider {
+                id: id.to_owned(),
+                field: field.map(str::to_owned),
+            },
+            kind,
+            reason,
+        }
+    }
+
+    pub(crate) fn model_provider_section(kind: ConfigWarningKind, reason: String) -> Self {
+        Self {
+            target: WarningTarget::ModelProviderSection,
+            kind,
+            reason,
+        }
+    }
+
+    pub(crate) fn config_key(path: String, kind: ConfigWarningKind, reason: String) -> Self {
+        Self {
+            target: WarningTarget::ConfigKey { path },
             kind,
             reason,
         }
@@ -218,13 +267,13 @@ pub(crate) fn log_config_warnings(warnings: &[ConfigWarning]) {
             field = warning.field().unwrap_or("(entry)"),
             kind = ?warning.kind,
             reason = %warning.reason,
-            "model_override: skipped invalid config"
+            "config: ignored unrecognized or invalid entry"
         );
     }
     if !warnings.is_empty() {
         tracing::warn!(
             warnings = warnings.len(),
-            "model_override: parsed with warnings; run `grok inspect` for details"
+            "config: parsed with warnings; run `grok inspect` for details"
         );
     }
 }
@@ -623,10 +672,9 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].kind, ConfigWarningKind::NotATable);
         assert!(matches!(
-                    &warnings[0].target,
-                    WarningTarget::Model { key, field: None }
-        if key == "oops"
-                ));
+            &warnings[0].target,
+            WarningTarget::Model { key, field: None } if key == "oops"
+        ));
     }
 
     /// Exhaustive literal (no `..`): a new struct field is a compile error
@@ -634,18 +682,26 @@ mod tests {
     fn fully_populated_override() -> ConfigModelOverride {
         ConfigModelOverride {
             model: Some("m".into()),
+            model_family: None,
             base_url: Some("https://example.com".into()),
             name: Some("Model M".into()),
             description: Some("desc".into()),
             api_key: Some("key".into()),
             env_key: Some(crate::agent::config::EnvKeys::single("ENV_KEY")),
             auth_provider: Some("corp-gateway".into()),
+            model_provider: Some("gateway".into()),
             api_base_url: Some("https://api.example.com".into()),
             max_completion_tokens: Some(1024),
             temperature: Some(0.5),
             top_p: Some(0.9),
             api_backend: Some(ApiBackend::Messages),
             extra_headers: [("x-team".to_owned(), "codegen".to_owned())]
+                .into_iter()
+                .collect(),
+            query_params: [("api-version".to_owned(), "2026-07-22".to_owned())]
+                .into_iter()
+                .collect(),
+            env_http_headers: [("x-tenant-token".to_owned(), "TENANT_TOKEN_VAR".to_owned())]
                 .into_iter()
                 .collect(),
             context_window: Some(200_000),
@@ -655,6 +711,7 @@ mod tests {
             agent_type: Some("agent".into()),
             inference_idle_timeout_secs: Some(60),
             max_retries: Some(3),
+            subagent_rate_limit_max_attempts: Some(8),
             hidden: Some(false),
             supported_in_api: Some(true),
             reasoning_effort: Some(ReasoningEffort::High),

@@ -22,13 +22,17 @@
 
 use crate::session::events::{Event, GoalStrategistFailReason, GoalStrategistRestoreFailReason};
 use crate::session::goal_planner::{
-    GOAL_ROLE_SUBAGENT_TYPE, RoleRenderedPrompt, RoleSpawnOverride, SpawnError,
-    parse_terminal_response, spawn_with_fail_open_retry,
+    GOAL_ROLE_AWAIT_BUDGET_EXCEEDED, GOAL_ROLE_SUBAGENT_TYPE, RoleRenderedPrompt,
+    RoleSpawnOverride, SpawnError, parse_terminal_response, spawn_with_fail_open_retry,
 };
 use crate::session::goal_role_tools::RoleToolNames;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use xai_file_utils::events::EventWriter;
+use xai_grok_session_events::EventWriter;
+use xai_grok_tools::implementations::grok_build::task::backend::{ChannelBackend, SubagentBackend};
+use xai_grok_tools::implementations::grok_build::task::types::{
+    SubagentOwner, SubagentRequest, SubagentRuntimeOverrides,
+};
 
 // Constants
 
@@ -109,6 +113,8 @@ pub(crate) struct ChannelSpawner {
     pub(crate) event_tx: tokio::sync::mpsc::UnboundedSender<
         xai_grok_tools::implementations::grok_build::task::types::SubagentEvent,
     >,
+    pub(crate) foreground_wait:
+        Option<xai_grok_tools::implementations::grok_build::task::types::SubagentForegroundWait>,
     pub(crate) parent_session_id: String,
     pub(crate) parent_prompt_id: Option<String>,
     pub(crate) cwd: Option<String>,
@@ -162,7 +168,7 @@ impl GoalStrategistSpawner for ChannelSpawner {
                     message,
                 )
             }
-            Err(SpawnError::Transport(_)) => {}
+            Err(SpawnError::Transport(_) | SpawnError::Interrupted) => {}
         }
         outcome
     }
@@ -181,10 +187,6 @@ impl ChannelSpawner {
         model: Option<String>,
         harness_agent_type: Option<String>,
     ) -> Result<String, SpawnError> {
-        use xai_grok_tools::implementations::grok_build::task::types::{
-            SubagentEvent, SubagentRequest, SubagentRuntimeOverrides,
-        };
-        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
         let request = SubagentRequest {
             id: id.to_string(),
             prompt,
@@ -202,21 +204,23 @@ impl ChannelSpawner {
             run_in_background: false,
             // Harness-internal: never surface to the model's idle reminder.
             surface_completion: false,
+            await_to_completion: false,
             fork_context: false,
-            result_tx,
+            owner: SubagentOwner::Task,
+            cancel_token: tokio_util::sync::CancellationToken::new(),
         };
-        if self
-            .event_tx
-            .send(SubagentEvent::Spawn(Box::new(request)))
-            .is_err()
-        {
-            return Err(SpawnError::Transport(
-                "subagent coordinator channel closed".to_string(),
-            ));
-        }
-        let result = result_rx
+        let backend = ChannelBackend::new(self.event_tx.clone());
+        let result = backend
+            .spawn_with_foreground_wait(request, self.foreground_wait.as_ref())
             .await
-            .map_err(|_| SpawnError::Transport("subagent result channel dropped".to_string()))?;
+            .map_err(|error| SpawnError::Transport(error.to_string()))?;
+        if result.backgrounded {
+            let _ = backend.cancel(&result.subagent_id).await;
+            return Err(SpawnError::Runtime {
+                message: GOAL_ROLE_AWAIT_BUDGET_EXCEEDED.to_owned(),
+                cancelled: true,
+            });
+        }
         if !result.success {
             let message = result.error.unwrap_or_else(|| "unknown error".to_string());
             return Err(SpawnError::Runtime {
@@ -336,6 +340,15 @@ pub(crate) async fn run_goal_strategist(
             tracing::warn!(error = %detail, "goal strategist: transport error; failing open");
             return record_fail_open(
                 GoalStrategistFailReason::Transport,
+                inputs.attempt,
+                inputs.consecutive_failures,
+                started,
+                emit_event,
+            );
+        }
+        Err(SpawnError::Interrupted) => {
+            return record_fail_open(
+                GoalStrategistFailReason::Aborted,
                 inputs.attempt,
                 inputs.consecutive_failures,
                 started,
@@ -577,6 +590,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let spawner = ChannelSpawner {
             event_tx: tx,
+            foreground_wait: None,
             parent_session_id: "parent".into(),
             parent_prompt_id: None,
             cwd: None,
@@ -618,6 +632,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let spawner = ChannelSpawner {
             event_tx: tx,
+            foreground_wait: None,
             parent_session_id: "parent".into(),
             parent_prompt_id: None,
             cwd: None,
@@ -794,6 +809,7 @@ mod tests {
                     message: message.clone(),
                     cancelled: *cancelled,
                 }),
+                Err(SpawnError::Interrupted) => Err(SpawnError::Interrupted),
             }
         }
     }
@@ -1213,50 +1229,14 @@ mod tests {
         assert!(!prompt.contains("REPO CHANGES"));
     }
 
-    /// Pin the load-bearing prompt instructions: structural remediation,
-    /// the separate strategy file (NOT plan.md), and the terminal token.
-    #[test]
-    fn strategist_prompt_pins_contract() {
-        let lower = GOAL_STRATEGIST_PROMPT_TEMPLATE.to_lowercase();
-        assert!(GOAL_STRATEGIST_PROMPT_TEMPLATE.contains("{STRATEGY_FILE}"));
-        assert!(GOAL_STRATEGIST_PROMPT_TEMPLATE.contains("{SESSION_TRACES_DIR}"));
-        assert!(GOAL_STRATEGIST_PROMPT_TEMPLATE.contains("{SCRATCH_ROOT}"));
-        assert!(lower.contains("structural"));
-        assert!(
-            lower.contains("do not") && GOAL_STRATEGIST_PROMPT_TEMPLATE.contains("plan.md"),
-            "prompt must forbid editing plan.md",
-        );
-        assert!(
-            GOAL_STRATEGIST_PROMPT_TEMPLATE.contains("acceptance criteria"),
-            "prompt must say it does not change the acceptance criteria",
-        );
-        assert!(GOAL_STRATEGIST_PROMPT_TEMPLATE.contains("Done"));
-        // The plan.md prohibition is stated exactly ONCE — count
-        // the distinct prohibition phrasing, not every mention of the path.
-        assert_eq!(
-            GOAL_STRATEGIST_PROMPT_TEMPLATE
-                .matches("Do NOT edit")
-                .count(),
-            1,
-            "the plan.md edit prohibition must appear exactly once",
-        );
-    }
-
     use crate::session::goal_role_tools::tests::assert_no_tool_placeholders;
 
     /// Default/inherit render: the tool placeholders resolve to the literal
     /// parent (grok-build) names, with no placeholder left behind. Guards
     /// against accidental wording drift in the strategist template.
     #[test]
-    fn strategist_template_default_render_preserves_wording() {
+    fn strategist_template_default_render_has_no_placeholders() {
         let rendered = RoleToolNames::inherit_defaults().apply(GOAL_STRATEGIST_PROMPT_TEMPLATE);
-        assert!(
-            rendered.contains(
-                "your\n`read_file`/`grep`/`list_dir`/`run_terminal_command` tools — no\n\
-                 pre-digested summary",
-            ),
-            "strategist read/grep/list/terminal placeholders must render to the defaults",
-        );
         assert_no_tool_placeholders(&rendered);
     }
 

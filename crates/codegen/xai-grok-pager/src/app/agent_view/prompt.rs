@@ -19,42 +19,49 @@ impl AgentView {
         self.session.prompt_history_loading && self.prompt.text().is_empty()
     }
 
-    /// Build the combined prompt history, deduped by `text.trim()`: this
-    /// session's prompts first (scrollback `UserPrompt` blocks, newest
+    /// Build the combined prompt history, deduped by `text.trim()`: unsent
+    /// drafts first (the stash, then drafts it replaced), then this
+    /// session's prompts (scrollback `UserPrompt` blocks, newest
     /// first), then the fetched history (`session.prompt_history`).
     ///
-    /// Scrollback-first is load-bearing: the fetch races the shell-side
-    /// append of a fresh session's first prompts (and `PromptHistoryLoaded`
-    /// replaces the local list), so a just-sent prompt may exist only as a
-    /// scrollback block — it must still rank newest.
+    /// Drafts rank ahead of sent prompts so Up reaches a set-aside draft first.
+    /// Scrollback-before-fetched is load-bearing: the fetch races the
+    /// shell-side append of a fresh session's first prompts (and
+    /// `PromptHistoryLoaded` replaces the local list), so a just-sent prompt
+    /// may exist only as a scrollback block and must still rank newest.
     pub fn combined_prompt_history(&self) -> Vec<crate::views::history_search::HistoryEntry> {
         use crate::scrollback::block::RenderBlock;
         use crate::views::history_search::HistoryEntry;
         use std::collections::HashSet;
 
+        fn push_unique(out: &mut Vec<HistoryEntry>, seen: &mut HashSet<String>, text: String) {
+            let key = text.trim().to_string();
+            if !key.is_empty() && seen.insert(key) {
+                out.push(HistoryEntry { text });
+            }
+        }
+
         let mut seen: HashSet<String> = HashSet::new();
         let mut history = Vec::new();
+
+        if let Some(entry) = &self.prompt_stash {
+            push_unique(&mut history, &mut seen, entry.history_text());
+        }
+
+        for text in &self.prompt_stash_evicted {
+            push_unique(&mut history, &mut seen, text.clone());
+        }
 
         for i in (0..self.scrollback.len()).rev() {
             if let Some(entry) = self.scrollback.entry(i)
                 && let RenderBlock::UserPrompt(block) = &entry.block
             {
-                let key = block.text.trim().to_string();
-                if !key.is_empty() && seen.insert(key) {
-                    history.push(HistoryEntry {
-                        text: block.text.clone(),
-                    });
-                }
+                push_unique(&mut history, &mut seen, block.text.clone());
             }
         }
 
         for prompt in &self.session.prompt_history {
-            let key = prompt.trim().to_string();
-            if !key.is_empty() && seen.insert(key) {
-                history.push(HistoryEntry {
-                    text: prompt.clone(),
-                });
-            }
+            push_unique(&mut history, &mut seen, prompt.clone());
         }
 
         history
@@ -116,7 +123,22 @@ impl AgentView {
         // dropdown state derived from that text would otherwise steal the
         // arrows mid-browse.
         if self.prompt.history_search.is_active() {
+            // Tear down the history overlay before opening the cheatsheet: it
+            // renders unconditionally and would bleed around the popup, and Esc
+            // would otherwise silently resume the browse instead of closing help.
+            if registry.matches_id(ActionId::ShortcutsHelp, key) {
+                self.close_history_restoring_saved();
+                return self.handle_agent_action_with_registry(ActionId::ShortcutsHelp, registry);
+            }
             return self.handle_history_search_key(key);
+        }
+
+        // Tab-family chords drop the prompt highlight no matter which layer
+        // consumes them (dropdown accepts, registry actions, widget decline).
+        let mut dropped_highlight = false;
+        if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
+            dropped_highlight = self.prompt.textarea.selection_range().is_some();
+            self.prompt.textarea.clear_selection();
         }
 
         // ── File search intercept ───────────────────────────────────────
@@ -151,6 +173,16 @@ impl AgentView {
         // bypasses the multiline-mode Enter→newline swap so the command
         // is actually sent.
         let mut slash_accepted_send = false;
+        if key.code == KeyCode::Enter
+            && key.modifiers.is_empty()
+            && !self.prompt.slash_open()
+            && crate::slash::is_command_complete(
+                self.prompt.text(),
+                self.prompt.slash_controller.registry(),
+            )
+        {
+            slash_accepted_send = true;
+        }
         if self.prompt.slash_open() && !self.prompt.file_search_visible() {
             if prompt_paging && registry.matches_id(ActionId::PageUp, key) {
                 self.prompt
@@ -203,28 +235,27 @@ impl AgentView {
                 // stay open (row's insert_text ends with space => chains).
                 KeyCode::Enter if key.modifiers.is_empty() => {
                     let snap = self.prompt.slash_snapshot();
-                    // Trailing space = "more input expected" (command takes
-                    // args, or arg row chains into a sub-menu).
-                    let chains = snap
-                        .selection()
-                        .is_some_and(|row| row.insert_text.ends_with(' '));
-
-                    // Commit any live preview before accepting.
-                    self.prompt.slash_commit_preview();
-
-                    // Accept the selected completion (mutates text).
-                    self.prompt.accept_slash_completion(&self.session.models);
-
-                    if chains {
-                        // Stay open so refresh_slash renders the next phase.
-                        return InputOutcome::Changed;
+                    let exact_command = crate::slash::is_typed_slash_selected(
+                        &snap,
+                        self.prompt.text(),
+                        self.prompt.slash_controller.registry(),
+                    );
+                    if exact_command {
+                        self.prompt.slash_commit_preview();
+                        self.prompt.slash_close();
+                        slash_accepted_send = true;
+                    } else {
+                        let chains = snap
+                            .selection()
+                            .is_some_and(|row| row.insert_text.ends_with(' '));
+                        self.prompt.slash_commit_preview();
+                        self.prompt.accept_slash_completion(&self.session.models);
+                        if chains {
+                            return InputOutcome::Changed;
+                        }
+                        self.prompt.slash_close();
+                        slash_accepted_send = true;
                     }
-
-                    // Terminal row: close dropdown and send the prompt.
-                    self.prompt.slash_close();
-                    slash_accepted_send = true;
-                    // Fall through — the action registry will pick up SendPrompt
-                    // below, which calls try_send() on the updated text.
                 }
                 // Everything else: fall through to normal text editing
                 // (which calls refresh_slash via PromptEvent::Edited).
@@ -411,34 +442,25 @@ impl AgentView {
 
         // 0b. (History-panel intercept lives at the top of this fn.)
 
-        // 0c. Prompt history panel. Two entry points, one panel:
-        //   - /history: search mode — the composer is the filter query.
-        //   - Up on an empty prompt: browse mode — opens with the newest
-        //     prompt filled into the composer; Up/Down step with
-        //     live-populate, Down at the newest closes, typing detaches to
-        //     edit. Down never opens the panel.
-        // Browse activation is Normal-input-mode only (recalling a chat
-        // prompt into a Bash/Remember composer would submit it under that
-        // mode); a recalled `! cmd` entry flips the composer to Bash itself.
+        // 0c. Up on an empty prompt: the queue claims it, the prompt history panel takes it when the queue is empty. Two entry points, one panel:
+        //   - /history: search mode, the composer is the filter query.
+        //   - Up on an empty prompt: browse mode, opens with the newest prompt filled into the composer.
+        //     Up/Down step with live-populate, Down at the newest closes, typing detaches to edit. Down never opens the panel.
+        // Browse activation is Normal-input-mode only (recalling a chat prompt into a Bash/Remember composer would submit it under that mode).
+        // A recalled `! cmd` entry flips the composer to Bash itself.
         if self.prompt_mode == PromptMode::Normal
             && self.prompt.text().is_empty()
             && !self.prompt.file_search_visible()
             && key!(Up).matches(key)
             && self.prompt_input_mode == PromptInputMode::Normal
         {
-            let history = self.combined_prompt_history();
-            let current_text = self.prompt.text().to_string();
-            if !history.is_empty() {
-                self.prompt
-                    .history_search
-                    .activate_browse(&history, &current_text);
-                // The daemon fills the panel async; fill the newest
-                // entry deterministically from the input slice.
-                let newest = history[0].text.clone();
-                self.populate_prompt_from_history(&newest);
+            // The queue holds the text just written, newer than any history entry.
+            if let Some(outcome) = self.try_focus_queue_from_prompt() {
+                return outcome;
             }
-            // Consumed even with empty history (Up on an empty composer
-            // has no cursor motion to fall back to).
+
+            self.open_history_browse_at_newest();
+            // Consumed even with empty history (Up on an empty composer has no cursor motion to fall back to).
             return InputOutcome::Changed;
         }
 
@@ -466,10 +488,8 @@ impl AgentView {
             return InputOutcome::Changed;
         }
 
-        // 0e. Exit special input mode on empty prompt using per-mode exit keys
-        //     (Bash/Remember: Backspace/Esc/Ctrl+W/U/C; Feedback: Backspace/Esc only).
-        //     With non-empty text, Esc falls through to Esc policy
-        //     (mid-turn swallow / clear / rewind). Mode is preserved for re-focus.
+        // 0e. Exit special input mode on empty prompt using per-mode exit keys (Bash/Remember: Backspace/Esc/Ctrl+W/U/C).
+        //     With non-empty text, Esc falls through to Esc policy (cancel / mid-turn swallow / clear / rewind). Mode is preserved for re-focus.
         if self.prompt_input_mode.is_exit_key(key) && self.prompt.text().is_empty() {
             self.prompt_input_mode = PromptInputMode::Normal;
             return InputOutcome::Changed;
@@ -532,7 +552,7 @@ impl AgentView {
                         && !slash_accepted_send
                         && crate::input::is_apple_terminal_newline_modifier_held()
                     {
-                        self.prompt.textarea.insert_str("\n");
+                        self.prompt.insert_replacing_selection("\n");
                         return InputOutcome::Changed;
                     }
 
@@ -555,7 +575,7 @@ impl AgentView {
                         {
                             return outcome;
                         }
-                        self.prompt.textarea.insert_str("\n");
+                        self.prompt.insert_replacing_selection("\n");
                         return InputOutcome::Changed;
                     }
                     if let Some(text) = self.prompt.try_send() {
@@ -593,6 +613,11 @@ impl AgentView {
                     return InputOutcome::Changed;
                 }
                 ActionId::InterjectPrompt => {
+                    crate::actions::log_shortcut_used(
+                        key,
+                        ActionId::InterjectPrompt,
+                        When::PromptFocused.telemetry_name(),
+                    );
                     // Editing-queued intercept lives in `queue_edit.rs`.
                     if let Some(outcome) = self.interject_editing_queued_intercept() {
                         return outcome;
@@ -602,32 +627,50 @@ impl AgentView {
                     //    that text as the next prompt.
                     // 2) Empty composer + a visible follow-up in the queue →
                     //    same as bare Enter: send the top row now.
-                    // 3) Idle / nothing to send → no-op (not send-like-Enter).
+                    // 3) Idle / nothing to send: promote to ToggleYolo when that chord
+                    //    matches (Apple Terminal Ctrl+O opens YOLO / free-tier CTA).
                     let text = self.prompt.text().trim().to_string();
                     let turn_running = self.session.state.is_turn_running();
                     if !text.is_empty() {
-                        if !turn_running {
-                            return InputOutcome::Changed;
+                        if turn_running {
+                            // Paste-then-immediate-send: an image probe is still
+                            // off-thread. Stash (draft untouched) and re-issue on
+                            // completion so the not-yet-attached chip isn't dropped.
+                            if self.paste_probe_in_flight > 0 {
+                                self.deferred_send = Some(AgentDeferredSend::Interject);
+                                return InputOutcome::Changed;
+                            }
+                            // Drain images BEFORE set_text("") wipes the chip elements.
+                            let images = self.prompt.drain_images();
+                            self.prompt.set_text("");
+                            self.note_draft_consumed();
+                            return InputOutcome::Action(Action::SendPromptNow { text, images });
                         }
-                        // Paste-then-immediate-send: an image probe is still
-                        // off-thread. Stash (draft untouched) and re-issue on
-                        // completion so the not-yet-attached chip isn't dropped.
-                        if self.paste_probe_in_flight > 0 {
-                            self.deferred_send = Some(AgentDeferredSend::Interject);
-                            return InputOutcome::Changed;
-                        }
-                        // Drain images BEFORE set_text("") wipes the chip elements.
-                        let images = self.prompt.drain_images();
-                        self.prompt.set_text("");
-                        return InputOutcome::Action(Action::SendPromptNow { text, images });
-                    }
-                    if turn_running && let Some(outcome) = self.try_send_now_queued_from_prompt() {
+                    } else if turn_running
+                        && let Some(outcome) = self.try_send_now_queued_from_prompt()
+                    {
                         return outcome;
+                    }
+                    if registry.matches_id(ActionId::ToggleYolo, key) {
+                        return self
+                            .handle_agent_action_with_registry(ActionId::ToggleYolo, registry);
                     }
                     return InputOutcome::Changed;
                 }
                 ActionId::ToggleMultiline => {
                     return InputOutcome::Action(Action::SetMultilineMode(!self.multiline_mode));
+                }
+                ActionId::StashPrompt => {
+                    let outcome = self.handle_stash_prompt_key();
+                    // A declined chord falls through like an unclaimed key.
+                    if !matches!(outcome, InputOutcome::Unchanged) {
+                        crate::actions::log_shortcut_used(
+                            key,
+                            ActionId::StashPrompt,
+                            When::PromptFocused.telemetry_name(),
+                        );
+                        return outcome;
+                    }
                 }
                 other => {
                     if let Some(outcome) = resolve_action(Some(other)) {
@@ -679,7 +722,7 @@ impl AgentView {
             let cancel_with_draft =
                 matches!(action_id, ActionId::CancelTurn) && !self.prompt.text().is_empty();
             if !cancel_with_draft {
-                let outcome = self.handle_agent_action(action_id);
+                let outcome = self.handle_agent_action_with_registry(action_id, registry);
                 // Only consume the key if the agent action actually did
                 // something. When idle, runtime-guarded actions like
                 // CancelTurn return Unchanged so the key can fall through
@@ -736,13 +779,50 @@ impl AgentView {
             }
         }
 
-        // 4. Structural keys that aren't in the registry. Tab leaves prompt;
-        //    Esc is owned by try_handle_esc_policy (above), not focus.
+        // 4. Structural keys declined by the widget. Tab leaves the prompt only
+        //    when this registry exposes the scrollback surface; minimal omits
+        //    FocusScrollback, so an otherwise-unclaimed Tab stays with its
+        //    logical composer. Dropdown/completion Tab paths already consumed
+        //    their presses above. Esc remains owned by try_handle_esc_policy.
         match key.code {
-            KeyCode::Tab => InputOutcome::Action(Action::FocusScrollback),
+            KeyCode::Tab if registry.find(ActionId::FocusScrollback).is_some() => {
+                InputOutcome::Action(Action::FocusScrollback)
+            }
+            // A dropped highlight must repaint even when nothing claims the key.
+            _ if dropped_highlight => InputOutcome::Changed,
             _ => InputOutcome::Unchanged,
         }
     }
+
+    /// Browse mode fills the composer with the newest entry as it opens.
+    fn open_history_browse_at_newest(&mut self) {
+        let history = self.combined_prompt_history();
+        let current_text = self.prompt.text().to_string();
+        if !history.is_empty() {
+            // Activation fails when the matcher thread can't start, and the panel can never populate then.
+            // Filling the composer would only be undone by the next Down/Enter.
+            let opened = self
+                .prompt
+                .history_search
+                .activate_browse(&history, &current_text);
+            // The daemon fills the panel later, so take the newest entry from the history already in hand.
+            if opened && let Some(entry) = history.first() {
+                let newest = entry.text.clone();
+                self.populate_prompt_from_history(&newest);
+            }
+        }
+    }
+
+    /// How long after an Esc-fired cancel the idle rewind ARM stays
+    /// suppressed (see [`Self::rewind_arm_suppressed`]). Must exceed
+    /// `PendingAction::ESC_DOUBLE_PRESS_TTL` (800ms): the grace exists to
+    /// absorb the double-press gesture itself, so it has to outlast one full
+    /// arm-to-fire window or a mash could still arm-and-fire around it
+    /// (invariant pinned by `esc_cancel_rewind_grace_outlives_double_press_ttl`).
+    /// The pty-only `GROK_ESC_DOUBLE_PRESS_MS` override can exceed this; no
+    /// pty case mashes Esc across a cancel.
+    pub(crate) const ESC_CANCEL_REWIND_GRACE: std::time::Duration =
+        std::time::Duration::from_millis(1000);
 
     /// Esc policy (Prompt/Scrollback after overlay steal).
     ///
@@ -757,19 +837,46 @@ impl AgentView {
         }
 
         // This bare Esc is now owned by the policy: every path below consumes the
-        // event (mid-turn swallow / arm-clear / arm-rewind / idle swallow). Disarm
-        // the Esc→d flight-recorder combo here, uniformly — the `0-esc-d` block
-        // set `esc_pressed_at` on this same press, but since the policy is
-        // handling the Esc, a following `d` is the user's text, not a dump.
+        // event (cancel / mid-turn swallow / arm-clear / arm-rewind / idle
+        // swallow). Disarm the Esc→d flight-recorder combo here, uniformly — the
+        // `0-esc-d` block set `esc_pressed_at` on this same press, but since the
+        // policy is handling the Esc, a following `d` is the user's text, not a
+        // dump.
         self.esc_pressed_at = None;
 
-        // Mid-turn running: swallow Esc (do not cancel or arm clear/rewind).
-        if self.session.state.is_turn_running() {
+        // A blocking card is still pending, parked behind the scrollback — the
+        // only way its Esc reaches this policy. Swallow it like the idle arms
+        // below: cancelling here would kill the turn the card is blocking on,
+        // and `esc_would_cancel_turn`, which the bar reads, already promises
+        // it will not.
+        if !self.no_input_overlay_pending() {
             return Some(InputOutcome::Changed);
         }
-        // Stuck cancel: re-send CancelTurn (Ctrl+C escalates to Quit instead).
-        if self.session.state.is_cancelling() {
+
+        // Mid-turn running, fullscreen vim mode: swallow Esc (do not cancel or
+        // arm clear/rewind — Ctrl+C stays the cancel gesture there).
+        // `is_minimal_mode` is the per-agent injected screen mode, not the
+        // process global, so tests stay race-free. A streaming wake turn
+        // follows the same policy as a running turn (the pane state is Idle
+        // only because wake turns are not adopted); once its cancel was sent
+        // it follows the cancelling retry below instead, in every mode.
+        if (self.session.state.is_turn_running()
+            || (self.wake_turn_active() && !self.wake_turn_cancelling()))
+            && !crate::app::esc_cancels_turn(self.is_minimal_mode(), self.vim_mode)
+        {
+            return Some(InputOutcome::Changed);
+        }
+        // Mid-turn (minimal / non-vim): cancel immediately from prompt or
+        // scrollback, even with a draft. Also — in every mode — while already
+        // cancelling, so a lost cancel notification is re-sent (Ctrl+C
+        // escalates to Quit instead). Push the grace deadline out so an Esc
+        // mash past the cancel cannot silently arm the rewind picker below.
+        if self.session.state.is_turn_running()
+            || self.wake_turn_active()
+            || self.any_cancel_pending()
+        {
             self.cancel_trigger_hint = Some(crate::app::actions::CancelTrigger::Esc);
+            self.suppress_rewind_arm(std::time::Instant::now());
             return Some(InputOutcome::Action(Action::CancelTurn));
         }
 
@@ -778,8 +885,9 @@ impl AgentView {
         // keys — clearing a draft the reader has scrolled past would be a
         // surprising cross-pane side effect. REWIND requires an EMPTY prompt
         // (checked below), so there is no draft to clobber or silently stash and
-        // it may arm from EITHER pane. The mid-turn swallow / cancel-retry
-        // (above) stays cross-pane; any other idle Esc swallows (below).
+        // it may arm from EITHER pane. The mid-turn cancel or swallow /
+        // cancel-retry (above) stays cross-pane; any other idle Esc swallows
+        // (below).
         let has_content = !self.prompt.text().is_empty() || !self.prompt.images.is_empty();
 
         // Idle + non-empty (text and/or image chips) + prompt pane → arm clear (2× Esc).
@@ -800,20 +908,23 @@ impl AgentView {
         // undoable prompts". The last three guards restate shields that the
         // PROMPT pane gets upstream but that the SCROLLBACK pane bypasses (so
         // they are vacuously true on the prompt pane): step 0e exits a latent
-        // Bash/Remember/Feedback mode on an empty-composer Esc before the
-        // policy runs — without the mode guard a rewind restore would drop
-        // conversation text into a still-armed `!` composer; the needs-input
-        // overlay intercepts exempt the scrollback pane while the open
+        // Bash/Remember mode on an empty-composer Esc before the policy runs
+        // (without the mode guard a rewind restore would drop conversation
+        // text into a still-armed `!` composer); the needs-input overlay
+        // intercepts exempt the scrollback pane while the open
         // picker's own intercept does not, so arming under a pending
         // permission/plan/cancel-turn/question overlay would let the picker
         // key-starve it (and a rewind mutate the session out from under it);
         // and the step 0b history-search intercept is prompt-pane-only, so
         // arming would stack the rewind picker on the open search overlay.
+        // The grace guard holds only this ARM (never modal/other Esc handling)
+        // right after an Esc-fired cancel — see `rewind_arm_suppressed`.
         if !has_content
             && self.scrollback.turn_count() > 0
             && self.prompt_input_mode == PromptInputMode::Normal
             && self.no_input_overlay_pending()
             && !self.prompt.history_search.is_active()
+            && !self.rewind_arm_suppressed(std::time::Instant::now())
         {
             return Some(InputOutcome::ArmPending {
                 action: Action::RewindShowPicker,
@@ -824,10 +935,34 @@ impl AgentView {
         }
 
         // Idle with nothing to arm (scrollback pane with a draft, empty prompt
-        // + no turns, or a scrollback Esc under a latent composer mode /
-        // pending needs-input overlay / open history search): swallow Esc (not
-        // FocusScrollback, and not a bubble-up to global quit).
+        // + no turns, a scrollback Esc under a latent composer mode / pending
+        // needs-input overlay / open history search, or the post-cancel grace):
+        // swallow Esc (not FocusScrollback, and not a bubble-up to global quit).
         Some(InputOutcome::Changed)
+    }
+
+    /// Arm the post-cancel grace: push the rewind-ARM suppression deadline
+    /// out to `now + ESC_CANCEL_REWIND_GRACE`. After an Esc-fired cancel the
+    /// session goes Cancelling → Idle with (typically) an empty composer, so
+    /// a user mashing Esc would otherwise immediately arm-and-fire the
+    /// silent double-Esc rewind picker. Takes `now` so tests are
+    /// deterministic (no fabricated `Instant`s).
+    pub(crate) fn suppress_rewind_arm(&mut self, now: std::time::Instant) {
+        self.rewind_suppress_deadline = Some(now + Self::ESC_CANCEL_REWIND_GRACE);
+    }
+
+    /// Check-and-retire the post-cancel grace: true while `now` is before
+    /// the deadline set by [`Self::suppress_rewind_arm`]; an expired
+    /// deadline is cleared on this consult so no stale `Instant` lingers.
+    pub(crate) fn rewind_arm_suppressed(&mut self, now: std::time::Instant) -> bool {
+        match self.rewind_suppress_deadline {
+            Some(deadline) if now < deadline => true,
+            Some(_) => {
+                self.rewind_suppress_deadline = None;
+                false
+            }
+            None => false,
+        }
     }
 
     /// Put a history entry into the composer (browse-mode live populate and
@@ -862,6 +997,29 @@ impl AgentView {
         {
             self.populate_prompt_from_history(&text);
         }
+    }
+
+    /// Commit a recalled history entry into the composer. Shared by the keyboard accept and the
+    /// mouse click, which drifted apart once and left the mouse path holding a duplicate draft.
+    pub(in crate::app) fn accept_history_entry(&mut self, text: &str) {
+        // Restore bash mode from a `! ` history entry unless Remember is active.
+        if self.prompt_input_mode != PromptInputMode::Remember
+            && let Some(cmd) = text.strip_prefix("! ")
+        {
+            self.prompt_input_mode = PromptInputMode::Bash;
+            self.prompt.set_text(cmd);
+        } else if self.prompt_input_mode == PromptInputMode::Bash {
+            self.prompt_input_mode = PromptInputMode::Normal;
+            self.prompt.set_text(text);
+        } else {
+            self.prompt.set_text(text);
+        }
+
+        let len = self.prompt.textarea.text().len();
+        self.prompt.textarea.set_cursor(len);
+        self.reclaim_stash_recalled_into_composer();
+        // Drop the recomputed `@`-completion context (same suppression as populate).
+        self.prompt.file_search.clear_context();
     }
 
     /// Close the history panel and restore the pre-open composer (Esc, and
@@ -903,29 +1061,9 @@ impl AgentView {
                 .map(str::to_owned)
             {
                 self.prompt.history_search.deactivate();
-                // Detect `! ` prefix to restore bash mode. Refined: only reset to Normal
-                // if currently in Bash (preserve Feedback/Remember if active). The ! prefix
-                // restore only applies when not in Feedback/Remember.
-                if self.prompt_input_mode != PromptInputMode::Feedback
-                    && self.prompt_input_mode != PromptInputMode::Remember
-                    && let Some(cmd) = text.strip_prefix("! ")
-                {
-                    self.prompt_input_mode = PromptInputMode::Bash;
-                    self.prompt.set_text(cmd);
-                } else if self.prompt_input_mode == PromptInputMode::Bash {
-                    self.prompt_input_mode = PromptInputMode::Normal;
-                    self.prompt.set_text(&text);
-                } else {
-                    self.prompt.set_text(&text);
-                }
-                // Move cursor to end of text.
-                let len = self.prompt.textarea.text().len();
-                self.prompt.textarea.set_cursor(len);
-                // Drop the recomputed `@`-completion context (same
-                // suppression as populate).
-                self.prompt.file_search.clear_context();
+                self.accept_history_entry(&text);
             } else {
-                // No results — just deactivate.
+                // No results, just deactivate.
                 self.close_history_restoring_saved();
             }
             return InputOutcome::Changed;
@@ -977,6 +1115,7 @@ impl AgentView {
         // keep the populated text, and apply the key as a normal edit.
         if browse {
             self.prompt.history_search.deactivate();
+            self.reclaim_stash_recalled_into_composer();
             self.prompt.textarea.input(*key);
             // The populated text may be a slash command — refresh completion.
             self.prompt.refresh_slash(&self.session.models);
@@ -1034,13 +1173,130 @@ mod shift_tab_cycle_mode_tests {
     }
 
     #[test]
-    fn plain_tab_does_not_cycle_mode() {
+    fn plain_tab_follows_focus_scrollback_registration() {
+        let tab = KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE);
+        for mode in [
+            crate::app::ScreenMode::Fullscreen,
+            crate::app::ScreenMode::Inline,
+        ] {
+            let mut agent = super::test_fixtures::make_agent();
+            let registry = ActionRegistry::defaults_for(mode);
+            let outcome = agent.handle_prompt_key_with_registry_for_test(&tab, &registry);
+            assert!(
+                matches!(outcome, InputOutcome::Action(Action::FocusScrollback)),
+                "{mode:?} plain Tab must focus scrollback, got {outcome:?}",
+            );
+        }
+
+        let mut minimal = super::test_fixtures::make_agent();
+        let registry = ActionRegistry::defaults_for(crate::app::ScreenMode::Minimal);
+        let outcome = minimal.handle_prompt_key_with_registry_for_test(&tab, &registry);
+        assert!(matches!(outcome, InputOutcome::Unchanged));
+        assert_eq!(minimal.active_pane, AgentPane::Prompt);
+    }
+
+    #[test]
+    fn exact_optional_arg_slash_enter_sends_without_accepting_completion() {
         let mut agent = super::test_fixtures::make_agent();
+        agent.multiline_mode = true;
+        agent.prompt.set_text("/doctor");
+        agent.prompt.set_cursor(agent.prompt.text().len());
+        agent.prompt.refresh_slash(&agent.session.models);
+        assert!(agent.prompt.slash_open());
+
         let outcome =
-            agent.handle_prompt_key_for_test(&KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+            agent.handle_prompt_key_for_test(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(
-            matches!(outcome, InputOutcome::Action(Action::FocusScrollback)),
-            "plain Tab must focus scrollback, got {outcome:?}",
+            matches!(
+                outcome,
+                InputOutcome::Action(Action::SendPrompt(ref text)) if text == "/doctor"
+            ),
+            "got {outcome:?}; prompt={:?}",
+            agent.prompt.text()
+        );
+    }
+
+    #[test]
+    fn minimal_slash_dropdown_still_consumes_tab() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.prompt.set_text("/");
+        agent.prompt.refresh_slash(&agent.session.models);
+        assert!(
+            agent.prompt.slash_open(),
+            "precondition: slash dropdown open"
+        );
+
+        let registry = ActionRegistry::defaults_for(crate::app::ScreenMode::Minimal);
+        let outcome = agent.handle_prompt_key_with_registry_for_test(
+            &KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+            &registry,
+        );
+        assert!(matches!(outcome, InputOutcome::Changed));
+        assert_eq!(agent.active_pane, super::AgentPane::Prompt);
+    }
+}
+
+#[cfg(test)]
+mod slash_menu_enter_tests {
+    use super::*;
+    use crate::app::app_view::InputOutcome;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn enter() -> KeyEvent {
+        KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+    }
+
+    fn agent_with_slash(text: &str) -> crate::app::agent_view::AgentView {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.prompt.set_text(text);
+        agent.prompt.set_cursor(text.len());
+        agent.prompt.refresh_slash(&agent.session.models);
+        assert!(agent.prompt.slash_open());
+        agent
+    }
+
+    fn select_display(agent: &mut crate::app::agent_view::AgentView, display: &str) {
+        let idx = agent
+            .prompt
+            .slash_snapshot()
+            .matches
+            .iter()
+            .position(|row| row.display == display)
+            .unwrap_or_else(|| panic!("{display} in slash menu"));
+        for _ in 0..idx {
+            agent.prompt.slash_move_selection(1);
+        }
+    }
+
+    #[test]
+    fn enter_sends_highlighted_command_not_typed_prefix() {
+        let mut agent = agent_with_slash("/log");
+        select_display(&mut agent, "/login");
+        let outcome = agent.handle_prompt_key_for_test(&enter());
+        assert!(
+            matches!(outcome, InputOutcome::Action(Action::SendPrompt(ref text)) if text == "/login"),
+            "got {outcome:?}; prompt={:?}",
+            agent.prompt.text()
+        );
+    }
+
+    #[test]
+    fn enter_keeps_typed_alias_when_that_command_is_highlighted() {
+        let mut agent = agent_with_slash("/log");
+        let display = agent
+            .prompt
+            .slash_snapshot()
+            .matches
+            .iter()
+            .find(|row| row.display == "/log" || row.display == "/transcript")
+            .map(|row| row.display.clone())
+            .expect("/log or /transcript in slash menu");
+        select_display(&mut agent, &display);
+        let outcome = agent.handle_prompt_key_for_test(&enter());
+        assert!(
+            matches!(outcome, InputOutcome::Action(Action::SendPrompt(ref text)) if text == "/log"),
+            "got {outcome:?}; prompt={:?}",
+            agent.prompt.text()
         );
     }
 }
@@ -1442,6 +1698,59 @@ mod history_browse_panel_tests {
 }
 
 #[cfg(test)]
+mod rewind_grace_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Pure deadline semantics with an injected `now`: suppressed strictly
+    /// before the deadline, expired (and retired) at it.
+    #[test]
+    fn suppress_rewind_arm_holds_until_deadline_then_retires() {
+        let mut agent = super::test_fixtures::make_agent();
+        let t0 = Instant::now();
+        assert!(!agent.rewind_arm_suppressed(t0), "no cancel yet — no grace");
+
+        agent.suppress_rewind_arm(t0);
+        assert!(agent.rewind_arm_suppressed(t0));
+        assert!(agent.rewind_arm_suppressed(
+            t0 + AgentView::ESC_CANCEL_REWIND_GRACE - Duration::from_millis(1)
+        ));
+
+        assert!(
+            !agent.rewind_arm_suppressed(t0 + AgentView::ESC_CANCEL_REWIND_GRACE),
+            "the deadline itself is expiry"
+        );
+        assert!(
+            agent.rewind_suppress_deadline.is_none(),
+            "the expired deadline is cleared on the consult"
+        );
+    }
+
+    /// A later Esc-fired cancel (e.g. a cancel-retry mash) pushes the
+    /// deadline out; the grace is measured from the LAST cancel press.
+    #[test]
+    fn suppress_rewind_arm_refreshes_on_later_cancel() {
+        let mut agent = super::test_fixtures::make_agent();
+        let t0 = Instant::now();
+        agent.suppress_rewind_arm(t0);
+        let t1 = t0 + Duration::from_millis(500);
+        agent.suppress_rewind_arm(t1);
+        assert!(agent.rewind_arm_suppressed(t0 + AgentView::ESC_CANCEL_REWIND_GRACE));
+        assert!(!agent.rewind_arm_suppressed(t1 + AgentView::ESC_CANCEL_REWIND_GRACE));
+    }
+
+    /// The grace must outlast one full idle double-press window — see the
+    /// constant's doc for why.
+    #[test]
+    fn esc_cancel_rewind_grace_outlives_double_press_ttl() {
+        assert!(
+            AgentView::ESC_CANCEL_REWIND_GRACE
+                > crate::app::app_view::PendingAction::ESC_DOUBLE_PRESS_TTL
+        );
+    }
+}
+
+#[cfg(test)]
 mod prompt_suggestion_key_tests {
     use super::*;
     use crate::app::app_view::InputOutcome;
@@ -1496,6 +1805,33 @@ mod prompt_suggestion_key_tests {
             matches!(outcome, InputOutcome::Action(Action::FocusScrollback)),
             "Tab keeps its focus-cycling behavior when no ghost is visible: {outcome:?}"
         );
+    }
+
+    /// Tab drops the highlight even though the registry consumes the chord.
+    #[test]
+    fn tab_with_selection_clears_highlight_and_focuses_scrollback() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.prompt.textarea.insert_str("alpha beta");
+        agent.prompt.textarea.set_selection(0, 5);
+
+        let outcome = agent.handle_prompt_key_for_test(&key(KeyCode::Tab));
+        assert!(matches!(
+            outcome,
+            InputOutcome::Action(Action::FocusScrollback)
+        ));
+        assert_eq!(agent.prompt.textarea.selection_range(), None);
+    }
+
+    /// Shift+Tab (CycleMode) drops the highlight on the same press too.
+    #[test]
+    fn shift_tab_with_selection_clears_highlight_and_cycles_mode() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.prompt.textarea.insert_str("alpha beta");
+        agent.prompt.textarea.set_selection(0, 5);
+
+        let outcome = agent.handle_prompt_key_for_test(&key(KeyCode::BackTab));
+        assert!(!matches!(outcome, InputOutcome::Unchanged));
+        assert_eq!(agent.prompt.textarea.selection_range(), None);
     }
 
     #[test]
@@ -1644,5 +1980,159 @@ mod prompt_suggestion_key_tests {
             "the key event latches the impression before dismissing"
         );
         assert!(!agent.prompt.prompt_suggestion.has_suggestion());
+    }
+}
+
+#[cfg(test)]
+mod apple_terminal_ctrl_o_upgrade_cta_tests {
+    use super::*;
+    use crate::app::agent::AgentState;
+    use crate::app::app_view::InputOutcome;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xai_grok_telemetry::events::AnnouncementCtaSurface;
+
+    fn ctrl_o() -> KeyEvent {
+        KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)
+    }
+
+    #[test]
+    fn apple_terminal_idle_ctrl_o_opens_pinned_upgrade_cta() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.pinned_upgrade_cta_live = true;
+        let registry = ActionRegistry::apple_terminal_for_test();
+
+        let outcome = agent.handle_prompt_key_with_registry_for_test(&ctrl_o(), &registry);
+        assert!(
+            matches!(
+                outcome,
+                InputOutcome::Action(Action::AnnouncementsOpenCta(
+                    AnnouncementCtaSurface::Keyboard
+                ))
+            ),
+            "idle Apple-Terminal Ctrl+O must open pinned CTA, got {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn apple_terminal_idle_ctrl_o_without_promo_toggles_yolo() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.pinned_upgrade_cta_live = false;
+        let was_yolo = agent.session.is_yolo();
+        let registry = ActionRegistry::apple_terminal_for_test();
+
+        let outcome = agent.handle_prompt_key_with_registry_for_test(&ctrl_o(), &registry);
+        assert!(
+            matches!(
+                outcome,
+                InputOutcome::Action(Action::SetYoloMode(m)) if m != was_yolo
+            ),
+            "idle Apple-Terminal Ctrl+O without promo must toggle YOLO, got {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn apple_terminal_running_ctrl_o_still_interjects() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.session.state = AgentState::TurnRunning;
+        agent.prompt.set_text("steer mid-turn");
+        agent.pinned_upgrade_cta_live = true;
+        let registry = ActionRegistry::apple_terminal_for_test();
+
+        let outcome = agent.handle_prompt_key_with_registry_for_test(&ctrl_o(), &registry);
+        assert!(
+            matches!(
+                outcome,
+                InputOutcome::Action(Action::SendPromptNow { ref text, .. })
+                    if text == "steer mid-turn"
+            ),
+            "running + payload: interject must win over CTA, got {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn non_apple_ctrl_enter_idle_stays_noop() {
+        let mut agent = super::test_fixtures::make_agent();
+        agent.pinned_upgrade_cta_live = true;
+        let registry = ActionRegistry::non_vscode_for_test();
+        let ctrl_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL);
+
+        let outcome = agent.handle_prompt_key_with_registry_for_test(&ctrl_enter, &registry);
+        assert!(
+            matches!(outcome, InputOutcome::Changed),
+            "idle Ctrl+Enter must stay a silent interject no-op, got {outcome:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod queue_recall_tests {
+    use super::*;
+    use crate::app::agent_view::test_fixtures::make_running_agent;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn up(agent: &mut AgentView) -> InputOutcome {
+        agent.handle_prompt_key_for_test(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+    }
+
+    /// Focus lands on the bottom row, not the top one send-now takes.
+    #[test]
+    fn up_focuses_the_queue_on_its_bottom_row() {
+        let mut agent = make_running_agent();
+        agent.active_pane = AgentPane::Prompt;
+        agent.queue.overlay.focused = false;
+
+        up(&mut agent);
+
+        assert_eq!(agent.active_pane, AgentPane::Queue);
+        assert!(agent.queue.overlay.focused);
+        let bottom = *agent.queue.entry_ids().last().unwrap();
+        assert_eq!(agent.queue.selected_id(), Some(bottom));
+    }
+
+    #[test]
+    fn up_leaves_the_composer_and_history_untouched() {
+        let mut agent = make_running_agent();
+        agent.active_pane = AgentPane::Prompt;
+        agent.queue.overlay.focused = false;
+        agent.session.prompt_history = vec!["an older prompt".into()];
+
+        up(&mut agent);
+
+        assert!(agent.prompt.text().is_empty());
+        assert!(!matches!(
+            agent.prompt_mode,
+            PromptMode::EditingQueued { .. }
+        ));
+        assert!(!agent.prompt.history_search.is_browse());
+    }
+
+    /// Up stays cursor motion while the composer holds text.
+    #[test]
+    fn up_with_a_non_empty_composer_leaves_the_queue_alone() {
+        let mut agent = make_running_agent();
+        agent.active_pane = AgentPane::Prompt;
+        agent.queue.overlay.focused = false;
+        agent.prompt.set_text("half a thought");
+
+        up(&mut agent);
+
+        assert_eq!(agent.active_pane, AgentPane::Prompt);
+        assert_eq!(agent.prompt.text(), "half a thought");
+    }
+
+    #[test]
+    fn up_falls_back_to_history_with_an_empty_queue() {
+        let mut agent = make_running_agent();
+        agent.active_pane = AgentPane::Prompt;
+        agent.queue.overlay.focused = false;
+        agent.session.pending_prompts.clear();
+        agent.shared_queue.clear();
+        agent.sync_queue_pane();
+        agent.session.prompt_history = vec!["an older prompt".into()];
+
+        up(&mut agent);
+
+        assert_eq!(agent.active_pane, AgentPane::Prompt);
+        assert_eq!(agent.prompt.text(), "an older prompt");
     }
 }

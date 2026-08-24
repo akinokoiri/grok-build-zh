@@ -1,9 +1,10 @@
 //! Frame rendering for [`AgentView`]: the `draw` entry point plus shortcut
 //! hints and the subagent fullscreen view.
 use super::{
-    ActivePane, AgentPane, AgentView, AgentViewLayout, CtaPhase, InlineMediaHitAreas,
-    MODE_BANNER_FADE_TICKS, PromptMode, collect_citation_links, dropdown_items_width,
-    record_dot_pulse, render_dropdown_chrome, supports_osc22,
+    ActivePane, AgentPane, AgentView, AgentViewLayout, BlockingCard, CtaPhase, EscStep,
+    InlineMediaHitAreas, KeyOwner, MODE_BANNER_FADE_TICKS, PromptMode, collect_citation_links,
+    dropdown_content_inset, dropdown_items_width, record_dot_pulse, render_dropdown_chrome,
+    supports_osc22,
 };
 use crate::actions::{ActionId, ActionRegistry};
 use crate::key;
@@ -17,11 +18,12 @@ use crate::scrollback::text_selection::{
     render_block_drag_overlay, render_persistent_selection_overlay,
 };
 use crate::theme::Theme;
+use crate::views::agent::AgentViewLayoutParams;
 use crate::views::btw_overlay::BTW_OVERLAY_ENTRY_IDX;
 use crate::views::modal;
 use crate::views::plan_approval_view::PlanApprovalFocus;
-use crate::views::prompt_widget::{PromptFlag, PromptInfo, PromptStyle};
-use crate::views::question_view::QUESTION_VIEW_HPAD;
+use crate::views::prompt_widget::{PromptBg, PromptFlag, PromptInfo, PromptStyle};
+use crate::views::question_view::{QUESTION_VIEW_HPAD, feedback_input};
 use crate::views::shortcuts_bar::{HintItem, PendingHint, ShortcutsBar};
 use crate::views::{agent, turn_status};
 use ratatui::buffer::Buffer;
@@ -31,6 +33,40 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Widget;
 use std::collections::HashSet;
 use std::time::Instant;
+/// AppView-owned per-frame inputs to [`AgentView::draw`]: state the agent
+/// view cannot see itself (the voice pipeline, app-level Esc ownership, the
+/// status row).
+/// Grouped (mirroring `WelcomeRenderParams`) so the next app-level render
+/// fact extends this struct instead of every `draw` call site; tests take
+/// `Default` and override only what they exercise.
+#[derive(Default)]
+pub struct AppRenderParams<'a> {
+    /// Voice feature available (shows the mic affordances).
+    pub voice_available: bool,
+    /// Mic open and streaming on the active surface — drives the recording
+    /// row and the prompt voice overlay.
+    pub voice_listening: bool,
+    /// Interim transcript for the prompt overlay while dictating.
+    pub voice_interim: Option<&'a str>,
+    /// App-level Esc ownership snapshot — single producer
+    /// `AppView::esc_owned_before_agent` (voice listening / cold-start,
+    /// focused dev tracing pane, cloud / import-Claude modals, dashboard
+    /// attached-agent popup). Feeds the hint path so the bar never
+    /// advertises `Esc cancel` while an app-level owner would consume it.
+    pub esc_owned_before_agent: bool,
+    /// The status row this frame paints, or `Off` when this frame has none.
+    pub status_line: crate::views::status_line::StatusLineFrame,
+}
+/// What the bottom shortcuts bar renders this frame.
+enum ShortcutsBarContent {
+    /// A blocking surface's own keys, rendered as given.
+    Surface(Vec<HintItem>),
+    /// The focused pane's keys, trimmed to the compact bar with the
+    /// cheatsheet hint appended.
+    Pane(Vec<HintItem>),
+    /// Nothing: the row belongs to a surface that paints it itself.
+    Hidden,
+}
 impl AgentView {
     pub(crate) fn update_scrollback_selection_state(
         &mut self,
@@ -67,10 +103,41 @@ impl AgentView {
     /// Open the fullscreen subagent view for `child_sid`, replaying child
     /// `updates.jsonl` when scrollback only has the injected task prompt.
     pub(crate) fn open_subagent_fullscreen(&mut self, child_sid: String) {
-        if self.subagent_views.contains_key(&child_sid) {
-            crate::app::subagent::ensure_subagent_child_replayed(self, &child_sid);
-            self.active_subagent = Some(child_sid);
+        if let Some(child) = self.subagent_views.get_mut(&child_sid) {
+            child.mark_as_subagent_view();
+        } else {
+            return;
         }
+        if self.active_subagent.as_deref() != Some(child_sid.as_str()) {
+            self.close_subagent_fullscreen();
+        }
+        let replay_outcome = crate::app::subagent::ensure_subagent_child_replayed(self, &child_sid);
+        tracing::debug!(child_sid = %child_sid, ?replay_outcome, "opened subagent fullscreen");
+        self.active_subagent = Some(child_sid);
+    }
+    /// Close the fullscreen subagent takeover (if any), evicting the closed
+    /// child when finished (see [`crate::app::subagent::evict_finished_child_view`]
+    /// for rationale and guards). All close sites route through here.
+    pub(crate) fn close_subagent_fullscreen(&mut self) {
+        if let Some(child_sid) = self.active_subagent.take() {
+            let _ = crate::app::subagent::evict_finished_child_view(self, &child_sid);
+        }
+    }
+    /// Fetch a child view for applying a live update, hydrating a resumed
+    /// child's inherited transcript first so the incoming block never closes
+    /// the replay window (see
+    /// [`crate::app::subagent::replay_resumed_child_before_live_block`]). The
+    /// funnel for every apply that can be a resumed child's *first* live block:
+    /// the ACP and xAI child ingresses and the finish-path finalize. Reads and
+    /// precedence-exempt writers (background task blocks, tool-call argument
+    /// deltas, each transitively preceded by a funneled block) use the field
+    /// directly.
+    pub(crate) fn child_view_for_live_update_mut(
+        &mut self,
+        child_sid: &str,
+    ) -> Option<&mut AgentView> {
+        crate::app::subagent::replay_resumed_child_before_live_block(self, child_sid);
+        self.subagent_views.get_mut(child_sid).map(|v| &mut **v)
     }
     /// Shortcut hints for the plan-approval prompt/comment focus states.
     ///
@@ -98,13 +165,128 @@ impl AgentView {
                     ]
                 } else {
                     vec![
-                        HintItem::new(key!(Enter), "approve"),
+                        HintItem::new(key!('a'), "approve"),
                         HintItem::new(key!(Tab), "plan"),
                         HintItem::new(key!(Esc), "back"),
                     ]
                 }
             }
-            PlanApprovalFocus::Preview => vec![],
+            PlanApprovalFocus::Preview => {
+                vec![
+                    HintItem::new(key!('y'), "copy plan"),
+                    HintItem::new(key!(Tab), "prompt"),
+                ]
+            }
+        }
+    }
+    /// Rows to give the bare `/feedback` report box: report-sized where the terminal allows it, never past `cap`.
+    /// Its rules plus one text row is the floor, so a squeezed box still shows what the user is typing.
+    fn feedback_editor_h(&self, inner_width: u16, cap: u16, theme: &Theme) -> u16 {
+        let floor = feedback_input::MIN_HEIGHT;
+        let rows = feedback_input::HEIGHT.clamp(floor, cap.max(floor));
+        self.prompt
+            .desired_height(
+                feedback_input::width(inner_width),
+                &feedback_input::style(theme),
+                true,
+                cap.max(rows),
+            )
+            .max(rows)
+    }
+    /// The one-line freeform answer row, growing with what the user types.
+    fn freeform_editor_h(&self, inner_width: u16, cap: u16, style: &PromptStyle) -> u16 {
+        let question_text_w = crate::views::question_view::inline_text_width(inner_width);
+        self.prompt
+            .desired_height(question_text_w, style, false, cap)
+    }
+    /// The `Esc` hint for the focused card, named by the rung the key actually
+    /// takes ([`EscStep`]).
+    fn card_esc_hint(&self) -> HintItem {
+        HintItem::new(key!(Esc), self.card_esc().map_or("back", EscStep::label))
+    }
+    /// Shortcut hints for an open `ask_user_question` card.
+    fn question_shortcut_hints(
+        &self,
+        qv: &crate::views::question_view::QuestionViewState,
+    ) -> Vec<HintItem> {
+        use crate::views::question_view::QuestionFocus;
+        let esc = self.card_esc_hint();
+        match qv.focus {
+            QuestionFocus::InputMode if self.prompt.file_search_visible() => {
+                vec![
+                    HintItem::paired(key!(Up), key!(Down), "nav"),
+                    HintItem::new(key!(Tab), "accept"),
+                    HintItem::new(key!(Right), "drill"),
+                    esc,
+                ]
+            }
+            QuestionFocus::InputMode if qv.is_feedback_report() => {
+                vec![HintItem::new(key!(Enter), "send"), esc]
+            }
+            QuestionFocus::InputMode => vec![HintItem::new(key!(Enter), "submit"), esc],
+            QuestionFocus::Navigation if qv.is_feedback_trace() => vec![esc],
+            QuestionFocus::Navigation => {
+                vec![
+                    HintItem::new(key!(Tab), "next answer"),
+                    esc,
+                    HintItem::new(key!('X'), "dismiss"),
+                ]
+            }
+        }
+    }
+    fn permission_shortcut_hints(
+        &self,
+        perm: &crate::views::permission_view::PermissionViewState,
+    ) -> Vec<HintItem> {
+        use crate::views::permission_view::PermissionFocus;
+        let perm_content_w = self
+            .pane_areas
+            .prompt
+            .width
+            .saturating_sub(QUESTION_VIEW_HPAD) as usize;
+        let ctrl_f_hint = perm.has_collapsible_display(perm_content_w).then(|| {
+            let label = if perm.args_expanded {
+                "collapse"
+            } else {
+                "expand"
+            };
+            HintItem::new(key!('f', CONTROL), label)
+        });
+        match perm.focus {
+            PermissionFocus::FollowupInput => {
+                let mut hints = vec![HintItem::new(key!(Enter), "send")];
+                hints.extend(ctrl_f_hint);
+                hints.push(self.card_esc_hint());
+                hints
+            }
+            PermissionFocus::PatternEdit => {
+                let mut hints = vec![HintItem::new(key!(Enter), "save")];
+                hints.extend(ctrl_f_hint);
+                hints.push(self.card_esc_hint());
+                hints
+            }
+            PermissionFocus::Options => {
+                use crate::input::key::KeyShortcut;
+                use crossterm::event::{KeyCode, KeyModifiers};
+                let n = perm.options.len().min(9) as u8;
+                let last_ch = char::from(b'0' + n.max(1));
+                let last_key = KeyShortcut::new(KeyCode::Char(last_ch), KeyModifiers::NONE);
+                let mut hints = vec![HintItem::paired(key!('1'), last_key, "select")];
+                if perm.options.len() > 1 {
+                    hints.push(HintItem::new(key!(Tab), "next option"));
+                }
+                if perm.has_adjustable_scope() {
+                    hints.push(HintItem::paired(key!(Left), key!(Right), "scope"));
+                }
+                if perm.has_editable_bash_pattern() {
+                    hints.push(HintItem::new(key!('e'), "edit pattern"));
+                }
+                hints.extend(ctrl_f_hint);
+                hints.push(HintItem::new(key!('o', CONTROL), "always-approve"));
+                hints.push(HintItem::new(key!('c', CONTROL), "cancel"));
+                hints.push(self.card_esc_hint());
+                hints
+            }
         }
     }
     /// Returns the *exact* hints the bottom shortcuts bar would render right now.
@@ -119,112 +301,110 @@ impl AgentView {
     /// draw returns early and the child renders its own bar; Current on the parent
     /// still reflects parent context (documented limitation, pre-existing before
     /// this change).
-    pub fn current_shortcut_hints(&self, registry: &ActionRegistry) -> Vec<HintItem> {
-        use crate::views::shortcuts_bar::HintItem;
-        if let Some(ref viewer) = self.block_viewer {
-            viewer.shortcuts_hints()
-        } else if !self.permission_queue.is_empty() {
-            use crate::views::permission_view::PermissionFocus;
-            if let Some(perm) = self.permission_queue.front() {
-                match perm.focus {
-                    PermissionFocus::FollowupInput => {
-                        vec![
-                            HintItem::new(key!(Enter), "send"),
-                            HintItem::new(key!(Esc), "back"),
-                        ]
-                    }
-                    PermissionFocus::Options => {
-                        use crate::input::key::KeyShortcut;
-                        use crossterm::event::{KeyCode, KeyModifiers};
-                        let n = perm.options.len().min(9) as u8;
-                        let last_ch = char::from(b'0' + n.max(1));
-                        let last_key = KeyShortcut::new(KeyCode::Char(last_ch), KeyModifiers::NONE);
-                        let mut hints = vec![HintItem::paired(key!('1'), last_key, "select")];
-                        if perm.has_adjustable_scope() {
-                            hints.push(HintItem::paired(key!(Left), key!(Right), "scope"));
-                        }
-                        if !perm.description.is_empty() {
-                            let label = if perm.args_expanded {
-                                "收起"
-                            } else {
-                                "展开"
-                            };
-                            hints.push(HintItem::new(key!('f', CONTROL), label));
-                        }
-                        hints.push(HintItem::new(key!('o', CONTROL), "始终批准"));
-                        hints.push(HintItem::new(key!('c', CONTROL), "取消"));
-                        hints
-                    }
-                }
-            } else {
-                unreachable!("permission_queue non-empty per outer guard")
-            }
-        } else if let Some(ref pav) = self.plan_approval_view {
-            self.plan_approval_shortcut_hints(pav)
-        } else if self.line_viewer.is_some() && self.is_plan_viewer() {
-            let suppress_shortcuts = self
-                .line_viewer
-                .as_ref()
-                .is_some_and(|v| v.fullscreen && v.list_state.input_mode().is_some());
-            if suppress_shortcuts {
-                vec![]
-            } else if self.is_casual_commenting() {
-                vec![
-                    HintItem::new(key!(Enter), "save comment"),
-                    HintItem::new(key!(Esc), "cancel"),
-                ]
-            } else {
-                let mut h = vec![
-                    HintItem::new(key!('c'), "comment"),
-                    HintItem::new(key!('f', CONTROL), "fullscreen"),
-                ];
-                if !self.plan_comments.is_empty() {
-                    h.push(HintItem::new(key!('s'), "send"));
-                }
-                h.push(HintItem::new(key!(Esc), "close"));
-                h
-            }
-        } else if let Some(ref qv) = self.question_view {
-            use crate::views::question_view::QuestionFocus;
-            match qv.focus {
-                QuestionFocus::InputMode => {
-                    if self.prompt.file_search_visible() {
-                        vec![
-                            HintItem::paired(key!(Up), key!(Down), "nav"),
-                            HintItem::new(key!(Tab), "accept"),
-                            HintItem::new(key!(Right), "drill"),
-                            HintItem::new(key!(Esc), "dismiss"),
-                        ]
-                    } else {
-                        vec![
-                            HintItem::new(key!(Enter), "submit"),
-                            HintItem::new(key!(Esc), "back"),
-                        ]
-                    }
-                }
-                QuestionFocus::Navigation => {
-                    vec![
-                        HintItem::new(key!(Esc), "unselect"),
-                        HintItem::new(key!(Tab), "scrollback"),
-                        HintItem::new(key!('X'), "dismiss"),
-                    ]
-                }
-            }
-        } else if self.cancel_turn_view.is_some() {
-            vec![
-                HintItem::paired(key!('1'), key!('4'), "select"),
-                HintItem::new(key!(Enter), "confirm"),
-                HintItem::new(key!(Esc), "keep running"),
-                HintItem::new(key!(Tab), "scrollback"),
-            ]
-        } else {
-            self.normal_pane_hints(registry)
+    ///
+    /// `esc_owned_before_agent`: app-level Esc ownership snapshot
+    /// (`AppView::esc_owned_before_agent`); the draw path passes its param
+    /// of the same name.
+    pub fn current_shortcut_hints(
+        &self,
+        registry: &ActionRegistry,
+        esc_owned_before_agent: bool,
+    ) -> Vec<HintItem> {
+        match self.shortcuts_bar_content(registry, esc_owned_before_agent) {
+            ShortcutsBarContent::Surface(hints) | ShortcutsBarContent::Pane(hints) => hints,
+            ShortcutsBarContent::Hidden => vec![],
         }
+    }
+    fn plan_approval_bar(
+        &self,
+        pav: &crate::views::plan_approval_view::PlanApprovalViewState,
+    ) -> ShortcutsBarContent {
+        let hints = self.plan_approval_shortcut_hints(pav);
+        if hints.is_empty() {
+            ShortcutsBarContent::Hidden
+        } else {
+            ShortcutsBarContent::Surface(hints)
+        }
+    }
+    /// The bar names the surface the keys actually reach, so it asks
+    /// [`AgentView::key_owner`] rather than keeping an order of its own.
+    fn shortcuts_bar_content(
+        &self,
+        registry: &ActionRegistry,
+        esc_owned_before_agent: bool,
+    ) -> ShortcutsBarContent {
+        use crate::views::shortcuts_bar::HintItem;
+        match self.key_owner() {
+            KeyOwner::LineViewer => self.line_viewer_bar(),
+            KeyOwner::BlockViewer => ShortcutsBarContent::Surface(
+                self.block_viewer
+                    .as_ref()
+                    .map(|viewer| viewer.shortcuts_hints())
+                    .unwrap_or_default(),
+            ),
+            KeyOwner::Card(BlockingCard::Permission) => ShortcutsBarContent::Surface(
+                self.focused_permission()
+                    .map(|perm| self.permission_shortcut_hints(perm))
+                    .unwrap_or_default(),
+            ),
+            KeyOwner::PlanApproval => self
+                .plan_approval_view
+                .as_ref()
+                .map_or(ShortcutsBarContent::Hidden, |pav| {
+                    self.plan_approval_bar(pav)
+                }),
+            KeyOwner::Card(BlockingCard::CancelTurn) => ShortcutsBarContent::Surface(vec![
+                HintItem::paired(key!('1'), key!('4'), "select"),
+                HintItem::new(key!(Tab), "next choice"),
+                HintItem::new(key!(Enter), "confirm"),
+                self.card_esc_hint(),
+            ]),
+            KeyOwner::Card(BlockingCard::Question) => ShortcutsBarContent::Surface(
+                self.focused_question()
+                    .map(|qv| self.question_shortcut_hints(qv))
+                    .unwrap_or_default(),
+            ),
+            KeyOwner::Card(BlockingCard::McpElicitation) => ShortcutsBarContent::Surface(vec![
+                HintItem::new(key!(Enter), "accept / toggle"),
+                HintItem::new(key!('d'), "decline"),
+                HintItem::new(key!('c', CONTROL), "cancel"),
+                HintItem::new(key!(Tab), "next field"),
+                self.card_esc_hint(),
+            ]),
+            KeyOwner::Pane => {
+                ShortcutsBarContent::Pane(self.normal_pane_hints(registry, esc_owned_before_agent))
+            }
+        }
+    }
+    /// An open line viewer paints its own hints over this row further down
+    /// `draw`, so the bar is silent — except in the two states where the
+    /// viewer defers: the plan-approval prompt, whose keys the viewer's
+    /// intercept forwards, and a casual comment draft.
+    fn line_viewer_bar(&self) -> ShortcutsBarContent {
+        use crate::views::shortcuts_bar::HintItem;
+        if let Some(pav) = self
+            .plan_approval_view
+            .as_ref()
+            .filter(|pav| pav.focus != PlanApprovalFocus::Preview)
+        {
+            return self.plan_approval_bar(pav);
+        }
+        if self.is_casual_commenting() {
+            return ShortcutsBarContent::Surface(vec![
+                HintItem::new(key!(Enter), "save comment"),
+                HintItem::new(key!(Esc), "cancel"),
+            ]);
+        }
+        ShortcutsBarContent::Hidden
     }
     /// Shared "normal pane" hints: flag computation + `build_hints` + queue hint.
     /// Single source of truth for the two former duplicated blocks in
     /// `current_shortcut_hints` and `draw`.
-    fn normal_pane_hints(&self, registry: &ActionRegistry) -> Vec<HintItem> {
+    fn normal_pane_hints(
+        &self,
+        registry: &ActionRegistry,
+        esc_owned_before_agent: bool,
+    ) -> Vec<HintItem> {
         let fold_label = self.selected_fold_label();
         let is_editing = matches!(self.prompt_mode, PromptMode::EditingQueued { .. });
         let selected_entry = self
@@ -295,11 +475,12 @@ impl AgentView {
                     selected_entry.is_some_and(|e| e.block.supports_fullscreen()),
                 )
             };
-        let can_demote = self
-            .session
-            .tracker
-            .running_execute_tool_call_id()
-            .is_some();
+        let can_demote = !self.is_subagent_view
+            && self
+                .session
+                .tracker
+                .running_execute_tool_call_id()
+                .is_some();
         let selected_can_kill = if self.active_pane == ActivePane::Catalog {
             false
         } else if self.active_pane == ActivePane::Tasks {
@@ -332,6 +513,8 @@ impl AgentView {
         let selected_is_credit_limit = selected_entry.is_some_and(|e| e.block.is_credit_limit());
         let mut hints = agent::build_hints(
             self.active_pane,
+            self.parked_card()
+                .map_or_else(agent::prompt_focus_hint, BlockingCard::focus_hint),
             &self.prompt,
             registry,
             is_editing,
@@ -351,7 +534,9 @@ impl AgentView {
             self.multiline_mode,
             self.vim_mode,
             self.is_subagent_view,
-            self.session.state.is_turn_running() && !self.renders_parked(),
+            (self.session.state.is_turn_running() || self.wake_turn_active())
+                && !self.renders_parked(),
+            self.esc_would_cancel_turn(esc_owned_before_agent),
             !self.visible_queue_is_empty(),
             selected_is_user_prompt,
             selected_is_agent_message,
@@ -365,6 +550,25 @@ impl AgentView {
             && let Some(def) = registry.find(ActionId::ToggleQueue)
         {
             hints.push(def.hint());
+        }
+        if self.in_dashboard_overlay {
+            hints.insert(
+                0,
+                HintItem::new(
+                    registry
+                        .find(ActionId::DashboardOverlayStop)
+                        .map(|def| def.default_key)
+                        .unwrap_or(key!('x', CONTROL)),
+                    "stop",
+                ),
+            );
+            if self.overlay_can_cycle {
+                hints.insert(
+                    0,
+                    HintItem::paired(key!('[', CONTROL), key!(']', CONTROL), "prev/next agent"),
+                );
+            }
+            hints.insert(0, HintItem::new(key!('\\', CONTROL), "dashboard"));
         }
         hints
     }
@@ -603,6 +807,7 @@ impl AgentView {
             && inner.height > 3
             && let Some(child_view) = self.subagent_views.get_mut(child_sid)
         {
+            child_view.mark_as_subagent_view();
             let (_, post_flush) = child_view.draw(
                 inner,
                 buf,
@@ -610,16 +815,12 @@ impl AgentView {
                 scratch,
                 None,
                 false,
-                0,
-                &[],
-                &std::collections::BTreeSet::new(),
-                None,
+                super::BannerSlotParams::none(),
                 bundle_state,
                 false,
+                false,
                 &mut Vec::new(),
-                false,
-                false,
-                None,
+                AppRenderParams::default(),
             );
             child_post_flush = post_flush;
         }
@@ -628,18 +829,69 @@ impl AgentView {
     pub fn should_show_tip(&mut self) -> bool {
         false
     }
+    /// Left side of the question card footer, which offers different keys for the report box than for the answer rows.
+    fn question_footer_hints(
+        qv: &crate::views::question_view::QuestionViewState,
+        feedback_pane: bool,
+        hint_style: Style,
+        hint_key: Style,
+    ) -> Vec<Span<'static>> {
+        if feedback_pane {
+            Self::feedback_footer_hints(hint_style, hint_key)
+        } else {
+            Self::answer_footer_hints(qv, hint_style, hint_key)
+        }
+    }
+    /// The report box offers only a newline: nothing to navigate or copy, and the shortcuts bar below already carries Esc.
+    fn feedback_footer_hints(hint_style: Style, hint_key: Style) -> Vec<Span<'static>> {
+        let newline_key = if crate::terminal::terminal_context().shift_enter_unavailable() {
+            "Alt+Enter"
+        } else {
+            "Shift+Enter"
+        };
+        vec![
+            Span::styled(newline_key, hint_key),
+            Span::styled(" newline", hint_style),
+        ]
+    }
+    /// Walking and copying the answer rows, counter first when the card holds more than one question.
+    fn answer_footer_hints(
+        qv: &crate::views::question_view::QuestionViewState,
+        hint_style: Style,
+        hint_key: Style,
+    ) -> Vec<Span<'static>> {
+        let mut left_spans: Vec<Span<'static>> = Vec::new();
+        if qv.questions.len() > 1 {
+            let counter = format!("[{}/{}] ", qv.active_tab + 1, qv.questions.len());
+            left_spans.push(Span::styled(counter, hint_style));
+        }
+        left_spans.push(Span::styled("\u{2191}/\u{2193}", hint_key));
+        left_spans.push(Span::styled(" navigate", hint_style));
+        if qv.questions.len() > 1 {
+            left_spans.push(Span::styled(" \u{b7} ", hint_style));
+            left_spans.push(Span::styled("\u{2190}/\u{2192}", hint_key));
+            left_spans.push(Span::styled(" question", hint_style));
+        }
+        left_spans.push(Span::styled(" \u{b7} ", hint_style));
+        left_spans.push(Span::styled("y", hint_key));
+        left_spans.push(Span::styled(" copy", hint_style));
+        left_spans
+    }
     /// `area` is the screen region assigned to this agent view.
     /// When a tracing overlay is visible, this is smaller than `f.area()`.
-    ///
     #[allow(clippy::too_many_arguments)]
     /// Render the agent into `area`.
     ///
     /// `in_dashboard_overlay` is `true` when this view is being
     /// rendered inside the dashboard's session-overlay; it appends
-    /// `Ctrl+\\:dashboard` and `Ctrl+[/]:agents` hints to the bottom shortcuts
-    /// bar so the user can discover the keyboard back-out and
-    /// agent-navigation shortcuts from inside the agent view itself
-    /// (not just from the overlay's top header).
+    /// `Ctrl+\\:dashboard` (and, when `overlay_can_cycle`, the
+    /// `Ctrl+[/]:prev/next agent` chip) to the bottom shortcuts bar so the
+    /// user can discover keyboard back-out and agent navigation from
+    /// inside the agent view itself (not just from the overlay header).
+    ///
+    /// `overlay_can_cycle` mirrors the header `[‹]`/`[›]` gate: true when
+    /// the visible overlay cycle order has more than one agent. Callers
+    /// derive it from the same `position` used for the header chips.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -649,26 +901,40 @@ impl AgentView {
         scratch: &mut ScratchBuffer,
         pending_hint: Option<PendingHint>,
         overlay_focused: bool,
-        banner_height: u16,
-        banner_announcements: &[xai_grok_announcements::RemoteAnnouncement],
-        hidden_announcement_ids: &std::collections::BTreeSet<String>,
-        tip: Option<&str>,
+        banner: super::BannerSlotParams<'_>,
         bundle_state: &crate::app::bundle::BundleState,
         in_dashboard_overlay: bool,
+        overlay_can_cycle: bool,
         link_spans_out: &mut Vec<xai_ratatui_inline::LinkSpan>,
-        voice_available: bool,
-        voice_listening: bool,
-        voice_interim: Option<&str>,
+        app_params: AppRenderParams<'_>,
     ) -> (
         Option<(u16, u16)>,
         Option<crate::terminal::overlay::PostFlush>,
     ) {
+        let AppRenderParams {
+            voice_available,
+            voice_listening,
+            voice_interim,
+            esc_owned_before_agent,
+            status_line,
+        } = app_params;
+        self.scrollback.begin_frame();
         self.in_dashboard_overlay = in_dashboard_overlay;
+        self.overlay_can_cycle = overlay_can_cycle;
+        let super::BannerSlotParams {
+            height: banner_height,
+            announcements: banner_announcements,
+            hidden_ids: hidden_announcement_ids,
+            privacy_banner,
+            mouse_pos,
+            tip,
+        } = banner;
         self.session_banner_active = crate::views::announcements::first_session_announcement(
             banner_announcements,
             hidden_announcement_ids,
         )
         .is_some();
+        self.privacy_banner.active = privacy_banner;
         self.pinned_upgrade_cta_live =
             crate::views::announcements::promo_cta(banner_announcements, hidden_announcement_ids)
                 .is_some_and(|(owner, _, _)| !crate::views::announcements::is_dismissible(owner));
@@ -716,6 +982,7 @@ impl AgentView {
             self.hit_announcement_hide.clear();
             self.hit_announcement_cta.clear();
             self.hit_upgrade_cta.clear();
+            self.privacy_banner.clear_hits();
             return self.draw_subagent_fullscreen(
                 &child_sid.clone(),
                 area,
@@ -758,7 +1025,7 @@ impl AgentView {
             chrome: true,
             chrome_pad_left: layout_cfg.block_pad_left,
             chrome_pad_right: layout_cfg.block_pad_right,
-            bg_override: None,
+            bg: PromptBg::Default,
             accent_color_override: if let Some(c) = self.prompt_input_mode.accent_color(&theme) {
                 Some(c)
             } else if effective_plan || casual_commenting {
@@ -790,6 +1057,7 @@ impl AgentView {
             } else {
                 None
             },
+            placeholder_when_focused: false,
             placeholder_override: if let Some(ph) = self
                 .prompt_input_mode
                 .placeholder_override(self.multiline_mode)
@@ -802,14 +1070,29 @@ impl AgentView {
                     .is_some_and(|pav| pav.focus == PlanApprovalFocus::Commenting)
             {
                 Some("Type your comment...")
+            } else if self
+                .plan_approval_view
+                .as_ref()
+                .is_some_and(|pav| pav.focus == PlanApprovalFocus::Prompt)
+            {
+                Some("Type revision notes...")
             } else {
                 None
             },
             show_accent_line: false,
             show_borders: true,
-            title: self.display_name.clone(),
+            title: self.prompt_caption(),
             image_preview: true,
         };
+        let next = crate::views::session_title::rename_source_title_raw(self)
+            .map(crate::views::session_title::sanitize_display_text);
+        if self.prompt.slash_current_title() != next.as_deref() {
+            self.prompt
+                .set_slash_current_title(next.map(|s| s.into_owned()));
+            if self.prompt.slash_open() {
+                self.prompt.refresh_slash(&self.session.models);
+            }
+        }
         let compact = appearance.prompt.compact;
         let inner_width = AgentViewLayout::inner_width(area, layout_cfg, compact);
         let banner_height = if banner_height > 0 {
@@ -817,11 +1100,19 @@ impl AgentView {
                 if self.session_banner_active {
                     banner_height
                 } else {
-                    banner_height.max(crate::tips::render::tip_height(inner_width, tip_text))
+                    banner_height.max(crate::tips::render::tip_height(
+                        inner_width.saturating_sub(crate::tips::render::HINT_INSET),
+                        tip_text,
+                    ))
                 }
             } else {
                 banner_height
             }
+        } else {
+            banner_height
+        };
+        let banner_height = if privacy_banner {
+            banner_height.max(crate::views::privacy_banner::height(inner_width))
         } else {
             banner_height
         };
@@ -838,16 +1129,21 @@ impl AgentView {
                 .desired_height(inner_width, &prompt_style, true, max_prompt_height)
         };
         let overlay_content_w = inner_width.saturating_sub(QUESTION_VIEW_HPAD) as usize;
-        let permission_view_h = if let Some(perm) = self.permission_queue.front() {
-            crate::views::permission_view::permission_view_height(
-                perm,
-                area.height,
-                overlay_content_w,
-            )
+        let slot_card = self.blocking_card();
+        let permission_view_h = if slot_card == Some(BlockingCard::Permission) {
+            if let Some(perm) = self.permission_queue.front() {
+                crate::views::permission_view::permission_view_height(
+                    perm,
+                    area.height,
+                    overlay_content_w,
+                )
+            } else {
+                0
+            }
         } else {
             0
         };
-        let question_view_h = if permission_view_h == 0 {
+        let question_view_h = if slot_card == Some(BlockingCard::Question) {
             if let Some(ref mut qv) = self.question_view {
                 crate::views::question_view::question_view_height(
                     qv,
@@ -860,22 +1156,32 @@ impl AgentView {
         } else {
             0
         };
-        let rewind_view_h = if permission_view_h == 0 && question_view_h == 0 {
-            if let Some(ref rw) = self.rewind_state {
-                crate::views::rewind::rewind_overlay_height(&rw.phase, area.height)
+        let elicitation_view_h = if slot_card == Some(BlockingCard::McpElicitation) {
+            if let Some(ref ev) = self.elicitation_view {
+                crate::views::elicitation_view::elicitation_view_height(
+                    ev,
+                    area.height,
+                    overlay_content_w,
+                )
             } else {
                 0
             }
         } else {
             0
         };
-        let cancel_turn_view_h =
-            if permission_view_h == 0 && question_view_h == 0 && rewind_view_h == 0 {
-                if self.cancel_turn_view.is_some() {
-                    modal::cancel_turn_panel_height(area.height)
+        let rewind_view_h =
+            if permission_view_h == 0 && question_view_h == 0 && elicitation_view_h == 0 {
+                if let Some(ref rw) = self.rewind_state {
+                    crate::views::rewind::rewind_overlay_height(&rw.phase, area.height)
                 } else {
                     0
                 }
+            } else {
+                0
+            };
+        let cancel_turn_view_h =
+            if slot_card == Some(BlockingCard::CancelTurn) && rewind_view_h == 0 {
+                modal::cancel_turn_panel_height(area.height)
             } else {
                 0
             };
@@ -900,10 +1206,11 @@ impl AgentView {
             chrome: false,
             chrome_pad_left: 0,
             chrome_pad_right: 0,
-            bg_override: Some(theme.bg_visual),
+            bg: PromptBg::Panel(theme.bg_visual),
             accent_color_override: None,
             border_color_override: None,
             prefix_override: None,
+            placeholder_when_focused: false,
             placeholder_override: None,
             compact: false,
             show_accent_line: false,
@@ -911,17 +1218,17 @@ impl AgentView {
             title: None,
             image_preview: true,
         };
+        let feedback_pane = self
+            .question_view
+            .as_ref()
+            .is_some_and(|qv| qv.is_feedback_report());
         let inline_prompt_max = ((area.height as u32) / 3).clamp(3, 15) as u16;
-        let question_prompt_body_h = if question_view_h > 0 && is_question_input_mode {
-            let question_text_w = crate::views::question_view::inline_text_width(inner_width);
-            self.prompt.desired_height(
-                question_text_w,
-                &question_input_style,
-                false,
-                inline_prompt_max,
-            )
-        } else {
+        let question_prompt_body_h = if question_view_h == 0 || !is_question_input_mode {
             0
+        } else if feedback_pane {
+            self.feedback_editor_h(inner_width, inline_prompt_max, &theme)
+        } else {
+            self.freeform_editor_h(inner_width, inline_prompt_max, &question_input_style)
         };
         let is_permission_followup = self.permission_queue.front().is_some_and(|p| {
             p.focus == crate::views::permission_view::PermissionFocus::FollowupInput
@@ -935,10 +1242,11 @@ impl AgentView {
                 chrome: false,
                 chrome_pad_left: 0,
                 chrome_pad_right: 0,
-                bg_override: Some(theme.bg_visual),
+                bg: PromptBg::Panel(theme.bg_visual),
                 accent_color_override: None,
                 border_color_override: None,
                 prefix_override: None,
+                placeholder_when_focused: false,
                 placeholder_override: None,
                 compact: false,
                 show_accent_line: false,
@@ -965,6 +1273,8 @@ impl AgentView {
             question_view_h.saturating_sub(freeform_offset)
                 + question_prompt_body_h
                 + question_footer_h
+        } else if elicitation_view_h > 0 {
+            elicitation_view_h
         } else if rewind_view_h > 0 {
             rewind_view_h
         } else if jump_view_h > 0 {
@@ -978,12 +1288,6 @@ impl AgentView {
             prompt_height.max(prompt_style.vpad_top + 1 + prompt_style.info_block(true));
         let prompt_height = if self.is_subagent_view {
             0
-        } else {
-            prompt_height
-        };
-        let prompt_height = if question_view_h > 0 {
-            let reserved = 1 + 5 + 1 + 3;
-            prompt_height.min(area.height.saturating_sub(reserved))
         } else {
             prompt_height
         };
@@ -1020,6 +1324,7 @@ impl AgentView {
             &self.session.scheduled_tasks,
             self.cron_task_id.as_deref(),
             &queued_cron_ids,
+            &self.workflow_runs,
         );
         if self.active_pane == ActivePane::Tasks && !self.tasks.is_visible() {
             self.active_pane = ActivePane::Scrollback;
@@ -1056,8 +1361,9 @@ impl AgentView {
         let drain_blocked = self.drain_blocked();
         let watchers = self.watchers();
         let parked = self.renders_parked();
+        let wake_display_state = self.wake_display_state();
         let turn_status_height = if turn_status::should_show(
-            &self.session.state,
+            wake_display_state.unwrap_or(&self.session.state),
             drain_blocked,
             self.mcp_init_progress.as_ref(),
             watchers,
@@ -1080,6 +1386,7 @@ impl AgentView {
         let btw_height =
             crate::views::btw_overlay::btw_panel_height(self.btw_state.as_ref(), inner_width);
         let cta_height = match &self.plugin_cta.phase {
+            _ if privacy_banner => 0,
             CtaPhase::Hidden => 0,
             CtaPhase::Matched { .. } if self.prompt.text().trim().is_empty() => 0,
             _ => 1,
@@ -1091,10 +1398,10 @@ impl AgentView {
             area.width,
             self.scrollback.turn_count(),
         );
-        let mut layout = AgentViewLayout::compute(
+        let mut layout_params = AgentViewLayoutParams {
             area,
-            layout_cfg,
-            scrollbar_cfg,
+            layout_cfg: *layout_cfg,
+            scrollbar_cfg: *scrollbar_cfg,
             timeline_width,
             prompt_height,
             tasks_height,
@@ -1106,12 +1413,17 @@ impl AgentView {
             banner_height,
             cta_height,
             follow_ups_height,
-            0,
             prompt_gap,
             voice_recording_height,
-            1,
+            shortcuts_height: 1,
+            status_line_height: status_line.height(),
             compact,
-        );
+        };
+        if question_view_h > 0 {
+            layout_params.prompt_height =
+                prompt_height.min(AgentViewLayout::rows_available_for_prompt(layout_params));
+        }
+        let mut layout = AgentViewLayout::compute(layout_params);
         let search_active =
             self.scrollback_search.is_some() && self.active_pane == AgentPane::Scrollback;
         let search_reserved_rows =
@@ -1125,9 +1437,7 @@ impl AgentView {
         }
         let overlay_blocks_rail_hover = self.jump_state.is_some()
             || self.rewind_state.is_some()
-            || self.question_view.is_some()
-            || !self.permission_queue.is_empty()
-            || self.cancel_turn_view.is_some()
+            || self.blocking_card().is_some()
             || self.block_viewer.is_some();
         if layout.timeline_width > 0 {
             self.sync_pending_user_input_marks();
@@ -1167,27 +1477,10 @@ impl AgentView {
                     self.timeline_rail = None;
                     self.timeline_hover = None;
                     self.timeline_hover_preview = None;
-                    layout = AgentViewLayout::compute(
-                        area,
-                        layout_cfg,
-                        scrollbar_cfg,
-                        0,
-                        prompt_height,
-                        tasks_height,
-                        catalog_height,
-                        todo_height,
-                        queue_height,
-                        btw_height,
-                        turn_status_height,
-                        banner_height,
-                        cta_height,
-                        follow_ups_height,
-                        0,
-                        prompt_gap,
-                        voice_recording_height,
-                        1,
-                        compact,
-                    );
+                    layout = AgentViewLayout::compute(AgentViewLayoutParams {
+                        timeline_width: 0,
+                        ..layout_params
+                    });
                     if search_reserved_rows > 0 {
                         layout.scrollback.height -= search_reserved_rows;
                         layout.scrollback_content.height = layout
@@ -1207,6 +1500,28 @@ impl AgentView {
             self.timeline_hover_preview = None;
         }
         agent::fill_background(buf, area, layout_cfg, compact, &theme);
+        let mut status_line_link_spans: Vec<xai_ratatui_inline::LinkSpan> = Vec::new();
+        if let Some(padding) = status_line.padding()
+            && layout.status_line.height > 0
+        {
+            if let Some(width) =
+                crate::views::status_line::inner_width(layout.status_line.width, padding)
+            {
+                self.last_status_line_size = Some(crate::views::status_line::RowSize {
+                    cols: width,
+                    lines: layout.status_line.height,
+                });
+            }
+            if let Some(display) = status_line.display() {
+                status_line_link_spans = crate::views::status_line::render_status_line(
+                    buf,
+                    layout.status_line,
+                    display,
+                    padding,
+                    &theme,
+                );
+            }
+        }
         use crate::views::agent_status::AgentStatusBar;
         use crate::views::context_bar;
         let mut status = AgentStatusBar::new(&theme);
@@ -1221,24 +1536,19 @@ impl AgentView {
             let link_style = Style::default().fg(theme.link_fg).bg(theme.bg_base);
             status.push("link_url", Line::from(Span::styled(display, link_style)));
         }
-        let running_count = self.tasks.running_count(
+        let task_counts = self.tasks.status_counts(
             &self.session.bg_tasks,
             &self.subagent_sessions,
             &self.session.scheduled_tasks,
+            &self.workflow_runs,
         );
-        if running_count > 0 {
-            let spinner_frames = crate::glyphs::dot_spinner_frames();
-            let frame_idx = (self.tasks.tick_count() / 4) as usize % spinner_frames.len();
-            let frame = spinner_frames[frame_idx];
-            let indicator = format!("{frame} {running_count}");
-            let mut indicator_style = Style::default().fg(theme.accent_running).bg(theme.bg_base);
-            if self.hit_bg_status.hovered {
-                indicator_style = indicator_style.add_modifier(ratatui::style::Modifier::BOLD);
-            }
-            status.push(
-                "bg_tasks",
-                Line::from(Span::styled(indicator, indicator_style)),
-            );
+        if let Some(line) = crate::views::agent_status::task_status_line(
+            task_counts,
+            &theme,
+            self.hit_bg_status.hovered,
+            self.tasks.tick_count(),
+        ) {
+            status.push("bg_tasks", line);
         }
         if self.should_show_plan_chip(&appearance) {
             let mut plan_style = Style::default().fg(theme.accent_plan).bg(theme.bg_base);
@@ -1252,7 +1562,7 @@ impl AgentView {
             let active_subagent_tokens: u64 = self
                 .subagent_sessions
                 .values()
-                .filter(|s| !s.finished)
+                .filter(|s| !s.finished && s.workflow_run_id.is_none())
                 .filter_map(|s| s.tokens_used)
                 .sum();
             status.push(
@@ -1272,6 +1582,20 @@ impl AgentView {
         }) {
             status.push("mcp", mcp_line);
         }
+        #[cfg(feature = "local-workspace")]
+        if self.chat_kind || self.app_chat_mode {
+            let label = self
+                .workspace_mode
+                .status_label(self.workspace_mode_cli_locked);
+            let mut mode_style = Style::default().fg(theme.accent_user).bg(theme.bg_base);
+            if self.workspace_mode_cli_locked {
+                mode_style = mode_style.add_modifier(ratatui::style::Modifier::DIM);
+            }
+            status.push(
+                "workspace_mode",
+                Line::from(Span::styled(label, mode_style)),
+            );
+        }
         let ctx_used = self.context_state.as_ref().map(|c| c.used);
         let model_window = self.session.models.get_context_window();
         let ctx_total = self
@@ -1288,44 +1612,12 @@ impl AgentView {
         ) {
             status.push("context", ctx_line);
         }
-        let running = self.session.current_prompt_id.as_deref();
-        let queue_len = self.session.queue_len()
-            + self
-                .shared_queue
-                .iter()
-                .filter(|e| Some(e.id.as_str()) != running)
-                .count();
-        if queue_len > 0 {
-            use ratatui::style::Modifier;
-            let mut queue_style = ratatui::style::Style::default()
-                .fg(theme.accent_user)
-                .bg(theme.bg_base);
-            if self.hit_queue_badge.hovered {
-                queue_style = queue_style.add_modifier(Modifier::BOLD);
-            }
-            status.push(
-                "queue",
-                Line::from(Span::styled(format!("+{queue_len}"), queue_style)),
-            );
-        }
-        let counts = self.todo.counts();
-        if let Some(badge_spans) = agent::render_todo_badge_spans(
-            &counts,
-            self.hit_badge.hovered,
-            self.todo.badge_flash_active(),
-            appearance.todo.badge_format,
-            &theme,
-        ) {
-            status.push("badge", Line::from(badge_spans));
-        }
         let areas = status.render(buf, layout.status_bar);
         self.hit_bg_status.rect = areas.get("bg_tasks").copied();
         self.hit_goal_status.rect = areas.get("goal").copied();
         self.hit_context.rect = areas.get("context").copied();
         self.hit_credits.rect = areas.get("credits").copied();
         self.hit_plan_button.rect = areas.get("plan").copied();
-        self.hit_queue_badge.rect = areas.get("queue").copied();
-        self.hit_badge.rect = areas.get("badge").copied();
         let home = std::env::var("HOME").ok();
         let display = self.session.cwd.display().to_string();
         let short = match &home {
@@ -1450,6 +1742,7 @@ impl AgentView {
         self.hit_upgrade_cta
             .set_unless_dropdown(upgrade_cta_rect, dropdown_open);
         let mut inline_edit_cursor: Option<(u16, u16)> = None;
+        let sticky_gap_row: Option<u16>;
         {
             self.sync_pending_user_input_marks();
             self.scrollback.set_cwd(Some(self.session.cwd.clone()));
@@ -1483,6 +1776,7 @@ impl AgentView {
                     scratch,
                 );
             let sb_output = sb_rendered.output;
+            sticky_gap_row = sb_output.sticky_gap_row;
             self.update_scrollback_selection_state(
                 sb_output.selection_model.clone(),
                 sb_rendered.selection_boundaries,
@@ -1677,6 +1971,8 @@ impl AgentView {
                 }
             }
         }
+        let mut follow_indicator_y: Option<u16> = None;
+        let mut response_top_indicator_y: Option<u16> = None;
         if self.block_viewer.is_none() && !search_active {
             use crate::appearance::FollowIndicator;
             let gap_y = layout.scrollback.y + layout.scrollback.height;
@@ -1703,33 +1999,35 @@ impl AgentView {
                     }
                 }
             }
-            let show_indicator = appearance.scrollback.scroll.follow_indicator
-                != FollowIndicator::None
-                && !self.scrollback.is_follow_mode()
-                && self.scrollback.has_content_below()
-                && content_line_y.is_none();
-            if show_indicator {
-                let center_x = gap_x + gap_w / 2;
-                let indicator_style =
-                    ratatui::style::Style::default().fg(if self.hit_follow_indicator.hovered {
-                        theme.gray_bright
-                    } else {
-                        theme.gray
-                    });
-                if let Some(cell) = buf.cell_mut((center_x, gap_y)) {
-                    cell.set_symbol("▼");
-                    cell.set_style(indicator_style);
+            if appearance.scrollback.scroll.follow_indicator != FollowIndicator::None {
+                if !self.scrollback.is_follow_mode()
+                    && self.scrollback.has_content_below()
+                    && content_line_y.is_none()
+                {
+                    follow_indicator_y = Some(gap_y);
                 }
-                self.hit_follow_indicator.set(Some(Rect::new(
-                    center_x.saturating_sub(1),
-                    gap_y,
-                    3,
-                    1,
-                )));
-            } else {
-                self.hit_follow_indicator.clear();
+                if self.scrollback.has_response_top_above() {
+                    response_top_indicator_y = sticky_gap_row.map(|row| layout.scrollback.y + row);
+                }
             }
         }
+        let indicator_center_x = layout.scrollback.x + layout.scrollback.width / 2;
+        draw_scroll_arrow(
+            buf,
+            &theme,
+            indicator_center_x,
+            follow_indicator_y,
+            "▼",
+            &mut self.hit_follow_indicator,
+        );
+        draw_scroll_arrow(
+            buf,
+            &theme,
+            indicator_center_x,
+            response_top_indicator_y,
+            "▲",
+            &mut self.hit_response_top_indicator,
+        );
         if let Some(msg) = self.active_toast_message() {
             let sb = layout.scrollback;
             if let Some(toast_text) = fit_toast_text(msg, sb.width) {
@@ -1854,6 +2152,7 @@ impl AgentView {
                 &mut self.last_btw_selection_model,
                 Some(&mut btw_links),
                 &self.media_link_paths,
+                self.scrollback.cwd(),
             );
             self.last_btw_area = layout.btw;
             if !btw_links.is_empty() {
@@ -1898,7 +2197,10 @@ impl AgentView {
             };
             let tick = self.scrollback.animation_tick();
             let activity = self.resolve_turn_activity();
-            if activity != self.last_activity {
+            if crate::acp::tracker::is_phase_transition(
+                self.last_activity.as_ref(),
+                activity.as_ref(),
+            ) {
                 if let Some(prev) = &self.last_activity {
                     let phase_ms = self
                         .activity_started_at
@@ -1910,13 +2212,16 @@ impl AgentView {
                     crate::unified_log::debug(
                         "turn.phase_transition",
                         sid,
-                        Some(serde_json::json!(
-                            { "from" : prev_label, "to" : next_label, "phase_elapsed_ms"
-                            : phase_ms, }
-                        )),
+                        Some(serde_json::json!({
+                            "from": prev_label,
+                            "to": next_label,
+                            "phase_elapsed_ms": phase_ms,
+                        })),
                     );
                 }
                 self.activity_started_at = Some(Instant::now());
+            }
+            if activity != self.last_activity {
                 self.last_activity = activity.clone();
             }
             self.hit_plan_approval_status.clear();
@@ -1957,14 +2262,23 @@ impl AgentView {
                 ));
                 self.hit_cancel_button.rect = None;
                 self.hit_bg_button.rect = None;
+                self.hit_watching_cue.rect = None;
             } else {
-                let has_running_execute = self
-                    .session
-                    .tracker
-                    .running_execute_tool_call_id()
-                    .is_some();
-                let is_pending_user_input =
-                    !self.permission_queue.is_empty() || self.question_view.is_some();
+                let has_running_execute = !self.is_subagent_view
+                    && wake_display_state.is_none()
+                    && self
+                        .session
+                        .tracker
+                        .running_execute_tool_call_id()
+                        .is_some();
+                let is_pending_user_input = matches!(
+                    self.blocking_card(),
+                    Some(
+                        BlockingCard::Permission
+                            | BlockingCard::Question
+                            | BlockingCard::McpElicitation
+                    )
+                );
                 let goal_verifying = self
                     .goal_state
                     .as_ref()
@@ -1974,39 +2288,66 @@ impl AgentView {
                 let turn_output = turn_status::render_turn_status(
                     buf,
                     turn_area,
-                    &self.session.state,
-                    &activity,
-                    self.turn_elapsed(),
-                    self.activity_started_at,
-                    tick,
-                    drain_blocked,
-                    Some(turn_status::MouseButtons {
-                        cancel_hovered: self.hit_cancel_button.hovered,
-                        bg_hovered: self.hit_bg_button.hovered,
-                    }),
-                    has_running_execute,
-                    self.context_state.as_ref().map(|c| c.used),
-                    self.mcp_init_progress.as_ref(),
-                    self.bash_turn,
-                    is_pending_user_input,
-                    goal_verifying,
-                    watchers,
-                    parked,
-                    false,
-                    held_queue,
-                    held_queue_top_sendable,
+                    turn_status::TurnStatusArgs {
+                        state: wake_display_state.unwrap_or(&self.session.state),
+                        activity: &activity,
+                        turn_elapsed: self.turn_elapsed(),
+                        activity_started_at: self.activity_started_at,
+                        tick,
+                        drain_blocked,
+                        buttons: Some(turn_status::MouseButtons {
+                            cancel_hovered: self.hit_cancel_button.hovered,
+                            bg_hovered: self.hit_bg_button.hovered,
+                            watching_hovered: self.hit_watching_cue.hovered,
+                        }),
+                        has_running_execute,
+                        total_tokens: self.context_state.as_ref().map(|c| c.used),
+                        mcp_init_progress: self.mcp_init_progress.as_ref(),
+                        is_bash_turn: self.bash_turn,
+                        is_pending_user_input,
+                        goal_verifying,
+                        watchers,
+                        parked,
+                        flat_background: false,
+                        held_queue,
+                        held_queue_top_sendable,
+                    },
                 );
                 self.hit_cancel_button
                     .set_unless_dropdown(turn_output.cancel_button, dropdown_open);
                 self.hit_bg_button
                     .set_unless_dropdown(turn_output.bg_button, dropdown_open);
+                self.hit_watching_cue
+                    .set_unless_dropdown(turn_output.watching_cue, dropdown_open);
             }
         } else {
             self.hit_cancel_button.clear();
             self.hit_bg_button.clear();
+            self.hit_watching_cue.clear();
             self.hit_plan_approval_status.clear();
         }
-        if let Some((ref msg, remaining)) = self.mode_switch_banner {
+        let privacy_banner_owns_slot =
+            privacy_banner && layout.banner.height >= crate::views::privacy_banner::MIN_HEIGHT;
+        if !privacy_banner_owns_slot {
+            self.privacy_banner.clear_hits();
+        }
+        if privacy_banner_owns_slot {
+            self.hit_announcement_hide.clear();
+            self.hit_announcement_cta.clear();
+            let rects = crate::views::privacy_banner::render(layout.banner, buf, &theme, mouse_pos);
+            self.privacy_banner
+                .hit_opt_in
+                .set_unless_dropdown(Some(rects.opt_in), dropdown_open);
+            self.privacy_banner
+                .hit_opt_out
+                .set_unless_dropdown(Some(rects.opt_out), dropdown_open);
+            self.privacy_banner
+                .hit_terms
+                .set_unless_dropdown(Some(rects.terms), dropdown_open);
+            self.privacy_banner
+                .hit_policy
+                .set_unless_dropdown(Some(rects.policy), dropdown_open);
+        } else if let Some((ref msg, remaining)) = self.mode_switch_banner {
             self.hit_announcement_hide.clear();
             self.hit_announcement_cta.clear();
             if layout.banner.height > 0 && layout.banner.width > 4 {
@@ -2059,7 +2400,12 @@ impl AgentView {
                 && banner_height > 0
                 && let Some(tip_text) = tip
             {
-                crate::tips::render::render_tip(layout.banner, buf, tip_text);
+                crate::tips::render::render_tip(
+                    layout.banner,
+                    buf,
+                    tip_text,
+                    crate::tips::render::HINT_INSET,
+                );
             }
             if !announcement_banner_owns_slot
                 && tip_row_visible
@@ -2183,17 +2529,11 @@ impl AgentView {
         }
         let mode_flags: &[PromptFlag] = &mode_flags_vec;
         let multiline = self.multiline_mode;
-        let usage_visible = self
-            .prompt
-            .slash_controller
-            .registry()
-            .get("usage")
-            .is_some();
         let warning = self.credit_balance.as_ref().and_then(|bal| {
             crate::views::credit_bar::usage_warning_for_session(
                 bal,
                 self.auto_topup.as_ref(),
-                usage_visible,
+                self.billing_surface_visible,
                 self.chat_kind,
             )
         });
@@ -2246,6 +2586,7 @@ impl AgentView {
                     perm_area,
                     perm,
                     followup_text,
+                    self.permission_pattern_edit.as_ref(),
                     self.hovered_permission_item,
                     &theme,
                     prompt_focused,
@@ -2260,10 +2601,11 @@ impl AgentView {
                         chrome: false,
                         chrome_pad_left: 0,
                         chrome_pad_right: 0,
-                        bg_override: Some(row_bg),
+                        bg: PromptBg::Panel(row_bg),
                         accent_color_override: None,
                         border_color_override: None,
                         prefix_override: None,
+                        placeholder_when_focused: false,
                         placeholder_override: None,
                         compact: false,
                         show_accent_line: false,
@@ -2370,7 +2712,46 @@ impl AgentView {
                 self.question_scroll_region =
                     Some((render_result.options_start_y, render_result.options_end_y));
             }
-            if is_input_mode && inline_prompt_h > 0 {
+            let mut painted_prompt_h = inline_prompt_h;
+            if is_input_mode && feedback_pane {
+                let box_y = question_area.y + question_area.height;
+                let below_card = (layout.prompt.y + layout.prompt.height).saturating_sub(box_y);
+                let box_h = inline_prompt_h
+                    .min(below_card.saturating_sub(question_footer_h))
+                    .max(below_card.min(1));
+                let input_area = Rect {
+                    x: layout.prompt.x + 3,
+                    y: box_y,
+                    width: feedback_input::width(layout.prompt.width),
+                    height: box_h,
+                };
+                buf.set_style(
+                    Rect {
+                        x: layout.prompt.x + 1,
+                        y: box_y,
+                        width: layout.prompt.width.saturating_sub(1),
+                        height: box_h,
+                    },
+                    Style::default().bg(theme.bg_light),
+                );
+                let outlined = box_h >= feedback_input::MIN_HEIGHT;
+                let style = if outlined {
+                    feedback_input::style(&theme)
+                } else {
+                    feedback_input::flat_style(&theme)
+                };
+                let result = self.prompt.draw(
+                    buf,
+                    input_area,
+                    Some(layout.scrollback),
+                    &style,
+                    outlined.then_some(&PromptInfo::default()),
+                    None,
+                );
+                prompt_cursor_pos = result.cursor_pos;
+                self.inline_prompt_area = Some(input_area);
+                painted_prompt_h = box_h;
+            } else if is_input_mode && inline_prompt_h > 0 {
                 let row_y = question_area.y + question_area.height;
                 let content_x = layout.prompt.x + 3;
                 let content_w = layout.prompt.width.saturating_sub(3);
@@ -2496,14 +2877,15 @@ impl AgentView {
                 self.inline_prompt_area = None;
             }
             if let Some(ref qv) = self.question_view {
-                let footer_y = question_area.y + question_area.height + inline_prompt_h + 1;
+                let footer_y = question_area.y + question_area.height + painted_prompt_h + 1;
                 let footer_x = layout.prompt.x;
                 let footer_w = layout.prompt.width;
+                self.question_nav_buttons.clear();
                 if footer_y < layout.prompt.y + layout.prompt.height && footer_w > 10 {
                     use ratatui::style::Modifier;
                     let footer_bg = theme.bg_light;
                     let gap_above = footer_y.saturating_sub(1);
-                    if gap_above >= question_area.y + question_area.height + inline_prompt_h {
+                    if gap_above >= question_area.y + question_area.height + painted_prompt_h {
                         buf.set_style(
                             Rect {
                                 x: footer_x,
@@ -2542,26 +2924,15 @@ impl AgentView {
                         .fg(question_accent)
                         .bg(footer_bg)
                         .add_modifier(Modifier::BOLD);
-                    let mut left_spans: Vec<Span<'_>> = Vec::new();
-                    if qv.questions.len() > 1 {
-                        let counter = format!("[{}/{}] ", qv.active_tab + 1, qv.questions.len());
-                        left_spans.push(Span::styled(counter, hint_style));
-                    }
-                    left_spans.push(Span::styled("\u{2191}/\u{2193}", hint_key));
-                    left_spans.push(Span::styled(" 导航", hint_style));
-                    if qv.questions.len() > 1 {
-                        left_spans.push(Span::styled(" \u{b7} ", hint_style));
-                        left_spans.push(Span::styled("\u{2190}/\u{2192}", hint_key));
-                        left_spans.push(Span::styled(" question", hint_style));
-                    }
-                    left_spans.push(Span::styled(" \u{b7} ", hint_style));
-                    left_spans.push(Span::styled("y", hint_key));
-                    left_spans.push(Span::styled(" 复制", hint_style));
+                    let left_spans =
+                        Self::question_footer_hints(qv, feedback_pane, hint_style, hint_key);
                     let left_line = Line::from(left_spans);
                     let avail_w = footer_w.saturating_sub(3);
                     buf.set_line_safe(content_x, footer_y, &left_line, avail_w);
                     let is_last = qv.active_tab >= qv.questions.len().saturating_sub(1);
-                    let enter_label = if qv.is_on_freeform_row() {
+                    let enter_label = if feedback_pane || qv.is_feedback_trace() {
+                        "send"
+                    } else if qv.is_on_freeform_row() {
                         "edit"
                     } else if is_last {
                         "submit"
@@ -2600,7 +2971,6 @@ impl AgentView {
                             &Span::styled(" ", bpad_style),
                             1,
                         );
-                        self.question_nav_buttons.clear();
                         let btn_rect = Rect {
                             x: btn_x,
                             y: footer_y,
@@ -2608,8 +2978,6 @@ impl AgentView {
                             height: 1,
                         };
                         self.question_nav_buttons.push(('\n', btn_rect));
-                    } else {
-                        self.question_nav_buttons.clear();
                     }
                 }
             }
@@ -2635,6 +3003,24 @@ impl AgentView {
                 self.hit_question_scrollbar.set(sb_rect);
             } else {
                 self.hit_question_scrollbar.clear();
+            }
+        } else if elicitation_view_h > 0 {
+            self.elicit_hits.clear();
+            if let Some(ev) = self.elicitation_view.as_mut() {
+                let elicit_area = Rect {
+                    x: layout.prompt.x,
+                    y: layout.prompt.y,
+                    width: layout.prompt.width,
+                    height: layout.prompt.height,
+                };
+                crate::views::elicitation_view::render_elicitation_view(
+                    buf,
+                    elicit_area,
+                    ev,
+                    &theme,
+                    prompt_focused,
+                    Some(&mut self.elicit_hits),
+                );
             }
         } else if rewind_view_h > 0 {
             if let Some(ref rw) = self.rewind_state {
@@ -2668,7 +3054,6 @@ impl AgentView {
             };
             let voice_overlay = if voice_available && (voice_listening || voice_interim.is_some()) {
                 Some(crate::views::prompt_widget::VoicePromptOverlay {
-                    listening: voice_listening,
                     interim: voice_interim,
                     color: theme.accent_running,
                 })
@@ -2746,9 +3131,8 @@ impl AgentView {
                             buf.set_line_safe(hint_x, top_border_y, &hint_line, hint_w);
                         }
                     }
-                    let content_inset = 1 + layout_cfg.eff_hpad_left(compact);
-                    let items_x = layout.prompt.x + content_inset;
-                    let items_width = layout.prompt.width.saturating_sub(content_inset);
+                    let items_x = layout.prompt.x + dropdown_content_inset();
+                    let items_width = dropdown_items_width(layout.prompt);
                     let items_area = Rect {
                         x: items_x,
                         y: top_border_y + 1,
@@ -2772,7 +3156,7 @@ impl AgentView {
             };
             let snap = self.prompt.slash_snapshot();
             let item_count = snap.matches.len();
-            let items_width = dropdown_items_width(layout.prompt, layout_cfg, compact);
+            let items_width = dropdown_items_width(layout.prompt);
             let item_rows = desired_item_rows(&snap.matches, items_width);
             if item_rows > 0 {
                 if let Some(chrome) = render_dropdown_chrome(
@@ -2893,9 +3277,8 @@ impl AgentView {
                         );
                     }
                 }
-                let content_inset = 1 + layout_cfg.eff_hpad_left(compact);
-                let items_x = layout.prompt.x + content_inset;
-                let items_width = layout.prompt.width.saturating_sub(content_inset);
+                let items_x = layout.prompt.x + dropdown_content_inset();
+                let items_width = dropdown_items_width(layout.prompt);
                 let items_area_rect = Rect {
                     x: items_x,
                     y: top_border_y + 1,
@@ -3057,169 +3440,35 @@ impl AgentView {
             self.pane_areas = layout.pane_areas();
             return (None, crate::terminal::overlay::clear().map(Into::into));
         }
-        if let Some(ref viewer) = self.block_viewer {
-            let hints = viewer.shortcuts_hints();
-            ShortcutsBar::new(&hints)
-                .with_pending(pending_hint)
-                .render(layout.shortcuts, buf);
-        } else if !self.permission_queue.is_empty() {
-            use crate::views::permission_view::PermissionFocus;
-            use crate::views::shortcuts_bar::HintItem;
-            let hints = if let Some(perm) = self.permission_queue.front() {
-                match perm.focus {
-                    PermissionFocus::FollowupInput => {
-                        vec![
-                            HintItem::new(key!(Enter), "send"),
-                            HintItem::new(key!(Esc), "back"),
-                        ]
-                    }
-                    PermissionFocus::Options => {
-                        use crate::input::key::KeyShortcut;
-                        use crossterm::event::{KeyCode, KeyModifiers};
-                        let n = perm.options.len().min(9) as u8;
-                        let last_ch = char::from(b'0' + n.max(1));
-                        let last_key = KeyShortcut::new(KeyCode::Char(last_ch), KeyModifiers::NONE);
-                        let mut hints = vec![HintItem::paired(key!('1'), last_key, "select")];
-                        if perm.has_adjustable_scope() {
-                            hints.push(HintItem::paired(key!(Left), key!(Right), "scope"));
-                        }
-                        if !perm.description.is_empty() {
-                            let label = if perm.args_expanded {
-                                "收起"
-                            } else {
-                                "展开"
-                            };
-                            hints.push(HintItem::new(key!('f', CONTROL), label));
-                        }
-                        hints.push(HintItem::new(key!('o', CONTROL), "始终批准"));
-                        hints.push(HintItem::new(key!('c', CONTROL), "取消"));
-                        hints
-                    }
-                }
-            } else {
-                vec![]
-            };
-            ShortcutsBar::new(&hints)
-                .with_pending(pending_hint)
-                .render(layout.shortcuts, buf);
-        } else if let Some(ref pav) = self.plan_approval_view {
-            let hints = self.plan_approval_shortcut_hints(pav);
-            if !hints.is_empty() {
+        match self.shortcuts_bar_content(registry, esc_owned_before_agent) {
+            ShortcutsBarContent::Hidden => {}
+            ShortcutsBarContent::Surface(hints) => {
                 ShortcutsBar::new(&hints)
                     .with_pending(pending_hint)
                     .render(layout.shortcuts, buf);
             }
-        } else if self.line_viewer.is_some() && self.is_plan_viewer() {
-            let suppress_shortcuts = self
-                .line_viewer
-                .as_ref()
-                .is_some_and(|v| v.fullscreen && v.list_state.input_mode().is_some());
-            if !suppress_shortcuts {
-                use crate::views::shortcuts_bar::HintItem;
-                let hints = if self.is_casual_commenting() {
-                    vec![
-                        HintItem::new(key!(Enter), "save comment"),
-                        HintItem::new(key!(Esc), "cancel"),
-                    ]
-                } else {
-                    let mut h = vec![
-                        HintItem::new(key!('c'), "comment"),
-                        HintItem::new(key!('f', CONTROL), "fullscreen"),
-                    ];
-                    if !self.plan_comments.is_empty() {
-                        h.push(HintItem::new(key!('s'), "send"));
+            ShortcutsBarContent::Pane(hints) => {
+                let help_hint = registry.find(ActionId::ShortcutsHelp).map(|def| {
+                    let mut hint = def.hint();
+                    if in_dashboard_overlay
+                        && def.default_key == key!('x', CONTROL)
+                        && let Some(alt) = def.alt_keys.first()
+                    {
+                        hint.keys = vec![*alt];
                     }
-                    h.push(HintItem::new(key!(Esc), "close"));
-                    h
-                };
+                    hint
+                });
                 ShortcutsBar::new(&hints)
+                    .compact(5, help_hint)
                     .with_pending(pending_hint)
                     .render(layout.shortcuts, buf);
             }
-        } else if let Some(ref qv) = self.question_view {
-            use crate::views::question_view::QuestionFocus;
-            use crate::views::shortcuts_bar::HintItem;
-            let hints = match qv.focus {
-                QuestionFocus::InputMode => {
-                    if self.prompt.file_search_visible() {
-                        vec![
-                            HintItem::paired(key!(Up), key!(Down), "nav"),
-                            HintItem::new(key!(Tab), "accept"),
-                            HintItem::new(key!(Right), "drill"),
-                            HintItem::new(key!(Esc), "dismiss"),
-                        ]
-                    } else {
-                        vec![
-                            HintItem::new(key!(Enter), "submit"),
-                            HintItem::new(key!(Esc), "back"),
-                        ]
-                    }
-                }
-                QuestionFocus::Navigation => {
-                    vec![
-                        HintItem::new(key!(Esc), "unselect"),
-                        HintItem::new(key!(Tab), "scrollback"),
-                        HintItem::new(key!('X'), "dismiss"),
-                    ]
-                }
-            };
-            ShortcutsBar::new(&hints).render(layout.shortcuts, buf);
-        } else if self.cancel_turn_view.is_some() {
-            use crate::views::shortcuts_bar::HintItem;
-            let hints = vec![
-                HintItem::paired(key!('1'), key!('4'), "select"),
-                HintItem::new(key!(Enter), "confirm"),
-                HintItem::new(key!(Esc), "keep running"),
-                HintItem::new(key!(Tab), "scrollback"),
-            ];
-            ShortcutsBar::new(&hints)
-                .with_pending(pending_hint)
-                .render(layout.shortcuts, buf);
-        } else {
-            let mut hints = self.normal_pane_hints(registry);
-            if in_dashboard_overlay {
-                use crate::views::shortcuts_bar::HintItem;
-                hints.insert(
-                    0,
-                    HintItem::new(
-                        registry
-                            .find(ActionId::DashboardOverlayStop)
-                            .map(|def| def.default_key)
-                            .unwrap_or(key!('x', CONTROL)),
-                        "stop",
-                    ),
-                );
-                hints.insert(
-                    0,
-                    HintItem {
-                        keys: vec![key!('[', CONTROL), key!(']', CONTROL)],
-                        label: "agents".into(),
-                        custom_display: Some("Ctrl+[/]"),
-                        description: None,
-                        pinned: false,
-                    },
-                );
-                hints.insert(0, HintItem::new(key!('\\', CONTROL), "dashboard"));
-            }
-            let help_hint = registry.find(ActionId::ShortcutsHelp).map(|def| {
-                let mut hint = def.hint();
-                if in_dashboard_overlay
-                    && def.default_key == key!('x', CONTROL)
-                    && let Some(alt) = def.alt_keys.first()
-                {
-                    hint.keys = vec![*alt];
-                }
-                hint
-            });
-            ShortcutsBar::new(&hints)
-                .compact(5, help_hint)
-                .with_pending(pending_hint)
-                .render(layout.shortcuts, buf);
         }
+        let line_viewer_toast = self.active_toast_message().map(|s| s.to_string());
         let is_plan_viewer = self.is_plan_viewer();
         let has_plan_comments = !self.plan_comments.is_empty();
         let casual_commenting = self.is_casual_commenting();
-        if let Some(ref mut viewer) = self.line_viewer {
+        if self.line_viewer.is_some() {
             use crate::views::file_search::line_viewer::render_line_viewer;
             use crate::views::shortcuts_bar::HintItem;
             let plan_prompt_focused = self
@@ -3249,19 +3498,55 @@ impl AgentView {
             } else {
                 self.plan_comments.len()
             };
-            if let Some(ref pav) = self.plan_approval_view {
-                viewer.plan_mut().active_commenting_range = pav.commenting_range.clone();
-            } else {
-                viewer.plan_mut().active_commenting_range = self.casual_commenting_range.clone();
+            let mermaid_placements = self
+                .line_viewer
+                .as_mut()
+                .map(|viewer| {
+                    if let Some(ref pav) = self.plan_approval_view {
+                        viewer.plan_mut().active_commenting_range = pav.commenting_range.clone();
+                    } else {
+                        viewer.plan_mut().active_commenting_range =
+                            self.casual_commenting_range.clone();
+                    }
+                    render_line_viewer(
+                        buf,
+                        overlay_area,
+                        viewer,
+                        &self.session.cwd,
+                        &theme,
+                        effective_comment_count,
+                    );
+                    viewer
+                        .last_popup_area
+                        .map(|area| viewer.diagram_affordance_placements(area))
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            self.inline_media_hits = super::InlineMediaHitAreas::default();
+            self.paint_diagram_affordances(buf, mermaid_placements, &theme);
+            let Some(viewer) = self.line_viewer.as_mut() else {
+                return (prompt_cursor_pos, prompt_post_flush);
+            };
+            let toast_area = viewer
+                .last_popup_area
+                .or(viewer.last_modal_area)
+                .unwrap_or(overlay_area);
+            if let Some(ref msg) = line_viewer_toast
+                && toast_area.height > 0
+                && let Some(toast_text) = fit_toast_text(msg, toast_area.width.saturating_sub(1))
+            {
+                let w = toast_text.chars().count() as u16;
+                let tx = toast_area.right().saturating_sub(w + 1);
+                let ty = toast_area.bottom().saturating_sub(1);
+                for (i, ch) in toast_text.chars().enumerate() {
+                    if let Some(cell) = buf.cell_mut((tx + i as u16, ty)) {
+                        cell.set_char(ch);
+                        cell.fg = theme.accent_user;
+                        cell.bg = theme.bg_base;
+                        cell.modifier = ratatui::prelude::Modifier::BOLD;
+                    }
+                }
             }
-            render_line_viewer(
-                buf,
-                overlay_area,
-                viewer,
-                &self.session.cwd,
-                &theme,
-                effective_comment_count,
-            );
             let in_plan_approval = self.plan_approval_view.is_some();
             let on_comment = in_plan_approval
                 && viewer
@@ -3287,11 +3572,15 @@ impl AgentView {
                 } else {
                     h.push(HintItem::new(key!('a'), "approve"));
                 }
+                h.push(HintItem::new(key!('y'), "copy plan"));
                 h.push(HintItem::new(key!('q'), "quit plan"));
                 h.push(HintItem::new(key!(Tab), "prompt"));
                 h
             } else if in_plan_approval {
-                let mut h = vec![HintItem::new(key!('c'), "comment")];
+                let mut h = vec![
+                    HintItem::new(key!('c'), "comment"),
+                    HintItem::new(key!('y'), "copy plan"),
+                ];
                 if approval_has_comments {
                     h.push(HintItem::new(key!('s'), "send"));
                 } else {
@@ -3317,9 +3606,13 @@ impl AgentView {
                     vec![
                         HintItem::new(key!(Enter), "edit"),
                         HintItem::new(key!('x'), "delete"),
+                        HintItem::new(key!('y'), "copy plan"),
                     ]
                 } else {
-                    vec![HintItem::new(key!('c'), "comment")]
+                    vec![
+                        HintItem::new(key!('c'), "comment"),
+                        HintItem::new(key!('y'), "copy plan"),
+                    ]
                 };
                 if has_plan_comments {
                     h.push(HintItem::new(key!('s'), "send"));
@@ -3943,8 +4236,8 @@ impl AgentView {
                             .push((rect, path.clone()));
                         if button_visible {
                             let is_playing = matches!(
-                                self.inline_video, Some(ref vid) if vid.path == * path && !
-                                vid.finished
+                                self.inline_video,
+                                Some(ref vid) if vid.path == *path && !vid.finished
                             );
                             let play_label: String = if is_playing {
                                 let vid = self.inline_video.as_ref().unwrap();
@@ -4120,7 +4413,7 @@ impl AgentView {
             let active_subagent_tokens: u64 = self
                 .subagent_sessions
                 .values()
-                .filter(|s| !s.finished)
+                .filter(|s| !s.finished && s.workflow_run_id.is_none())
                 .filter_map(|s| s.tokens_used)
                 .sum();
             let close_rect = crate::views::goal_detail::render_goal_detail(
@@ -4135,6 +4428,34 @@ impl AgentView {
             );
             self.hit_goal_close.rect = close_rect;
             self.frame_occluder_rects.push(overlay_rect);
+        }
+        if self.show_workflows {
+            let runs = self.workflow_runs_newest_first();
+            let mut view = self.workflows_view.clone();
+            view.normalize(&runs);
+            let tick = self.tasks.tick_count() as usize;
+            let live: crate::views::workflows::WorkflowAgentLiveMap = self
+                .subagent_sessions
+                .iter()
+                .filter(|(_, info)| info.workflow_run_id.is_some())
+                .map(|(id, info)| {
+                    (
+                        id.clone(),
+                        crate::views::workflows::WorkflowAgentLiveStatus {
+                            activity: info.activity_label.clone(),
+                            context_tokens: info.tokens_used,
+                            context_window_tokens: info.context_window_tokens,
+                            elapsed_ms: Some(info.display_elapsed().as_millis() as u64),
+                        },
+                    )
+                })
+                .collect();
+            let popup =
+                crate::views::workflows::render_workflows(buf, area, &runs, &mut view, tick, &live);
+            self.workflows_view = view;
+            if let Some(popup) = popup {
+                self.frame_occluder_rects.push(popup);
+            }
         }
         self.pane_areas = layout.pane_areas();
         {
@@ -4179,6 +4500,10 @@ impl AgentView {
                     banner_announcements,
                     hidden_announcement_ids,
                 );
+                self.push_status_line_link_spans(
+                    link_spans_out,
+                    std::mem::take(&mut status_line_link_spans),
+                );
             }
         }
         let on_link = self.hovered_link_idx.is_some();
@@ -4205,6 +4530,34 @@ impl AgentView {
         };
         (cursor, prompt_post_flush)
     }
+}
+/// Draw one ▼/▲ scroll-indicator arrow centered on row `y`, or clear its
+/// hit area when hidden (`y: None`). The unconditional set-or-clear is the
+/// point: a hit rect must never outlive the frame that painted its arrow,
+/// or an invisible click target keeps firing under whatever covers it
+/// (e.g. an open block viewer).
+fn draw_scroll_arrow(
+    buf: &mut Buffer,
+    theme: &Theme,
+    center_x: u16,
+    y: Option<u16>,
+    symbol: &str,
+    hit: &mut super::HitArea,
+) {
+    let Some(y) = y else {
+        hit.clear();
+        return;
+    };
+    let style = Style::default().fg(if hit.hovered {
+        theme.gray_bright
+    } else {
+        theme.gray
+    });
+    if let Some(cell) = buf.cell_mut((center_x, y)) {
+        cell.set_symbol(symbol);
+        cell.set_style(style);
+    }
+    hit.set(Some(Rect::new(center_x.saturating_sub(1), y, 3, 1)));
 }
 /// Pad `msg` for the toast slot, truncating with a trailing ellipsis when it
 /// cannot fit in `avail_width` columns (long clipboard toasts embed backup
@@ -4261,6 +4614,7 @@ mod selection_state_tests {
             screen_x: 0,
             selectable_cols: 0..3,
             text: "foo".to_string(),
+            painted_region: None,
             joiner_to_previous: None,
         };
         let mut boundaries = ResolvedSelectionBoundaries::default();
@@ -4278,8 +4632,8 @@ mod selection_state_tests {
 }
 #[cfg(test)]
 mod voice_recording_overlay_tests {
-    use super::super::paste::paste_key_tests::make_plan_approval_view_state;
     use super::super::test_fixtures::make_agent;
+    use super::super::test_fixtures::make_plan_approval_view_state;
     use super::AgentView;
     use crate::actions::ActionRegistry;
     use crate::app::bundle::BundleState;
@@ -4307,16 +4661,16 @@ mod voice_recording_overlay_tests {
             &mut scratch,
             None,
             false,
-            0,
-            &[],
-            &std::collections::BTreeSet::new(),
-            None,
+            crate::app::agent_view::BannerSlotParams::none(),
             &BundleState::default(),
             false,
+            false,
             &mut Vec::new(),
-            listening,
-            listening,
-            None,
+            super::AppRenderParams {
+                voice_available: listening,
+                voice_listening: listening,
+                ..Default::default()
+            },
         );
         (0..area.height)
             .map(|y| {
@@ -4353,6 +4707,64 @@ mod voice_recording_overlay_tests {
     }
 }
 #[cfg(test)]
+mod overlay_cycle_hint_tests {
+    use super::super::test_fixtures::make_agent;
+    use crate::actions::ActionRegistry;
+    use crate::app::bundle::BundleState;
+    use crate::scrollback::render::ScratchBuffer;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    fn draw_overlay_footer(can_cycle: bool) -> String {
+        let mut agent = make_agent();
+        let reg = ActionRegistry::defaults();
+        let area = Rect::new(0, 0, 100, 30);
+        let mut buf = Buffer::empty(area);
+        let mut scratch = ScratchBuffer::new();
+        agent.draw(
+            area,
+            &mut buf,
+            &reg,
+            &mut scratch,
+            None,
+            false,
+            crate::app::agent_view::BannerSlotParams::none(),
+            &BundleState::default(),
+            true,
+            can_cycle,
+            &mut Vec::new(),
+            super::AppRenderParams::default(),
+        );
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol().to_string()))
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    #[test]
+    fn prev_next_hint_shown_when_overlay_can_cycle() {
+        let text = draw_overlay_footer(true);
+        assert!(
+            text.contains("prev/next agent"),
+            "footer must advertise cycle keys when can_cycle:\n{text}"
+        );
+    }
+    #[test]
+    fn prev_next_hint_hidden_when_overlay_cannot_cycle() {
+        let text = draw_overlay_footer(false);
+        assert!(
+            !text.contains("prev/next agent"),
+            "footer must not advertise cycle keys for a single agent:\n{text}"
+        );
+        assert!(
+            text.contains("dashboard"),
+            "back-to-dashboard hint still shown:\n{text}"
+        );
+    }
+}
+#[cfg(test)]
 mod overlay_post_flush_tests {
     use super::super::test_fixtures::make_agent;
     use crate::actions::ActionRegistry;
@@ -4372,16 +4784,12 @@ mod overlay_post_flush_tests {
                 &mut scratch,
                 None,
                 false,
-                0,
-                &[],
-                &std::collections::BTreeSet::new(),
-                None,
+                crate::app::agent_view::BannerSlotParams::none(),
                 &BundleState::default(),
                 false,
+                false,
                 &mut Vec::new(),
-                false,
-                false,
-                None,
+                super::AppRenderParams::default(),
             )
             .1
     }
@@ -4433,5 +4841,437 @@ mod overlay_post_flush_tests {
         post_flush.write_to(&mut Vec::new()).unwrap();
         let after_emit = crate::terminal::overlay::static_image(&png(), 20, 10, 0, 0, 42).unwrap();
         assert!(after_emit.as_str().contains("a=t"));
+    }
+}
+#[cfg(test)]
+mod permission_hint_tests {
+    use super::super::test_fixtures::{make_agent, make_followup_permission_state};
+    use crate::views::permission_view::PermissionFocus;
+    use agent_client_protocol as acp;
+    use ratatui::layout::Rect;
+    use std::sync::Arc;
+    const ALL_FOCUSES: [PermissionFocus; 3] = [
+        PermissionFocus::Options,
+        PermissionFocus::FollowupInput,
+        PermissionFocus::PatternEdit,
+    ];
+    /// The footer Ctrl-F hint must track the key exactly: shown in every
+    /// focus mode when something is collapsible (the key fires before the
+    /// focus match), absent for protected-edit warning descriptions.
+    #[test]
+    fn ctrl_f_hint_follows_the_key_in_every_focus_mode() {
+        let mut agent = make_agent();
+        agent.pane_areas.prompt = Rect::new(0, 20, 80, 10);
+        let mut perm = make_followup_permission_state();
+        perm.bash_command_raw = Some(
+            (0..12)
+                .map(|i| format!("echo line{i}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        for focus in ALL_FOCUSES {
+            perm.focus = focus;
+            let hints = agent.permission_shortcut_hints(&perm);
+            assert!(
+                hints.iter().any(|h| h.label == "expand"),
+                "missing Ctrl-F hint in {focus:?}"
+            );
+        }
+        perm.args_expanded = true;
+        assert!(
+            agent
+                .permission_shortcut_hints(&perm)
+                .iter()
+                .any(|h| h.label == "collapse")
+        );
+        perm.args_expanded = false;
+        perm.bash_command_raw = None;
+        perm.description = vec!["Warning: this file is protected".into()];
+        perm.options = vec![acp::PermissionOption::new(
+            acp::PermissionOptionId::new(Arc::from(
+                xai_grok_workspace::permission::ALLOW_EDITS_SESSION_OPTION_ID,
+            )),
+            "Allow all edits this session".to_owned(),
+            acp::PermissionOptionKind::AllowAlways,
+        )];
+        for focus in ALL_FOCUSES {
+            perm.focus = focus;
+            let hints = agent.permission_shortcut_hints(&perm);
+            assert!(
+                !hints
+                    .iter()
+                    .any(|h| h.label == "expand" || h.label == "collapse"),
+                "protected-edit must not advertise Ctrl-F in {focus:?}"
+            );
+        }
+        perm.options.clear();
+        perm.description = vec!["{".into(), "  \"k\": 1".into(), "}".into()];
+        for focus in ALL_FOCUSES {
+            perm.focus = focus;
+            let hints = agent.permission_shortcut_hints(&perm);
+            assert!(
+                hints.iter().any(|h| h.label == "expand"),
+                "missing Ctrl-F hint for scope-less MCP args in {focus:?}"
+            );
+        }
+    }
+}
+#[cfg(test)]
+mod feedback_input_tests {
+    use super::super::test_fixtures::make_agent;
+    use super::AgentView;
+    use crate::actions::ActionRegistry;
+    use crate::app::bundle::BundleState;
+    use crate::scrollback::render::ScratchBuffer;
+    use crate::views::question_view::{LocalQuestionKind, QuestionViewState, feedback_input};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use xai_grok_tools::implementations::grok_build::ask_user_question::Question;
+    /// Agent with the bare `/feedback` pane open and focused for typing.
+    fn feedback_agent() -> AgentView {
+        let mut agent = make_agent();
+        let stashed = agent.prompt.stash();
+        let mut state = QuestionViewState::new(
+            "feedback-test".into(),
+            vec![Question {
+                question: crate::app::dispatch::FEEDBACK_QUESTION_LABEL.into(),
+                options: vec![],
+                multi_select: Some(false),
+                id: None,
+            }],
+            stashed,
+        )
+        .with_local_kind(LocalQuestionKind::Feedback);
+        let freeform = state.activate_freeform_input();
+        agent.prompt.set_text_preserving(&freeform);
+        agent.question_view = Some(state);
+        agent
+    }
+    fn render_text(agent: &mut AgentView) -> String {
+        render_text_sized(agent, 100, 40)
+    }
+    fn render_text_sized(agent: &mut AgentView, width: u16, height: u16) -> String {
+        let reg = ActionRegistry::defaults();
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        let mut scratch = ScratchBuffer::new();
+        agent.draw(
+            area,
+            &mut buf,
+            &reg,
+            &mut scratch,
+            None,
+            false,
+            crate::app::agent_view::BannerSlotParams::none(),
+            &BundleState::default(),
+            false,
+            false,
+            &mut Vec::new(),
+            super::AppRenderParams::default(),
+        );
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol().to_string()))
+                    .collect::<String>()
+                    + "\n"
+            })
+            .collect()
+    }
+    /// The feedback pane keeps the question card, and puts a multi-line report area where the options and the one-line freeform row would be.
+    #[test]
+    fn feedback_pane_renders_report_area_in_the_card() {
+        let mut agent = feedback_agent();
+        let screen = render_text(&mut agent);
+        assert!(
+            screen.contains(crate::app::dispatch::FEEDBACK_QUESTION_LABEL),
+            "label missing\n{screen}"
+        );
+        assert!(
+            screen.contains(feedback_input::PLACEHOLDER),
+            "placeholder must stay visible in the empty focused input\n{screen}"
+        );
+        assert!(
+            !screen.contains("(\u{25cb})"),
+            "the freeform radio row has no place in the feedback pane\n{screen}"
+        );
+        assert!(
+            !screen.contains("navigate"),
+            "there is nothing to navigate in the feedback pane\n{screen}"
+        );
+        assert!(
+            screen.contains("Enter:send"),
+            "footer must offer the send action\n{screen}"
+        );
+        let top = screen
+            .lines()
+            .position(|l| l.contains('\u{256d}'))
+            .expect("report box needs a top rule");
+        let bottom = screen
+            .lines()
+            .position(|l| l.contains('\u{2570}'))
+            .expect("report box needs a bottom rule");
+        let box_rows = (bottom - top + 1) as u16;
+        assert_eq!(
+            box_rows,
+            feedback_input::HEIGHT,
+            "report box should be {} rows, got {box_rows}\n{screen}",
+            feedback_input::HEIGHT
+        );
+        let sides = screen
+            .lines()
+            .skip(top + 1)
+            .take(bottom - top - 1)
+            .filter(|l| l.matches('\u{2502}').count() >= 2)
+            .count();
+        assert_eq!(
+            sides,
+            bottom - top - 1,
+            "every text row of the box needs both side rules\n{screen}"
+        );
+    }
+    #[test]
+    fn feedback_trace_question_renders_options() {
+        let mut agent = feedback_agent();
+        {
+            let qv = agent.question_view.as_mut().expect("pane");
+            qv.begin_feedback_trace_stage("clipboard is broken over ssh".into(), vec![]);
+        }
+        let screen = render_text(&mut agent);
+        for fragment in ["Opt-in to provide your trace", "retain and train"] {
+            assert!(
+                screen.contains(fragment),
+                "trace question label missing ({fragment})\n{screen}"
+            );
+        }
+        for option in ["Opt in", "Opt out this time"] {
+            assert!(screen.contains(option), "{option} missing\n{screen}");
+        }
+        let selected_row = screen
+            .lines()
+            .find(|l| l.contains("Opt in") && !l.contains("Opt out"))
+            .expect("first option row");
+        assert!(
+            selected_row.contains('\u{25cf}'),
+            "turning trace upload on must render preselected\n{screen}"
+        );
+        assert!(
+            screen.contains("Enter:send"),
+            "footer must offer send\n{screen}"
+        );
+        assert!(
+            !screen.contains("dismiss"),
+            "the trace card cannot be dismissed without sending; the bar must \
+             not promise it\n{screen}"
+        );
+    }
+    /// A shrunk box must not paint over the shortcuts bar or leave the user typing into a pane that renders nothing.
+    #[test]
+    fn feedback_report_box_shrinks_on_a_short_terminal() {
+        for height in [10u16, 11, 12, 13, 14, 16, 18, 20] {
+            let mut agent = feedback_agent();
+            let screen = render_text_sized(&mut agent, 100, height);
+            let rows: Vec<&str> = screen.lines().collect();
+            let card_visible = screen.contains(crate::glyphs::accent_bar());
+            if card_visible {
+                assert!(
+                    screen.contains(feedback_input::PLACEHOLDER)
+                        || screen.contains(crate::glyphs::prompt_arrow()),
+                    "card renders without its report input at height {height}\n{screen}"
+                );
+            }
+            let Some(bottom) = rows.iter().position(|l| l.contains('\u{2570}')) else {
+                assert!(
+                    !screen.contains('\u{256d}'),
+                    "a top rule without a bottom rule means a clipped box (height {height})\n{screen}"
+                );
+                continue;
+            };
+            let top = rows
+                .iter()
+                .position(|l| l.contains('\u{256d}'))
+                .expect("a bottom rule implies a top rule");
+            assert!(top < bottom, "box rules out of order (height {height})");
+            assert!(
+                bottom + 1 < rows.len(),
+                "box must leave room below the panel (height {height})\n{screen}"
+            );
+        }
+    }
+}
+#[cfg(test)]
+mod status_line_draw_tests {
+    use super::super::test_fixtures::make_agent;
+    use super::AgentView;
+    use crate::actions::ActionRegistry;
+    use crate::app::bundle::BundleState;
+    use crate::scrollback::render::ScratchBuffer;
+    use crate::views::question_view::{LocalQuestionKind, QuestionViewState};
+    use crate::views::status_line::{SanitizedText, StatusLineDisplay, StatusLineFrame};
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::style::Color;
+    use xai_grok_tools::implementations::grok_build::ask_user_question::Question;
+    fn draw_script(output: &str, rows: u16) -> Buffer {
+        draw_script_for(&mut make_agent(), output, rows)
+    }
+    fn draw_script_for(agent: &mut AgentView, output: &str, rows: u16) -> Buffer {
+        let area = Rect::new(0, 0, 80, rows);
+        let mut buf = Buffer::empty(area);
+        let mut scratch = ScratchBuffer::new();
+        let _ = agent.draw(
+            area,
+            &mut buf,
+            &ActionRegistry::defaults(),
+            &mut scratch,
+            None,
+            false,
+            crate::app::agent_view::BannerSlotParams::none(),
+            &BundleState::default(),
+            false,
+            false,
+            &mut Vec::new(),
+            super::AppRenderParams {
+                status_line: StatusLineFrame::On {
+                    display: std::sync::Arc::new(StatusLineDisplay::Text(SanitizedText::new(
+                        output,
+                    ))),
+                    padding: 0,
+                },
+                ..Default::default()
+            },
+        );
+        buf
+    }
+    fn find(buf: &Buffer, text: &str) -> Option<(u16, u16)> {
+        let area = *buf.area();
+        let want: Vec<String> = text.chars().map(String::from).collect();
+        (area.y..area.bottom()).find_map(|y| {
+            (area.x..area.right().saturating_sub(want.len() as u16 - 1))
+                .find(|x| {
+                    want.iter()
+                        .enumerate()
+                        .all(|(i, c)| buf[(x + i as u16, y)].symbol() == c.as_str())
+                })
+                .map(|x| (x, y))
+        })
+    }
+    #[test]
+    fn script_background_survives_the_pane_fill() {
+        let buf = draw_script("\x1b[41mRED\x1b[0m", 30);
+        let (x, y) = find(&buf, "RED").expect("the script row is on screen");
+        assert_eq!(buf[(x, y)].bg, Color::Red);
+    }
+    /// Agent with the bare `/feedback` pane open and focused, which asks for
+    /// most of the screen.
+    fn question_agent() -> AgentView {
+        let mut agent = make_agent();
+        let stashed = agent.prompt.stash();
+        let mut state = QuestionViewState::new(
+            "status_line-test".into(),
+            vec![Question {
+                question: crate::app::dispatch::FEEDBACK_QUESTION_LABEL.into(),
+                options: vec![],
+                multi_select: Some(false),
+                id: None,
+            }],
+            stashed,
+        )
+        .with_local_kind(LocalQuestionKind::Feedback);
+        let freeform = state.activate_freeform_input();
+        agent.prompt.set_text_preserving(&freeform);
+        agent.question_view = Some(state);
+        agent
+    }
+    fn dump(buf: &Buffer) -> String {
+        let area = *buf.area();
+        (area.y..area.bottom())
+            .map(|y| {
+                (area.x..area.right())
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+                    + "\n"
+            })
+            .collect()
+    }
+    const FIVE_ROW_SCRIPT: &str = "row-1\nrow-2\nrow-3\nrow-4\nrow-5";
+    #[test]
+    fn short_terminal_leaves_the_row_four_of_its_five_rows() {
+        let buf = draw_script(FIVE_ROW_SCRIPT, 16);
+        let screen = dump(&buf);
+        assert!(
+            find(&buf, "row-4").is_some(),
+            "four rows are left over at height 16\n{screen}"
+        );
+        assert!(
+            find(&buf, "row-5").is_none(),
+            "a fifth row could only come out of the prompt\n{screen}"
+        );
+        assert!(
+            find(&buf, "\u{2570}").is_some(),
+            "the prompt keeps its bottom rule\n{screen}"
+        );
+        assert!(
+            // The label, not the binding: a terminal that cannot send `Ctrl+.`
+            // draws `Ctrl+x` for the same cheatsheet.
+            find(&buf, ":shortcuts").is_some(),
+            "the shortcuts bar keeps its row\n{screen}"
+        );
+    }
+    const ONE_ROW_SCRIPT: &str = "solo-row";
+    #[test]
+    fn fullscreen_question_panel_leaves_the_row_its_rows() {
+        let buf = draw_script_for(&mut question_agent(), FIVE_ROW_SCRIPT, 24);
+        let screen = dump(&buf);
+        let present: Vec<u16> = (1..=5)
+            .filter_map(|i| find(&buf, &format!("row-{i}")).map(|(_, y)| y))
+            .collect();
+        assert_eq!(
+            present.len(),
+            5,
+            "the panel shrinks by the rows the script asks for, got rows at {present:?}\n{screen}"
+        );
+        assert!(
+            find(&buf, "Esc:dismiss").is_some(),
+            "the shortcuts bar keeps its row\n{screen}"
+        );
+    }
+    #[test]
+    fn fullscreen_question_panel_leaves_a_one_row_script_its_row() {
+        let buf = draw_script_for(&mut question_agent(), ONE_ROW_SCRIPT, 24);
+        let screen = dump(&buf);
+        let row_y = find(&buf, ONE_ROW_SCRIPT)
+            .map(|(_, y)| y)
+            .unwrap_or_else(|| panic!("the panel must leave the single row on screen\n{screen}"));
+        let bar_y = find(&buf, "Esc:dismiss")
+            .map(|(_, y)| y)
+            .unwrap_or_else(|| panic!("the shortcuts bar keeps its row\n{screen}"));
+        assert_eq!(
+            bar_y,
+            row_y + 1,
+            "the shortcuts bar sits directly under the row\n{screen}"
+        );
+    }
+    #[test]
+    fn row_clamped_away_by_the_prompt_keeps_the_exported_size() {
+        let mut agent = make_agent();
+        draw_script_for(&mut agent, ONE_ROW_SCRIPT, 20);
+        let painted = agent.last_status_line_size;
+        assert_eq!(
+            painted,
+            Some(crate::views::status_line::RowSize { cols: 76, lines: 1 }),
+            "the row fills the inner width of an 80-column area"
+        );
+        agent.prompt.set_text_preserving(&"line\n".repeat(20));
+        let buf = draw_script_for(&mut agent, ONE_ROW_SCRIPT, 20);
+        assert!(
+            find(&buf, ONE_ROW_SCRIPT).is_none(),
+            "a prompt at its cap leaves no row to paint\n{}",
+            dump(&buf)
+        );
+        assert_eq!(
+            agent.last_status_line_size, painted,
+            "a frame with no row must not export a width the script would read as the 80-column fallback"
+        );
     }
 }

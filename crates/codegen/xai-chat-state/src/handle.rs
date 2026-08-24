@@ -8,7 +8,7 @@ use xai_grok_sampling_types::{
     ToolSpec, TraceContext,
 };
 
-use crate::commands::{ChatStateCommand, RepairHistoryBlocked};
+use crate::commands::{ChatStateCommand, RepairHistoryBlocked, StrictAppendAck, StrictAppendError};
 use crate::types::{
     AutoCompactTrigger, ChatStateSnapshot, ConversationCounts, Credentials, NotificationMeta,
     TurnCapture,
@@ -50,6 +50,29 @@ impl ChatStateHandle {
         .await
     }
 
+    /// Strictly append one working-directory switch and await persistence.
+    /// A matching generation returns `AlreadyPresent`; indeterminate errors must be retried.
+    pub async fn append_working_directory_switch_and_ack(
+        &self,
+        content: String,
+        cwd_generation: std::num::NonZeroU64,
+    ) -> Result<StrictAppendAck, StrictAppendError> {
+        self.query("AppendWorkingDirectorySwitchAndAck", |reply| {
+            ChatStateCommand::AppendWorkingDirectorySwitchAndAck {
+                content,
+                cwd_generation,
+                reply,
+            }
+        })
+        .await
+        .unwrap_or_else(|| {
+            Err(StrictAppendError::Indeterminate(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "chat-state actor unavailable; retry by generation",
+            )))
+        })
+    }
+
     /// Push a user message with an explicit dangling-repair reason.
     pub fn push_user_message_with_repair_reason(
         &self,
@@ -71,6 +94,18 @@ impl ChatStateHandle {
     /// Record a tool result.
     pub fn push_tool_result(&self, item: ConversationItem) {
         let _ = self.cmd_tx.send(ChatStateCommand::PushToolResult { item });
+    }
+
+    /// Persist model output already included in the provider's usage total.
+    pub fn push_model_output(&self, item: ConversationItem) {
+        let _ = self.cmd_tx.send(ChatStateCommand::PushModelOutput { item });
+    }
+
+    /// Persist model output whose provider response omitted usage.
+    pub fn push_unreported_model_output(&self, item: ConversationItem) {
+        let _ = self
+            .cmd_tx
+            .send(ChatStateCommand::PushUnreportedModelOutput { item });
     }
 
     /// Record accumulated token usage.
@@ -184,6 +219,21 @@ impl ChatStateHandle {
             items,
             is_compaction,
         });
+    }
+
+    /// See [`ChatStateCommand::StripConversationImages`]. The outcome is
+    /// typed and disk-acknowledged: `Applied` means the backup and the
+    /// rewrite both reached disk; a dead actor reads as `ActorUnavailable`,
+    /// never as a successful no-op.
+    pub async fn strip_conversation_images(
+        &self,
+        urls: Vec<std::sync::Arc<str>>,
+    ) -> crate::StripOutcome {
+        self.query("StripConversationImages", |reply| {
+            ChatStateCommand::StripConversationImages { urls, reply }
+        })
+        .await
+        .unwrap_or(crate::StripOutcome::ActorUnavailable)
     }
 
     /// Out-of-band history repair (`x.ai/session/repair`); see
@@ -403,11 +453,17 @@ impl ChatStateHandle {
     /// `total_tokens` plus bytes/4 estimate of tool results pushed since the
     /// last model response. Used by `check_preflight_overflow`.
     pub async fn get_estimated_total_tokens(&self) -> u64 {
+        self.try_get_estimated_total_tokens().await.unwrap_or(0)
+    }
+
+    /// The same count, distinguishing "nothing yet" from "the actor did not
+    /// answer": a caller that reports occupancy cannot treat an unreadable
+    /// actor as an empty context.
+    pub async fn try_get_estimated_total_tokens(&self) -> Option<u64> {
         self.query("GetEstimatedTotalTokens", |reply| {
             ChatStateCommand::GetEstimatedTotalTokens { reply }
         })
         .await
-        .unwrap_or(0)
     }
 
     /// Bytes/4 estimate of all non-system conversation items.

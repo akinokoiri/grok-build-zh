@@ -99,10 +99,12 @@ pub(crate) const ALL_TOOL_KINDS: &[ToolKind] = &[
     ToolKind::ImageToVideo,
     ToolKind::ReferenceToVideo,
     ToolKind::DeployApp,
+    ToolKind::InitOrUpdateApp,
     ToolKind::SearchTool,
     ToolKind::UseTool,
     ToolKind::Monitor,
     ToolKind::GoalUpdate,
+    ToolKind::Workflow,
     ToolKind::Other,
 ];
 
@@ -144,13 +146,12 @@ pub(crate) fn kind_allowed(mode: CapabilityMode, kind: ToolKind) -> bool {
 
         // Edit class.
         Edit | Write | Delete | Move | ImageGen | VideoGen | ImageToVideo | ReferenceToVideo
-        | DeployApp => matches!(mode, M::ReadWrite),
+        | DeployApp | InitOrUpdateApp => matches!(mode, M::ReadWrite),
 
         // Bash / shell.
         Execute => matches!(mode, M::Execute),
 
-        // Process control (background tasks, monitors).
-        BackgroundTaskAction | WaitTasksAction | KillTaskAction | Task | Monitor => {
+        BackgroundTaskAction | WaitTasksAction | KillTaskAction | Task | Monitor | Workflow => {
             matches!(mode, M::Execute)
         }
 

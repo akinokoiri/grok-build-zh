@@ -21,18 +21,65 @@ pub fn ctrl_dot_unreliable() -> bool {
     terminal_context().ctrl_dot_unreliable() || cfg!(target_os = "windows") || crate::host::is_wsl()
 }
 
-/// Build the default action definitions.
+/// Choose the one agent-screen action that owns Ctrl+G for this mode.
+fn mode_ctrl_g_action(screen_mode: crate::app::ScreenMode) -> ActionDef {
+    if screen_mode.is_minimal() {
+        ActionDef {
+            id: ActionId::EditPromptExternal,
+            label: "edit prompt",
+            description: "Edit prompt in external editor",
+            default_key: key!('g', CONTROL),
+            alt_keys: vec![],
+            category: Category::Input,
+            context: When::AgentScreen,
+            hint_priority: None,
+            hint_key_display: None,
+            requires_confirmation: false,
+            long_help: Some(
+                "Opens the current prompt draft in $VISUAL or $EDITOR, falling back to vi when neither is set.\nSaving and closing the editor returns the updated text to the composer; it does not send the prompt.\nAvailable in minimal mode for ordinary attachment-free drafts.",
+            ),
+        }
+    } else {
+        ActionDef {
+            id: ActionId::ToggleTasks,
+            label: "tasks",
+            description: "Toggle tasks pane",
+            default_key: key!('g', CONTROL),
+            alt_keys: vec![],
+            category: Category::Panels,
+            context: When::AgentScreen,
+            hint_priority: None,
+            hint_key_display: None,
+            requires_confirmation: false,
+            long_help: Some(
+                "Shows or hides the tasks pane, which lists background tasks and their status.\nUse it to monitor or return to work you sent to the background with Ctrl+B.\nA side pane; toggle off to reclaim width.",
+            ),
+        }
+    }
+}
+
+/// Build the default action definitions for a screen mode.
 ///
 /// `mouse_reporting_toggle_enabled` gates the opt-in `ToggleMouseCapture`
 /// shortcut (see below); pass `false` for the standard set.
-pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
+pub(super) fn default_actions(
+    screen_mode: crate::app::ScreenMode,
+    mouse_reporting_toggle_enabled: bool,
+) -> Vec<ActionDef> {
     let ctx = terminal_context();
     // xterm.js embeds: no KKP; host often steals Ctrl+I. Share one family flag for
     // quit / half-page / interject so VS Code-family embeds match VS Code.
     let in_vscode_family = ctx.brand.is_vscode_family();
     let in_vscode = in_vscode_family;
     let in_apple_terminal = ctx.brand == TerminalName::AppleTerminal;
+    // Shared by ToggleQueue (Ctrl+4 primary) and OpenDashboard (omit Ctrl+4 alt).
+    let local_mac_vscode = in_vscode_family && !ctx.is_ssh && cfg!(target_os = "macos");
     let ctrl_dot_unreliable = ctrl_dot_unreliable();
+    let send_to_background_help = if screen_mode.is_minimal() {
+        "将正在运行的回合转入后台，可继续阅读、排队提示或做别的事。\n在 /tasks 中跟踪后台工作。\n仅在回合实际运行时有意义。"
+    } else {
+        "将正在运行的回合转入后台，可继续阅读、排队提示或做别的事。\n在任务面板（Ctrl+G）中跟踪与恢复。\n仅在回合实际运行时有意义。"
+    };
 
     let mut actions = vec![
         // ── Navigation (scrollback) ─────────────────────────────────
@@ -395,7 +442,10 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "将对话回退到更早的回合，恢复当时的文件快照并丢弃之后的更改。\n从列表中选中回合并选择恢复范围（全部 / 仅对话 / 仅文件）；若有进行中的回合会先提示取消，冲突或错误会在执行后报告。\n破坏性操作：之后的回合会被丢弃。\n空闲且输入为空时也可用 Esc Esc（800ms 内）触发，与 `/rewind` 相同。",
+"将对话回退到更早的回合，丢弃之后的回合。回退之后的本地文件更改保持原样。
+从列表中选择回合；运行中的回合会先提示取消。当开启「回退前确认」（默认）时，每次选择会询问 是 / 是，且不再询问 / 否。选择「是，且不再询问」可在 /settings 中关闭。
+破坏性操作：之后的回合会被丢弃。
+空闲且输入为空时也可用 Esc Esc（800ms 内）触发，与 `/rewind` 相同。"
             ),
         },
         ActionDef {
@@ -452,7 +502,9 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "把焦点从输入框移到回滚区，以便浏览对话记录。\n简单模式与 vim 回滚模式下都可用 Tab。\nEsc 保留给清空/回退（空闲策略），不用于切换焦点。",
+"把焦点从输入框移到回滚区，以便浏览对话记录。
+简单模式与 vim 回滚模式下都可用 Tab。
+Esc 保留给取消/清空/回退策略，不用于切换焦点。"
             ),
         },
         ActionDef {
@@ -467,7 +519,10 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "中断代理当前回合并停止生成，会话保持打开。\n输入为空时 Ctrl+C 取消回合；有草稿时先清空输入，回合继续运行。\n只停当前回合，不退出应用；退出请用退出快捷键。",
+"中断代理当前回合并停止生成，会话保持打开。
+在极简模式或关闭 vim 回滚模式时，回合运行中按 Esc 可立即取消（无论是焦点在输入框还是回滚区，即使有草稿）。
+输入为空时 Ctrl+C 取消；有非空草稿时先清空输入，回合继续运行。
+只停止当前回合，不退出应用；退出请用退出快捷键。"
             ),
         },
         ActionDef {
@@ -487,6 +542,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             ),
         },
         // ── Panes (agent-level — toggle side panes) ─────────────────
+        mode_ctrl_g_action(screen_mode),
         ActionDef {
             id: ActionId::ToggleTodos,
             label: "待办",
@@ -503,35 +559,20 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             ),
         },
         ActionDef {
-            id: ActionId::ToggleTasks,
-            label: "任务",
-            description: "切换任务面板",
-            default_key: key!('b', CONTROL),
-            alt_keys: vec![],
-            category: Category::Panels,
-            context: When::AgentScreen,
-            hint_priority: None,
-            hint_key_display: None,
-            requires_confirmation: false,
-            long_help: Some(
-                "显示或隐藏任务面板，列出后台任务及其状态。\n用于监控或回到用 Ctrl+G 转入后台的工作。\n侧栏面板；关掉可腾出宽度。",
-            ),
-        },
-        ActionDef {
             id: ActionId::ToggleQueue,
             label: "队列",
             description: "切换提示队列",
             // Local macOS VS Code family only: ; / ' often never arrive (saw
             // Ctrl+4 in input-debug). SSH and non-Mac keep ; (+ ' alt). Win/Linux
             // VS maps Ctrl+4 to focusFourthEditorGroup.
-            default_key: if in_vscode_family && !ctx.is_ssh && cfg!(target_os = "macos") {
+            default_key: if local_mac_vscode {
                 key!('4', CONTROL)
             } else {
                 key!(';', CONTROL)
             },
             // Apostrophe alt for consoles that drop Ctrl on `;`. Local Mac VS
             // also keeps ; / ' as alts alongside primary Ctrl+4.
-            alt_keys: if in_vscode_family && !ctx.is_ssh && cfg!(target_os = "macos") {
+            alt_keys: if local_mac_vscode {
                 vec![key!(';', CONTROL), key!('\'', CONTROL)]
             } else {
                 vec![key!('\'', CONTROL)]
@@ -549,7 +590,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             id: ActionId::OpenSessions,
             label: "会话",
             description: "打开会话列表",
-            default_key: key!('s', CONTROL),
+            default_key: key!(F(3)),
             alt_keys: vec![],
             category: Category::Panels,
             context: When::AgentScreen,
@@ -557,7 +598,7 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "打开会话浏览器，恢复或切换历史对话。\n选中一项即可重新接入完整历史。\n与代理仪表盘（Ctrl+\\）不同：仪表盘用于同时管理多个在线代理。",
+                "打开会话浏览器，恢复或切换历史对话。\n选中一项即可重新接入完整历史。`/resume` 作用相同。\n与代理仪表盘（Ctrl+\\）不同：仪表盘用于同时管理多个在线代理。",
             ),
         },
         ActionDef {
@@ -584,16 +625,14 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             id: ActionId::SendToBackground,
             label: "转后台",
             description: "将运行中任务转入后台",
-            default_key: key!('g', CONTROL),
+            default_key: key!('b', CONTROL),
             alt_keys: vec![],
             category: Category::Panels,
             context: When::AgentScreen,
             hint_priority: None,
             hint_key_display: None,
             requires_confirmation: false,
-            long_help: Some(
-                "将正在运行的回合转入后台，可继续阅读、排队提示或做别的事。\n在任务面板（Ctrl+B）中跟踪与恢复。\n仅在回合实际运行时有意义。",
-            ),
+long_help: Some(send_to_background_help),
         },
         // ── Prompt ───────────────────────────────────────────────────
         ActionDef {
@@ -626,7 +665,10 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "在回合进行中向代理插入消息（插话），不取消当前回合，便于边跑边纠偏或补充上下文。\n回合运行时普通 Enter 会排队后续提示；此快捷键则把输入区内容并入当前回合。\n输入为空时，单独 Enter（或此快捷键）会从输入区强制发送队列顶部的后续项，无需聚焦队列面板；在队列面板上则强制发送当前选中行。\n适合在不丢弃当前进度的情况下改道。",
+"在回合进行中向代理发送消息（插话）而不取消当前回合，便于边跑边纠偏或补充上下文。
+回合运行时普通 Enter 会排队后续提示；此快捷键则把输入区内容并入当前回合。
+输入为空时，单独 Enter（或此快捷键）会从输入区强制发送队列顶部的后续项，无需聚焦队列面板；在队列面板上则强制发送当前选中行。
+适合在不丢失当前进度的情况下纠正方向。"
             ),
         },
         ActionDef {
@@ -665,7 +707,9 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: Some("Ctrl+Space / F8"),
             requires_confirmation: false,
             long_help: Some(
-                "麦克风听写：绑定 Ctrl+Space（或 F8——当 Ctrl+Space 被占用时很有用，例如 macOS 输入法切换；笔记本可用 Fn+F8）。\n行为跟随「语音捕获」设置：切换模式（按一下开始、再按停止）或按住说话（按住录音、松开停止）；按住模式需要 Kitty 协议终端，否则回退为切换。`/voice` 可在各处切换。\n语音会直接转写进输入框。",
+"麦克风听写：绑定 Ctrl+Space（或 F8——当 Ctrl+Space 被占用时很有用，例如 macOS 输入法切换；笔记本可用 Fn+F8）。
+行为跟随「语音捕获」设置：切换模式（按一下开始、再按停止）或按住说话（按住录音、松开停止）；按住模式需要 Kitty 协议终端，否则回退为切换。`/voice` 可在各处切换。
+语音会直接转写进输入框。"
             ),
         },
         // Prompt history has no key chord (Ctrl+R is deliberately unbound):
@@ -683,6 +727,22 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             requires_confirmation: false,
             long_help: Some(
                 "切换持久多行输入，便于撰写较长消息。\n用 Shift+Enter 或 Alt+Enter（或行尾反斜杠）换行；单独 Enter 仍发送。\n在输入框内 Ctrl+M 切换多行；焦点不在输入框时则打开模型选择器。",
+            ),
+        },
+        ActionDef {
+            id: ActionId::StashPrompt,
+            label: "暂存草稿",
+            description: "暂存 / 弹出输入草稿",
+            default_key: key!('s', CONTROL),
+            // The escape hatch for terminals that swallow Ctrl+S as XOFF.
+            alt_keys: vec![key!('s', ALT)],
+            category: Category::Input,
+            context: When::PromptFocused,
+            hint_priority: None,
+            hint_key_display: None,
+            requires_confirmation: false,
+            long_help: Some(
+                "将当前输入暂存为草稿。\nCtrl+S 暂存草稿并清空输入框。在空输入框按 Ctrl+S 可恢复草稿。发送下一条提示后草稿也会自动恢复。若终端拦截了 Ctrl+S 可用 Alt+S。\n每次只能保存一份草稿：新暂存会覆盖旧草稿。",
             ),
         },
         ActionDef {
@@ -863,7 +923,13 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             label: "仪表盘",
             description: "打开代理仪表盘",
             default_key: key!('\\', CONTROL),
-            alt_keys: vec![],
+            // Classic C0 FS (0x1c): without KKP, Ctrl+\ arrives as Char('4')+CONTROL
+            // (e.g. Apple Terminal). Omit when ToggleQueue already owns Ctrl+4.
+            alt_keys: if local_mac_vscode {
+                vec![]
+            } else {
+                vec![key!('4', CONTROL)]
+            },
             category: Category::Dashboard,
             context: When::Always,
             hint_priority: None,
@@ -934,8 +1000,8 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
         },
         ActionDef {
             id: ActionId::DashboardStop,
-            label: "停止",
-            description: "停止/关闭代理",
+            label: "停止/删除",
+            description: "停止 / 删除代理",
             default_key: key!('x', CONTROL),
             alt_keys: vec![],
             category: Category::Dashboard,
@@ -944,7 +1010,8 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             hint_key_display: None,
             requires_confirmation: false,
             long_help: Some(
-                "停止选中代理并从仪表盘移除该行；若有进行中的回合会先中断。\n用于清理已完成或不需要的代理，无需先接入。\n浮层内对应操作（Ctrl+X）停止前会要求确认。",
+                "在忙碌的顶层行上，Ctrl+X 取消正在运行的回合。行变为空闲后，2 秒内再次按下 Ctrl+X 永久删除该会话。
+在子代理行上，Ctrl+X 终止子代理。",
             ),
         },
         ActionDef {
@@ -971,9 +1038,9 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             description: "切换行分组",
             // `Ctrl+G` ("group"). `Ctrl+S` was reassigned to the peek /
             // dispatch "send + open" chord so `Shift+Enter` could be
-            // freed for newline insertion. (`Ctrl+G` is also bound to
-            // `SendToBackground`, but that lives in `When::AgentScreen`,
-            // a context that never overlaps the dashboard.)
+            // freed for newline insertion. (`Ctrl+G` also has a
+            // mode-specific `When::AgentScreen` action, a context that never
+            // overlaps the dashboard.)
             default_key: key!('g', CONTROL),
             alt_keys: vec![],
             category: Category::Dashboard,
@@ -1204,6 +1271,18 @@ pub fn default_actions(mouse_reporting_toggle_enabled: bool) -> Vec<ActionDef> {
             ),
         },
     ]);
+
+    // Minimal has no interactive scrollback or dashboard surface. Keep its
+    // logical prompt, agent-screen, and legitimate global actions, but do not
+    // register bindings whose target UI cannot exist in this process mode.
+    if screen_mode.is_minimal() {
+        actions.retain(|def| {
+            !matches!(
+                def.context,
+                When::ScrollbackFocused | When::DashboardFocused | When::DashboardOverlay
+            ) && !matches!(def.id, ActionId::OpenDashboard | ActionId::FocusScrollback)
+        });
+    }
 
     actions
 }

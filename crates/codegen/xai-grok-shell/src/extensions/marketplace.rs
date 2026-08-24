@@ -112,49 +112,21 @@ async fn handle_action(agent: &MvpAgent, args: &acp::ExtRequest) -> ExtResult {
 
     let outcome = match req.action {
         MarketplaceAction::Refresh { source_url_or_path } => {
-            // Force re-sync git caches; local sources are re-scanned on next list.
+            // Force re-sync git caches (local sources are re-scanned on next
+            // list). Runs on the blocking pool: git clone/fetch is sync and
+            // can stall for up to its timeout — never run it on the LocalSet.
             let sources = load_filtered_marketplace_sources();
-            let mut refreshed = 0;
-            let mut errors = Vec::new();
-            for source in &sources {
-                if let Some(ref filter) = source_url_or_path {
-                    let identity = match &source.kind {
-                        xai_grok_plugin_marketplace::SourceKind::Local { path } => {
-                            path.display().to_string()
-                        }
-                        xai_grok_plugin_marketplace::SourceKind::Git { url, .. } => url.clone(),
-                    };
-                    if &identity != filter {
-                        continue;
-                    }
-                }
-                if let xai_grok_plugin_marketplace::SourceKind::Git { url, branch } = &source.kind {
-                    let cache_root = xai_grok_plugin_marketplace::git::default_cache_root();
-                    if let Err(e) = xai_grok_plugin_marketplace::git::force_sync_source_cache(
-                        url,
-                        branch.as_deref(),
-                        &cache_root,
-                    ) {
-                        errors.push(format!("{}: {e}", source.name));
-                    }
-                }
-                refreshed += 1;
-            }
-
-            let msg = if errors.is_empty() {
-                format!("Refreshed {refreshed} source(s).")
-            } else {
-                format!(
-                    "Refreshed {refreshed} source(s) with {} error(s): {}",
-                    errors.len(),
-                    errors.join("; ")
-                )
-            };
-            xai_hooks_plugins_types::ActionOutcome {
-                status: xai_hooks_plugins_types::OutcomeStatus::Success,
-                message: msg,
-                requires_reload: false,
-                requires_restart: false,
+            let filter = source_url_or_path;
+            match tokio::task::spawn_blocking(move || refresh_sources(&sources, filter.as_deref()))
+                .await
+            {
+                Ok(outcome) => outcome,
+                Err(e) => xai_hooks_plugins_types::ActionOutcome {
+                    status: xai_hooks_plugins_types::OutcomeStatus::InternalError,
+                    message: format!("Refresh task failed: {e}"),
+                    requires_reload: false,
+                    requires_restart: false,
+                },
             }
         }
         MarketplaceAction::Install {
@@ -176,6 +148,54 @@ async fn handle_action(agent: &MvpAgent, args: &acp::ExtRequest) -> ExtResult {
     };
 
     super::to_ext_response(Ok(outcome))
+}
+
+fn refresh_sources(
+    sources: &[xai_grok_plugin_marketplace::MarketplaceSource],
+    source_url_or_path: Option<&str>,
+) -> xai_hooks_plugins_types::ActionOutcome {
+    let mut refreshed = 0;
+    let mut errors = Vec::new();
+    for source in sources {
+        if let Some(filter) = source_url_or_path {
+            let identity = match &source.kind {
+                xai_grok_plugin_marketplace::SourceKind::Local { path } => {
+                    path.display().to_string()
+                }
+                xai_grok_plugin_marketplace::SourceKind::Git { url, .. } => url.clone(),
+            };
+            if identity != filter {
+                continue;
+            }
+        }
+        if let xai_grok_plugin_marketplace::SourceKind::Git { url, branch } = &source.kind {
+            let cache_root = xai_grok_plugin_marketplace::git::default_cache_root();
+            if let Err(e) = xai_grok_plugin_marketplace::git::force_sync_source_cache(
+                url,
+                branch.as_deref(),
+                &cache_root,
+            ) {
+                errors.push(format!("{}: {e}", source.name));
+            }
+        }
+        refreshed += 1;
+    }
+
+    let msg = if errors.is_empty() {
+        format!("Refreshed {refreshed} source(s).")
+    } else {
+        format!(
+            "Refreshed {refreshed} source(s) with {} error(s): {}",
+            errors.len(),
+            errors.join("; ")
+        )
+    };
+    xai_hooks_plugins_types::ActionOutcome {
+        status: xai_hooks_plugins_types::OutcomeStatus::Success,
+        message: msg,
+        requires_reload: false,
+        requires_restart: false,
+    }
 }
 
 async fn handle_update(
@@ -846,6 +866,39 @@ async fn handle_add_source(url: &str) -> xai_hooks_plugins_types::ActionOutcome 
         };
     }
 
+    // Reject URLs that aren't reachable git repos (e.g. MCP endpoints pasted
+    // into the wrong tab) before persisting. The probe blocks on a git
+    // subprocess, so run it off the LocalSet.
+    if let MarketplaceAddInput::GitUrl(git_url) = &input {
+        let probe_url = git_url.clone();
+        let probe = tokio::task::spawn_blocking(move || {
+            xai_grok_plugin_marketplace::git::probe_git_remote(&probe_url)
+        })
+        .await;
+        match probe {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                return ActionOutcome {
+                    status: OutcomeStatus::ValidationError,
+                    message: format!(
+                        "{e}. Not a reachable git repository — to add it anyway (e.g. a \
+                         VPN-gated host), run: grok plugin marketplace add {url} --force"
+                    ),
+                    requires_reload: false,
+                    requires_restart: false,
+                };
+            }
+            Err(e) => {
+                return ActionOutcome {
+                    status: OutcomeStatus::InternalError,
+                    message: format!("Probe task failed: {e}"),
+                    requires_reload: false,
+                    requires_restart: false,
+                };
+            }
+        }
+    }
+
     let is_official = matches!(&input, MarketplaceAddInput::GitUrl(u)
         if xai_grok_plugin_marketplace::is_official_source_url(u));
     let name = if is_official {
@@ -1215,7 +1268,7 @@ fn read_default_skills_installs_purged(config_path: &std::path::Path) -> bool {
 ///
 /// Gated by sticky `default_skills_installs_purged` in config.toml. Best-effort:
 /// errors are logged and never block startup.
-pub fn purge_default_skills_installs(grok_home: &std::path::Path) {
+pub(crate) fn purge_default_skills_installs(grok_home: &std::path::Path) {
     purge_default_skills_installs_impl(grok_home, || {
         xai_grok_agent::plugins::install_registry::InstallRegistry::try_load_from(
             xai_grok_agent::plugins::install_registry::InstallRegistry::resolve_install_dir(),
@@ -1315,7 +1368,7 @@ fn purge_default_skills_installs_impl(
 /// `official_marketplace_auto_installed` is set. Under a process-wide flock it
 /// adds the source (or just sets the flag if it's already present in config.toml
 /// or a JSON store). Best-effort: errors are logged and never block startup.
-pub fn ensure_official_marketplace_source(grok_home: &std::path::Path) {
+pub(crate) fn ensure_official_marketplace_source(grok_home: &std::path::Path) {
     let config_path = grok_home.join("config.toml");
 
     if read_official_marketplace_auto_installed(&config_path) {
@@ -1447,10 +1500,9 @@ mod official_source_tests {
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].name, "my-plugins");
         assert!(matches!(
-                    &sources[0].kind,
-                    xai_grok_plugin_marketplace::SourceKind::Local { path }
-        if path == &dir
-                ));
+            &sources[0].kind,
+            xai_grok_plugin_marketplace::SourceKind::Local { path } if path == &dir
+        ));
         // The path must not be mangled into a git URL.
         let raw = std::fs::read_to_string(&config_path).unwrap();
         assert!(!raw.contains("git ="), "{raw}");

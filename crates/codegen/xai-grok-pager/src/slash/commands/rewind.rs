@@ -8,6 +8,10 @@ impl SlashCommand for RewindCommand {
         "rewind"
     }
 
+    fn aliases(&self) -> &[&str] {
+        &["undo"]
+    }
+
     fn description(&self) -> &str {
         "回退到之前的回合"
     }

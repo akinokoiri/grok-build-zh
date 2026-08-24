@@ -48,15 +48,27 @@ pub(crate) fn set_quit_notify(notify: std::sync::Arc<tokio::sync::Notify>) {
     *QUIT_NOTIFY.lock() = Some(notify);
 }
 
+/// Deregister the quit notify once the event loop has exited; a later first
+/// signal force-exits instead of notifying nobody.
+pub(crate) fn clear_quit_notify() {
+    *QUIT_NOTIFY.lock() = None;
+}
+
 /// Whether the TUI currently owns the terminal. Set by [`install`], cleared
 /// by [`mark_restored`] or by [`shutdown_with_terminal_restore`] after
 /// teardown completes. The SIGPIPE path (SIG_IGN, no handler) does not
 /// interact with this flag.
 static TERMINAL_OWNED: AtomicBool = AtomicBool::new(false);
 
+/// Mode-only update for in-process switches; never re-run [`install`] (it
+/// would spawn a second signal task).
+pub(crate) fn set_mode(mode: ScreenMode) {
+    SCREEN_MODE_FULLSCREEN.store(mode.is_fullscreen(), Ordering::Release);
+}
+
 /// Install signal handlers for the TUI lifecycle. Call after `init_terminal`.
 pub(crate) fn install(mode: ScreenMode) {
-    SCREEN_MODE_FULLSCREEN.store(mode.is_fullscreen(), Ordering::Release);
+    set_mode(mode);
     TERMINAL_OWNED.store(true, Ordering::Release);
 
     // Ignore SIGTTIN/SIGTTOU so the pager can't be suspended if a
@@ -197,10 +209,17 @@ fn request_graceful_or_exit(code: i32) {
     if TERMINAL_OWNED.load(Ordering::Acquire)
         && let Some(n) = notify
     {
+        // An orphan never gets the second, forcing signal; bound the quit.
+        super::exit_timeout::arm(code);
         n.notify_one();
     } else {
         shutdown_with_terminal_restore(code);
     }
+}
+
+/// The second-signal teardown, exposed for the exit-timeout path.
+pub(crate) fn force_exit(exit_code: i32) -> ! {
+    shutdown_with_terminal_restore(exit_code)
 }
 
 /// Restore the terminal first, then flush observability, then exit.
@@ -230,7 +249,7 @@ fn shutdown_with_terminal_restore(exit_code: i32) -> ! {
     TERMINAL_OWNED.store(false, Ordering::Release);
     // Best-effort unregister (non-blocking flock to avoid hanging).
     if let Some(ref sid) = *CURRENT_SESSION_ID.lock() {
-        let _ = xai_grok_shell::active_sessions::try_unregister(sid);
+        let _ = xai_grok_active_sessions::try_unregister(sid);
     }
     flush_telemetry_and_exit(exit_code);
 }
@@ -244,6 +263,7 @@ fn flush_telemetry_and_exit(exit_code: i32) -> ! {
     xai_tty_utils::global_process_scope().kill_all();
     // Restore fd 2 so Sentry/OTEL flushes reach the terminal.
     xai_tty_utils::restore_native_stderr();
+    crate::app::status_line::metrics::global().report_health();
     xai_grok_telemetry::sentry::flush_on_shutdown();
     xai_grok_telemetry::otel_layer::shutdown_otel();
     // Flush the --debug firehose on TUI signal exit (this path bypasses main's flush).

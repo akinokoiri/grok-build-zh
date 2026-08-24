@@ -16,7 +16,6 @@ use std::io::Cursor;
 
 use base64::Engine as _;
 use image::ImageReader;
-use reqwest::header::AUTHORIZATION;
 
 use crate::attribution::ToolConsumer;
 use crate::implementations::grok_build::image_gen::{ImageGenClient, ImageGenResponse};
@@ -26,7 +25,7 @@ use crate::types::resources::SessionFolder;
 use crate::types::tool::{ToolKind, ToolNamespace};
 use crate::util::image_compress::{FilterType, ReEncodeParams, re_encode_under_limit};
 
-const XAI_IMAGINE_MODEL: &str = "grok-imagine-image-quality";
+pub(crate) const XAI_IMAGINE_EDIT_MODEL: &str = "grok-imagine-image-quality";
 
 /// Size/dimension limits for reference images sent to the Imagine API.
 /// Tighter than the vision path; the backend returns 400 when exceeded.
@@ -287,7 +286,7 @@ impl xai_tool_runtime::Tool for ImageEditTool {
     ) -> xai_tool_types::ToolDescription {
         xai_tool_types::ToolDescription::new(
             "image_edit",
-            crate::types::tool_metadata::ToolMetadata::description_template(self),
+            crate::types::tool_metadata::ToolMetadata::sanitized_description_template(self),
         )
     }
 
@@ -353,7 +352,7 @@ impl xai_tool_runtime::Tool for ImageEditTool {
         let url = format!("{base}/images/edits");
 
         let mut payload = serde_json::json!({
-            "model": XAI_IMAGINE_MODEL,
+            "model": client.edit_model(),
             "prompt": input.prompt,
             "n": 1,
             "resolution": "1k",
@@ -376,10 +375,7 @@ impl xai_tool_runtime::Tool for ImageEditTool {
         }
 
         let sent_bearer = client.current_bearer().await;
-        let mut req = client.http().post(&url).json(&payload);
-        if let Some(ref key) = sent_bearer {
-            req = req.header(AUTHORIZATION, format!("Bearer {key}"));
-        }
+        let req = client.post_json(&url, &payload, sent_bearer.as_deref());
 
         let response = req.send().await.map_err(|e| {
             xai_tool_runtime::ToolError::invalid_arguments(format!(
@@ -461,8 +457,10 @@ mod tests {
     fn tool_name_and_description() {
         let tool = ImageEditTool;
         assert_eq!(xai_tool_runtime::Tool::id(&tool).as_str(), "image_edit");
-        let desc = crate::types::tool_metadata::ToolMetadata::description_template(&tool);
-        assert!(desc.contains("Edit or transform"));
+        assert!(
+            crate::types::tool_metadata::ToolMetadata::description_template(&tool)
+                .contains("Edit or transform")
+        );
     }
 
     #[test]

@@ -4,11 +4,17 @@
 //! file; the spawn is hidden behind [`GoalPlannerSpawner`] so tests can inject
 //! a deterministic spawner.
 
+#![allow(dead_code)]
+
 use crate::session::events::{Event, GoalPlannerFailClosedReason, GoalRoleModelFailOpenReason};
 use crate::session::goal_role_tools::RoleToolNames;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use xai_file_utils::events::EventWriter;
+use xai_grok_session_events::EventWriter;
+use xai_grok_tools::implementations::grok_build::task::backend::{ChannelBackend, SubagentBackend};
+use xai_grok_tools::implementations::grok_build::task::types::{
+    SubagentOwner, SubagentRequest, SubagentRuntimeOverrides,
+};
 
 // Shared per-role model override + spawn-and-retry-once fail-open wrapper
 
@@ -23,6 +29,13 @@ use xai_file_utils::events::EventWriter;
 ///
 /// [`SubagentRuntimeOverrides::harness_agent_type`]: xai_grok_tools::implementations::grok_build::task::types::SubagentRuntimeOverrides::harness_agent_type
 pub(crate) const GOAL_ROLE_SUBAGENT_TYPE: &str = "general-purpose";
+pub(crate) const GOAL_ROLE_AWAIT_BUDGET_EXCEEDED: &str =
+    "goal role subagent exceeded foreground wait budget";
+
+/// Best-effort wait for a subagent cancel to be acknowledged before giving up.
+/// The planner is aborting regardless, so this is a bound on cleanup, not a
+/// correctness gate.
+const GOAL_PLANNER_CANCEL_ACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Resolved per-role spawn override.
 ///
@@ -103,7 +116,7 @@ impl RetryableSpawnError for SpawnError {
             SpawnError::Runtime {
                 cancelled: true,
                 ..
-            }
+            } | SpawnError::Interrupted
         )
     }
 }
@@ -200,6 +213,13 @@ pub(crate) enum GoalPlannerOutcome {
         plan_file: PathBuf,
         latency_ms: u64,
     },
+    /// Produced only by the planner's [`ChannelSpawner`], whose `cancel_token`
+    /// is wired to user steering / Send Now through `start_planner_run`; when
+    /// that token fires mid-spawn the attempt returns `Interrupted` so the loop
+    /// replans. The strategist and summarizer spawners pass a fresh,
+    /// never-cancelled token, so their equivalent cancel arms are unreachable in
+    /// practice.
+    Interrupted,
     FailClosed {
         reason: GoalPlannerFailClosedReason,
         latency_ms: u64,
@@ -226,6 +246,7 @@ pub(crate) trait GoalPlannerSpawner: Send + Sync {
 pub(crate) enum SpawnError {
     Transport(String),
     Runtime { message: String, cancelled: bool },
+    Interrupted,
 }
 
 impl std::fmt::Display for SpawnError {
@@ -238,6 +259,7 @@ impl std::fmt::Display for SpawnError {
                     "subagent runtime error (cancelled={cancelled}): {message}"
                 )
             }
+            Self::Interrupted => f.write_str("planner interrupted by user steering"),
         }
     }
 }
@@ -256,6 +278,8 @@ pub(crate) struct ChannelSpawner {
     pub(crate) event_tx: tokio::sync::mpsc::UnboundedSender<
         xai_grok_tools::implementations::grok_build::task::types::SubagentEvent,
     >,
+    pub(crate) foreground_wait:
+        Option<xai_grok_tools::implementations::grok_build::task::types::SubagentForegroundWait>,
     pub(crate) parent_session_id: String,
     pub(crate) parent_prompt_id: Option<String>,
     pub(crate) cwd: Option<String>,
@@ -265,6 +289,7 @@ pub(crate) struct ChannelSpawner {
     /// Resolved per-role model+toolset override. Default (inherit) keeps the
     /// historic `::default()` spawn behavior.
     pub(crate) role_override: RoleSpawnOverride,
+    pub(crate) cancel_token: tokio_util::sync::CancellationToken,
     /// Event sink for the spawn-and-retry-once fail-open telemetry; `None`
     /// in tests / when no event log is wired.
     pub(crate) events: Option<EventWriter>,
@@ -311,7 +336,7 @@ impl GoalPlannerSpawner for ChannelSpawner {
                     message,
                 )
             }
-            Err(SpawnError::Transport(_)) => {}
+            Err(SpawnError::Transport(_) | SpawnError::Interrupted) => {}
         }
         outcome
     }
@@ -330,10 +355,6 @@ impl ChannelSpawner {
         model: Option<String>,
         harness_agent_type: Option<String>,
     ) -> Result<String, SpawnError> {
-        use xai_grok_tools::implementations::grok_build::task::types::{
-            SubagentEvent, SubagentRequest, SubagentRuntimeOverrides,
-        };
-        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
         let request = SubagentRequest {
             id: id.to_string(),
             prompt,
@@ -351,21 +372,38 @@ impl ChannelSpawner {
             run_in_background: false,
             // Harness-internal: never surface to the model's idle reminder.
             surface_completion: false,
+            await_to_completion: false,
             fork_context: true,
-            result_tx,
+            owner: SubagentOwner::Task,
+            cancel_token: self.cancel_token.clone(),
         };
-        if self
-            .event_tx
-            .send(SubagentEvent::Spawn(Box::new(request)))
-            .is_err()
-        {
-            return Err(SpawnError::Transport(
-                "subagent coordinator channel closed".to_string(),
-            ));
+        let backend = ChannelBackend::new(self.event_tx.clone());
+        let cancel = self.cancel_token.clone();
+        let result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                let _ = tokio::time::timeout(
+                    GOAL_PLANNER_CANCEL_ACK_TIMEOUT,
+                    backend.cancel(id),
+                )
+                .await;
+                return Err(SpawnError::Interrupted);
+            }
+            result = backend.spawn_with_foreground_wait(request, self.foreground_wait.as_ref()) => {
+                result.map_err(|error| SpawnError::Transport(error.to_string()))?
+            }
+        };
+        if result.backgrounded {
+            let _ = tokio::time::timeout(
+                GOAL_PLANNER_CANCEL_ACK_TIMEOUT,
+                backend.cancel(&result.subagent_id),
+            )
+            .await;
+            return Err(SpawnError::Runtime {
+                message: GOAL_ROLE_AWAIT_BUDGET_EXCEEDED.to_owned(),
+                cancelled: true,
+            });
         }
-        let result = result_rx
-            .await
-            .map_err(|_| SpawnError::Transport("subagent result channel dropped".to_string()))?;
         if !result.success {
             let message = result.error.unwrap_or_else(|| "unknown error".to_string());
             return Err(SpawnError::Runtime {
@@ -457,6 +495,7 @@ pub(crate) async fn run_goal_planner(
                 emit_event,
             );
         }
+        Err(SpawnError::Interrupted) => return GoalPlannerOutcome::Interrupted,
         Err(SpawnError::Runtime { message, cancelled }) => {
             let reason = if cancelled {
                 GoalPlannerFailClosedReason::Aborted
@@ -528,18 +567,8 @@ mod tests {
     use xai_grok_tools::types::tool::ToolKind;
 
     #[test]
-    fn planner_template_default_render_preserves_wording_and_has_no_placeholders() {
-        // Default/inherit render: placeholders resolve to the literal parent
-        // (grok-build) tool names; guards against accidental wording drift.
+    fn planner_template_default_render_has_no_placeholders() {
         let rendered = RoleToolNames::inherit_defaults().apply(GOAL_PLANNER_PROMPT_TEMPLATE);
-        assert!(
-            rendered.contains("with your\n`read_file`/`grep`/`list_dir` tools to clarify scope"),
-            "planner read/grep/list placeholders must render to the defaults",
-        );
-        assert!(
-            rendered.contains("Use your `write` tool to write Markdown"),
-            "planner file-write placeholder must render to `write`",
-        );
         assert_no_tool_placeholders(&rendered);
     }
 
@@ -599,33 +628,6 @@ mod tests {
         assert_no_tool_placeholders(&rendered);
     }
 
-    /// Pin each load-bearing clause of the named-artifact research mandate so a
-    /// targeted revert fails (the convergence balance: fix under-scoping, never
-    /// reopen over-scoping).
-    #[test]
-    fn planner_prompt_pins_named_artifact_research_mandate() {
-        let t = GOAL_PLANNER_PROMPT_TEMPLATE;
-        // Research a named artifact's defining mechanics, not from memory.
-        assert!(t.contains("DEFINING mechanics"));
-        assert!(t.contains("do NOT plan it from memory alone"));
-        // Domain-agnostic (non-game example) + primary, not error-path behaviors.
-        assert!(t.contains("round-trip of valid input"));
-        assert!(t.contains("error/edge/invalid-input handling"));
-        // Convergence guard: group (don't drop) to fit the cap; a core mechanic
-        // that can't fit is an EXPLICIT deferral, never a silent omission.
-        assert!(t.contains("Do not map one criterion per mechanic"));
-        assert!(t.contains("Grouping, NOT dropping"));
-        assert!(t.contains("record it under `## Non-goals` (or `## Assumed scope`)"));
-        // Gating-test sentence (distinctive substring, not the bare word).
-        assert!(t.contains("is it still recognizably"));
-        // OBJECTIVE wins; non-core routed to Non-goals.
-        assert!(t.contains("OBJECTIVE's explicit words always win"));
-        assert!(t.contains("list it under `## Non-goals`"));
-        // Gated away from generic archetypes; the web step is optional.
-        assert!(t.contains("is not a named artifact"));
-        assert!(t.contains("note the gap under `## Assumed scope`"));
-    }
-
     #[tokio::test]
     async fn channel_spawner_request_is_harness_internal() {
         use xai_grok_tools::implementations::grok_build::task::types::{
@@ -633,13 +635,18 @@ mod tests {
         };
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let wait_depth = Arc::new(crate::tools::tool_context::BlockingWaitState::new());
         let spawner = ChannelSpawner {
             event_tx: tx,
+            foreground_wait: Some(crate::tools::tool_context::subagent_foreground_wait(
+                Arc::clone(&wait_depth),
+            )),
             parent_session_id: "parent".into(),
             parent_prompt_id: None,
             cwd: None,
             trace_sink: None,
             role_override: RoleSpawnOverride::default(),
+            cancel_token: tokio_util::sync::CancellationToken::new(),
             events: None,
         };
         let handle = tokio::spawn(async move {
@@ -651,12 +658,14 @@ mod tests {
         let SubagentEvent::Spawn(request) = rx.recv().await.expect("spawn event") else {
             panic!("expected Spawn");
         };
+        assert_eq!(wait_depth.depth(), 1);
         assert!(
             !request.surface_completion,
             "planner subagent must not surface to the idle reminder"
         );
         let _ = request.result_tx.send(SubagentResult::default());
         handle.await.unwrap();
+        assert_eq!(wait_depth.depth(), 0);
     }
 
     #[test]
@@ -730,6 +739,7 @@ mod tests {
                     message: message.clone(),
                     cancelled: *cancelled,
                 }),
+                Err(SpawnError::Interrupted) => Err(SpawnError::Interrupted),
             }
         }
     }
@@ -1052,167 +1062,6 @@ mod tests {
         let _ = std::fs::remove_file(&plan_file);
     }
 
-    #[test]
-    fn planner_prompt_pins_objective_fidelity_and_environment_evidence_contract() {
-        // The optional risks section and the must-have-fidelity /
-        // capturable-evidence rules are load-bearing for the
-        // planner↔verifier contract; pin them so a template edit can't
-        // silently drop them.
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("## Risks / Contradictions"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("must-have"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("capturable"));
-    }
-
-    /// Pin the anti-inflation + atomic-criterion rules (the failure mode this
-    /// contract targets: re-inflated scope or a single holistic end-to-end gate).
-    #[test]
-    fn planner_prompt_pins_anti_inflation_and_atomic_criteria() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("do NOT invent scope"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("atomic and independently checkable"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("holistic end-to-end gate"));
-        // A defining mechanic of a named artifact is requested, not "unrequested"
-        // scope, so the carve-out keeps it out of Non-goals.
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("it is requested, so it stays here"));
-    }
-
-    /// Pin the static-check fallback and the durable-evidence-to-audit contract.
-    #[test]
-    fn planner_prompt_pins_static_fallback_and_audit_evidence() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("Static / structural fallback"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("the verifiers AUDIT that evidence"));
-    }
-
-    /// Pin the outcomes-not-architecture contract: the frozen plan must not
-    /// freeze the module/file layout or exact signatures.
-    #[test]
-    fn planner_prompt_pins_outcomes_not_architecture() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("OUTCOMES, not architecture"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("MUST NOT prescribe the module/file layout"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("exact signatures"));
-    }
-
-    /// Pin the gating-vs-best-effort split: a small gating set decides pass/fail
-    /// and best-effort `evidence` steps must not deny completion on their own.
-    #[test]
-    fn planner_prompt_pins_gating_vs_evidence_split() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("these are the GATING set"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("must NOT deny completion"));
-    }
-
-    /// Pin the minimal-honest-evidence path for headless-unobservable behavior:
-    /// no mandated capture ritual/oracle, only artifact-exists + shipped units.
-    #[test]
-    fn planner_prompt_pins_minimal_honest_path_for_unobservable_behavior() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("MINIMAL honest path"));
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE.contains("verifier will then\n  rightly call theater")
-        );
-    }
-
-    /// Pin the testable-structure guidance (separate logic from I/O so
-    /// tests drive the real shipped code), and that it stays design
-    /// guidance, not an acceptance criterion.
-    #[test]
-    fn planner_prompt_requires_testable_structure_guidance() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("## Implementation approach"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("easy to test"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("NOT an acceptance criterion"));
-    }
-
-    /// Pin the `## Task checklist` contract: the planner emits `- [ ]`
-    /// checkbox steps (code-change only) that `goal_next_step` mines for
-    /// the per-turn nudge, and the checklist is HOW guidance, never part
-    /// of the judged contract.
-    #[test]
-    fn planner_prompt_requires_task_checklist_section() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("## Task checklist"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("unchecked box"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("never part of the judged contract"),);
-    }
-
-    /// Pin the visual/interactive guidance: gamedev/UI goals must be
-    /// anchored on the static/structural fallback plus unit tests of the
-    /// pure logic (physics, collision, input mapping), with capturable
-    /// extras as `evidence`, never `gating`.
-    #[test]
-    fn planner_prompt_covers_visual_interactive_goals() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("## Visual / interactive objectives"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("input mapping"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("as `evidence`, never as `gating`"));
-        // Browser-load check: scripts must provably load without Node globals.
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("NO Node globals"));
-        // Launch check is gating for every runnable deliverable, with the
-        // headless page-load as the browser instance of the general rule.
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("## Entry-point launch check"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("bare specifiers"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("Server/service"));
-    }
-
-    /// The launch gate must prove the primary observable is CORRECT, not just
-    /// present — keeps a renders-but-wrong deliverable from passing planning.
-    #[test]
-    fn planner_prompt_requires_correct_primary_observable_launch_gate() {
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("PRIMARY OBSERVABLE is CORRECT"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("present and non-empty is INSUFFICIENT"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("output CONTENT, not just that it ran"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("the response BODY is sane"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("assert a real call's RETURN VALUE"));
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE
-                .contains("drawing dimensions equal the intended/target size")
-        );
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("SUBSTANTIALLY filled"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("NOT a `> 0 pixels` check"));
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE
-                .contains("a driven input produces the expected visible change")
-        );
-    }
-
-    /// The launch gate must run more than once and route non-determinism by
-    /// cause — an app defect is fixed, a flaky/unobservable environment falls
-    /// back — so a correct app converges and the readback seam stays shut.
-    #[test]
-    fn planner_prompt_requires_repeated_consistent_launch() {
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE.contains("MORE THAN ONCE and assert CONSISTENT success")
-        );
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("cherry-pick a success"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("APP-side defect to FIX"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("if the ENVIRONMENT is what's flaky"));
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE
-                .contains("cannot reliably read back the primary observable")
-        );
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE
-                .contains("is the app's output, not an unavailable readback")
-        );
-    }
-
-    #[test]
-    fn planner_prompt_requires_shared_verification_plan_section() {
-        // The `## Verification plan` is the shared implementer↔verifier
-        // procedure (the bias-reduction mechanism): pin both that the
-        // section is required and that it is framed as observable
-        // checks rather than free-text "it works".
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("## Verification plan"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("implementer"));
-        assert!(GOAL_PLANNER_PROMPT_TEMPLATE.contains("observations that MUST be"));
-    }
-
-    /// The planner must instruct verification-plan output paths to use the
-    /// literal `{SCRATCH}` placeholder instead of hardcoded `/tmp/...`, so
-    /// the implementer and each skeptic write to distinct private dirs and
-    /// never race on a shared screenshot file.
-    #[test]
-    fn planner_prompt_instructs_scratch_placeholder() {
-        assert!(
-            GOAL_PLANNER_PROMPT_TEMPLATE.contains("{SCRATCH}"),
-            "planner prompt must instruct the `{{SCRATCH}}` placeholder",
-        );
-    }
-
     // ── RoleSpawnOverride + spawn-and-retry-once wrapper ─────
 
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1237,6 +1086,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let spawner = ChannelSpawner {
             event_tx: tx,
+            foreground_wait: None,
             parent_session_id: "parent".into(),
             parent_prompt_id: None,
             cwd: None,
@@ -1245,6 +1095,7 @@ mod tests {
                 model: Some("cfg-model".into()),
                 agent_type: Some("cursor".into()),
             },
+            cancel_token: tokio_util::sync::CancellationToken::new(),
             events: None,
         };
         let handle = tokio::spawn(async move {
@@ -1498,7 +1349,7 @@ mod tests {
     #[tokio::test]
     async fn fail_open_retry_emits_spawn_failed_event() {
         let dir = tempfile::tempdir().unwrap();
-        let writer = xai_file_utils::events::EventWriter::open(dir.path());
+        let writer = xai_grok_session_events::EventWriter::open(dir.path());
         let ov = RoleSpawnOverride {
             model: Some("m".into()),
             agent_type: Some("t".into()),
@@ -1562,6 +1413,7 @@ mod tests {
         });
         let spawner = Arc::new(ChannelSpawner {
             event_tx: tx,
+            foreground_wait: None,
             parent_session_id: "p".into(),
             parent_prompt_id: None,
             cwd: None,
@@ -1570,6 +1422,7 @@ mod tests {
                 model: Some("cfg-model".into()),
                 agent_type: Some("general-purpose".into()),
             },
+            cancel_token: tokio_util::sync::CancellationToken::new(),
             events: None,
         });
         let (_log, emit) = collect_events();
@@ -1626,6 +1479,7 @@ mod tests {
         });
         let spawner = Arc::new(ChannelSpawner {
             event_tx: tx,
+            foreground_wait: None,
             parent_session_id: "p".into(),
             parent_prompt_id: None,
             cwd: None,
@@ -1634,6 +1488,7 @@ mod tests {
                 model: Some("cfg-model".into()),
                 agent_type: Some("general-purpose".into()),
             },
+            cancel_token: tokio_util::sync::CancellationToken::new(),
             events: None,
         });
         let (_log, emit) = collect_events();

@@ -215,7 +215,9 @@ fn walkdir_recurse(
 /// Execute worktree creation. This is a blocking operation.
 pub(crate) fn execute_create_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResult> {
     let source = plan.source.clone();
+    let start = std::time::Instant::now();
     let result = execute_create_worktree_dispatch(plan)?;
+    crate::metrics::record_grove_wt_create(result.resolved_strategy, start.elapsed());
     record_main_repo_marker(&source, &result.worktree_path);
     Ok(result)
 }
@@ -258,8 +260,22 @@ fn execute_create_worktree_dispatch(plan: WorktreePlan) -> Result<CreateWorktree
         CreationMode::Linked | CreationMode::Standalone => {
             // Track why fast paths were skipped so the copy fallback error
             // (if any) includes context about what was tried first.
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             let mut skipped_reasons: Vec<String> = Vec::new();
+
+            // macOS: grove-nfs first. Linux: overlay → btrfs → grove-fuse.
+            #[cfg(target_os = "macos")]
+            {
+                match crate::nfs::try_grove_worktree(&plan) {
+                    Ok(Some(result)) => return Ok(result),
+                    Ok(None) => {}
+                    Err(e) if crate::nfs::nfs_error_blocks_fallback(&e) => return Err(e),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "grove-nfs worktree failed, falling back to copy");
+                        skipped_reasons.push(format!("grove-nfs: {e:#}"));
+                    }
+                }
+            }
 
             // 1. Try overlay-on-FUSE snapshot (O(1), no file copies)
             #[cfg(target_os = "linux")]
@@ -293,8 +309,24 @@ fn execute_create_worktree_dispatch(plan: WorktreePlan) -> Result<CreateWorktree
                 }
             }
 
-            // 3. Fall back to file-by-file copy
             #[cfg(target_os = "linux")]
+            {
+                match crate::nfs::try_grove_worktree(&plan) {
+                    Ok(Some(result)) => return Ok(result),
+                    Ok(None) => {}
+                    Err(e) if crate::nfs::nfs_error_blocks_fallback(&e) => return Err(e),
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "grove-fuse worktree failed, falling back to copy"
+                        );
+                        skipped_reasons.push(format!("grove-fuse: {e:#}"));
+                    }
+                }
+            }
+
+            // 3. Fall back to file-by-file copy
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             if !skipped_reasons.is_empty() {
                 tracing::info!(
                     reasons = skipped_reasons.join("; "),
@@ -396,13 +428,54 @@ fn finalize_clean_and_ref(
         }
     }
 
+    let dest_git = worktree_path.join(".git");
+    let keep = copy::standalone::origin_keep_names_for_git_ref(&dest_git, git_ref);
+    copy::standalone::sanitize_standalone_git_dir_keeping(&dest_git, &keep)
+        .context("failed to sanitize standalone .git/ after snapshot")?;
+
     git::get_head_commit(worktree_path).context("failed to get HEAD commit")
+}
+
+#[cfg(all(test, target_os = "linux"))]
+thread_local! {
+    static INJECT_OVERLAY_SOME: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static INJECT_BTRFS_SOME: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn set_inject_overlay_some(v: bool) {
+    INJECT_OVERLAY_SOME.with(|c| c.set(v));
+}
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn set_inject_btrfs_some(v: bool) {
+    INJECT_BTRFS_SOME.with(|c| c.set(v));
+}
+
+#[cfg(all(test, target_os = "linux"))]
+fn dummy_injected_result(plan: &WorktreePlan, strategy: &'static str) -> CreateWorktreeResult {
+    CreateWorktreeResult {
+        worktree_path: plan.dest.clone(),
+        commit: "0".repeat(40),
+        copy_stats: CopyStats::default(),
+        ignored_stats: None,
+        dirty_files_report: None,
+        resolved_strategy: strategy,
+        strategy_metadata: None,
+    }
 }
 
 /// Try to create worktree using overlay-on-FUSE snapshot.
 /// Returns `Ok(Some(result))` if overlay was used, `Ok(None)` to fall back.
 #[cfg(target_os = "linux")]
 fn try_overlay_worktree(plan: &WorktreePlan) -> Result<Option<CreateWorktreeResult>> {
+    #[cfg(test)]
+    if INJECT_OVERLAY_SOME.with(std::cell::Cell::get) {
+        return Ok(Some(dummy_injected_result(
+            plan,
+            crate::worktree::STRATEGY_OVERLAY,
+        )));
+    }
     use crate::overlay;
 
     // Skip the namespace-local overlay mount in a private mount namespace (see
@@ -505,6 +578,10 @@ fn execute_overlay_worktree(
         copy_stats: CopyStats::default(), // 0 files copied!
         ignored_stats: None,              // overlay includes everything
         dirty_files_report: None,
+        resolved_strategy: crate::worktree::STRATEGY_OVERLAY,
+        strategy_metadata: Some(serde_json::json!({
+            "overlay": { "snapshot_root": result.snapshot_root }
+        })),
     })
 }
 
@@ -512,6 +589,13 @@ fn execute_overlay_worktree(
 /// Returns Ok(Some(result)) if BTRFS was used, Ok(None) if we should fall back to copy.
 #[cfg(target_os = "linux")]
 fn try_btrfs_worktree(plan: &WorktreePlan) -> Result<Option<CreateWorktreeResult>> {
+    #[cfg(test)]
+    if INJECT_BTRFS_SOME.with(std::cell::Cell::get) {
+        return Ok(Some(dummy_injected_result(
+            plan,
+            crate::worktree::STRATEGY_BTRFS,
+        )));
+    }
     use crate::btrfs;
 
     // Get source git root
@@ -678,6 +762,10 @@ fn try_btrfs_delegate(plan: &WorktreePlan) -> Result<Option<CreateWorktreeResult
         copy_stats: CopyStats::default(),
         ignored_stats: None,
         dirty_files_report: None,
+        resolved_strategy: crate::worktree::STRATEGY_BTRFS,
+        strategy_metadata: Some(serde_json::json!({
+            "btrfs": { "worktree_path": plan.dest }
+        })),
     }))
 }
 
@@ -763,6 +851,8 @@ fn execute_btrfs_worktree(
         copy_stats: CopyStats::default(), // No files copied - instant snapshot!
         ignored_stats: None,              // Snapshot includes everything
         dirty_files_report: None,         // Not tracked for BTRFS snapshots
+        resolved_strategy: crate::worktree::STRATEGY_BTRFS,
+        strategy_metadata: None,
     })
 }
 
@@ -783,6 +873,8 @@ fn execute_copy_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResult> {
         creation_mode: _,
         cancellation_token,
         btrfs_delegate: _,
+        worktree_id: _,
+        nfs: _,
     } = plan;
 
     // CRITICAL: Resolve the actual git worktree root from the source path.
@@ -933,6 +1025,8 @@ fn execute_copy_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResult> {
         copy_stats: copy_result.stats,
         ignored_stats,
         dirty_files_report,
+        resolved_strategy: crate::worktree::STRATEGY_COPY,
+        strategy_metadata: None,
     })
 }
 
@@ -1009,6 +1103,8 @@ fn execute_standalone_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResul
         creation_mode: _,
         cancellation_token,
         btrfs_delegate: _,
+        worktree_id: _,
+        nfs: _,
     } = plan;
 
     let source_root = git::find_worktree_root(&source)
@@ -1054,14 +1150,20 @@ fn execute_standalone_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResul
 
     let source_git = source_root.join(".git");
     let dest_git = dest.join(".git");
+    let origin_keep = copy::standalone::origin_keep_names_for_git_ref(&source_git, &git_ref);
+    let origin_keep_for_copy = origin_keep.clone();
 
     // Spawn .git/ copy in background.
     let git_copy_handle = std::thread::Builder::new()
         .name("standalone-git-copy".to_string())
         .spawn(move || {
             let start = std::time::Instant::now();
-            let stats = copy::gitdir::copy_git_dir(&source_git, &dest_git)
-                .context("failed to copy .git/ directory for standalone worktree")?;
+            let stats = copy::gitdir::copy_git_dir_keeping_origin(
+                &source_git,
+                &dest_git,
+                &origin_keep_for_copy,
+            )
+            .context("failed to copy .git/ directory for standalone worktree")?;
             tracing::debug!(
                 elapsed = ?start.elapsed(),
                 files = stats.files_copied,
@@ -1209,6 +1311,10 @@ fn execute_standalone_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResul
     if git_ref != "HEAD" {
         tracing::debug!(git_ref = %git_ref, "checking out ref");
         git::checkout_ref(&dest, &git_ref)?;
+        // Dest HEAD may be detached (origin/foo). Reuse the pre-checkout keep
+        // set so sanitize cannot drop the tip CoW preserved.
+        copy::standalone::sanitize_standalone_git_dir_keeping(&dest.join(".git"), &origin_keep)
+            .context("failed to sanitize standalone .git/ after checkout")?;
     }
 
     // Phase 6: Copy ignored files (optional).
@@ -1264,6 +1370,8 @@ fn execute_standalone_worktree(plan: WorktreePlan) -> Result<CreateWorktreeResul
         copy_stats,
         ignored_stats,
         dirty_files_report,
+        resolved_strategy: crate::worktree::STRATEGY_STANDALONE,
+        strategy_metadata: None,
     })
 }
 
@@ -1347,6 +1455,8 @@ fn execute_git_checkout_worktree(plan: WorktreePlan) -> Result<CreateWorktreeRes
         copy_stats: CopyStats::default(),
         ignored_stats: None,
         dirty_files_report: None,
+        resolved_strategy: crate::worktree::STRATEGY_GIT,
+        strategy_metadata: None,
     })
 }
 
@@ -1455,6 +1565,8 @@ mod tests {
             creation_mode: crate::CreationMode::Standalone,
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             btrfs_delegate: Some(delegate),
+            worktree_id: crate::worktree::plan::worktree_id_from_path(&base.join("dest")),
+            nfs: None,
         }
     }
 

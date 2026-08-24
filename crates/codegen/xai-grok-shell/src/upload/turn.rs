@@ -18,10 +18,12 @@ pub(crate) struct SyntheticTurnTraceRequest {
 }
 /// Outcome of a session-state upload with categorized failure reason.
 pub(crate) enum UploadOutcome {
+    #[allow(dead_code)]
     Confirmed,
     /// Not confirmed within the flush deadline; the upload continues in the
     /// live queue worker. Not `Confirmed`: cloud restorability is unobserved,
     /// so `restorable_turn_number` must not advance on it.
+    #[allow(dead_code)]
     Deferred,
     Failed {
         reason: &'static str,
@@ -89,7 +91,9 @@ where
                     "unknown panic".to_string()
                 };
                 tracing::error!(
-                    task = task_name, panic = % panic_msg, "Upload task panicked"
+                    task = task_name,
+                    panic = %panic_msg,
+                    "Upload task panicked"
                 );
             }
         }
@@ -178,7 +182,7 @@ pub(crate) async fn complete_prompt_trace(
     use super::manifest::{
         build_manifest, resolve_upload_method, skip_artifact, write_upload_manifest,
     };
-    let upload_method = resolve_upload_method(&ctx);
+    let upload_method = resolve_upload_method(&ctx.gcs_config);
     let method_str = upload_method.as_str();
     xai_grok_telemetry::session_ctx::log_session_event(
         crate::agent::session_metrics::TraceUploadAttempted {
@@ -206,11 +210,10 @@ pub(crate) async fn complete_prompt_trace(
     if let Some(capture) = streaming_partial.as_ref() {
         super::trace::upload_streaming_partial(&ctx, capture, wait).await;
     }
-    let (upload_outcome, _, _, _) = futures::join!(
+    let (upload_outcome, _, _) = futures::join!(
         super::trace::upload_session_state(&ctx, "after", session_copy_rx, wait),
         super::trace::upload_permission_events(&ctx, &permission_events, wait),
         super::trace::upload_memory_state(&ctx),
-        super::trace::upload_unified_log(&ctx, wait),
     );
     let artifacts_confirmed = upload_outcome.is_confirmed();
     let gated_artifact_failure: Option<(String, Option<u16>)> = None;
@@ -218,7 +221,7 @@ pub(crate) async fn complete_prompt_trace(
         UploadWait::Confirm => 0,
         UploadWait::Defer { deadline } => super::trace::flush_upload_queue(&ctx, deadline).await,
     };
-    let manifest = build_manifest(&ctx.artifact_tracker, upload_method);
+    let manifest = build_manifest(&ctx.artifact_tracker, upload_method, None);
     let flush_timed_out = flush_remaining > 0 || matches!(upload_outcome, UploadOutcome::Deferred);
     let worker_drops = match wait {
         UploadWait::Confirm => 0,
@@ -288,14 +291,14 @@ pub(crate) fn parse_agent_profile_from_meta(
         return match xai_grok_agent::AgentDefinition::from_json(value) {
             Ok(def) => {
                 tracing::info!(
-                    agent_name = % def.name,
+                    agent_name = %def.name,
                     "Using ACP agent profile from _meta.agentProfile (JSON object)"
                 );
                 Some(def)
             }
             Err(e) => {
                 tracing::error!(
-                    error = % e,
+                    error = %e,
                     "Failed to parse _meta.agentProfile JSON object, falling back to default agent"
                 );
                 None
@@ -304,7 +307,8 @@ pub(crate) fn parse_agent_profile_from_meta(
     }
     if let Some(name) = value.as_str() {
         tracing::info!(
-            agent_name = % name, "Resolving agent from _meta.agentProfile (string name)"
+            agent_name = %name,
+            "Resolving agent from _meta.agentProfile (string name)"
         );
         return xai_grok_agent::discovery::by_name(name);
     }
@@ -320,7 +324,7 @@ pub(crate) fn parse_agent_profile_from_meta(
 /// it to `AgentBuilder::with_ask_user_question_enabled(false)` so the tool
 /// is stripped from the model's advertised tool list. `Some(true)` explicitly
 /// enables the tool for this session. `None` means the field is absent — the
-/// caller falls back to `AgentConfig::resolve_ask_user_question()` (default ON).
+/// caller falls back to the `ask_user_question` feature (default ON).
 pub(crate) fn parse_ask_user_question_from_meta(
     meta: Option<&agent_client_protocol::Meta>,
 ) -> Option<bool> {
@@ -338,22 +342,13 @@ pub(crate) fn parse_ask_user_question_from_meta(
 }
 /// Look up a session's model, falling back to the agent default.
 pub(crate) fn lookup_session_model(
-    sessions: &std::collections::HashMap<
-        agent_client_protocol::SessionId,
-        crate::session::SessionHandle,
-    >,
-    session_id: Option<&agent_client_protocol::SessionId>,
+    session_model: Option<agent_client_protocol::ModelId>,
     default_model_id: &agent_client_protocol::ModelId,
 ) -> agent_client_protocol::ModelId {
-    session_id
-        .and_then(|sid| sessions.get(sid).map(|h| h.model_id.clone()))
-        .unwrap_or_else(|| default_model_id.clone())
+    session_model.unwrap_or_else(|| default_model_id.clone())
 }
-pub(crate) fn apply_yolo_mode_to_matching_sessions(
-    sessions: &mut std::collections::HashMap<
-        agent_client_protocol::SessionId,
-        crate::session::SessionHandle,
-    >,
+pub(crate) fn apply_yolo_mode_to_matching_sessions<'a>(
+    sessions: impl IntoIterator<Item = &'a mut crate::session::SessionHandle>,
     sender_id: Option<&str>,
     yolo_mode: bool,
 ) -> usize {
@@ -361,7 +356,7 @@ pub(crate) fn apply_yolo_mode_to_matching_sessions(
         sender_id.is_none() || h.origin_client.as_ref().map(|c| c.product.as_str()) == sender_id
     };
     let mut updated = 0;
-    for handle in sessions.values_mut() {
+    for handle in sessions {
         if matches_sender(handle) {
             handle.yolo_mode = yolo_mode;
             let _ = handle
@@ -442,7 +437,7 @@ mod tests {
     }
     #[test]
     fn parse_ask_user_question_returns_false_when_disabled() {
-        let meta = serde_json::json!({ "askUserQuestion" : false });
+        let meta = serde_json::json!({ "askUserQuestion": false });
         assert_eq!(
             parse_ask_user_question_from_meta(meta.as_object()),
             Some(false)
@@ -450,7 +445,7 @@ mod tests {
     }
     #[test]
     fn parse_ask_user_question_returns_true_when_enabled() {
-        let meta = serde_json::json!({ "askUserQuestion" : true });
+        let meta = serde_json::json!({ "askUserQuestion": true });
         assert_eq!(
             parse_ask_user_question_from_meta(meta.as_object()),
             Some(true)
@@ -458,7 +453,7 @@ mod tests {
     }
     #[test]
     fn parse_ask_user_question_returns_none_when_absent() {
-        let meta = serde_json::json!({ "agentProfile" : "grok-build-plan" });
+        let meta = serde_json::json!({ "agentProfile": "grok-build-plan" });
         assert_eq!(parse_ask_user_question_from_meta(meta.as_object()), None);
     }
     #[test]
@@ -466,11 +461,11 @@ mod tests {
         assert_eq!(parse_ask_user_question_from_meta(None), None);
     }
     /// Non-bool values are ignored (defensive: the shell falls back to the
-    /// resolved default via `resolve_ask_user_question` rather than panicking
+    /// resolved `ask_user_question` feature rather than panicking
     /// on malformed input).
     #[test]
     fn parse_ask_user_question_ignores_non_bool() {
-        let meta = serde_json::json!({ "askUserQuestion" : "no" });
+        let meta = serde_json::json!({ "askUserQuestion": "no" });
         assert_eq!(parse_ask_user_question_from_meta(meta.as_object()), None);
     }
     #[tokio::test]

@@ -20,7 +20,7 @@ use crate::{
     },
     util::remap::remap_json_keys,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -103,9 +103,7 @@ where
     };
     let kind = ToolKind::deserialize(serde::de::value::StrDeserializer::<D::Error>::new(&raw))?;
     if kind == ToolKind::Other && raw != "other" {
-        tracing::warn!(
-            kind = % raw, "unknown tool kind in config; treating as \"other\""
-        );
+        tracing::warn!(kind = %raw, "unknown tool kind in config; treating as \"other\"");
     }
     Ok(Some(kind))
 }
@@ -212,6 +210,15 @@ pub struct ToolServerConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub behavior_preset: Option<String>,
 }
+#[derive(Clone)]
+pub struct SubagentSessionResources {
+    pub backend: crate::implementations::grok_build::task::backend::SubagentBackendResource,
+    /// Same channel as [`Self::backend`]; required so `TaskCompletionReminder`
+    /// can drain completions onto the next tool result (shell parity).
+    pub event_sender: crate::implementations::grok_build::task::types::SubagentEventSender,
+    pub depth: crate::implementations::grok_build::task::types::SubagentDepthCounter,
+    pub session_id: crate::implementations::grok_build::task::types::SessionIdResource,
+}
 /// Everything a session provides at finalization time.
 ///
 /// This is the **public API boundary** — callers pass concrete, strongly-typed
@@ -233,6 +240,8 @@ pub struct SessionContext {
     /// Session ID that owns processes spawned by this session's tools.
     /// Used to scope kill operations on a shared terminal backend.
     pub owner_session_id: Option<String>,
+    /// Complete subagent capability for this session.
+    pub subagent: Option<SubagentSessionResources>,
     /// Parent's scheduler handle. When `Some`, the session reuses the parent's
     /// scheduler actor instead of spawning its own, so scheduled tasks survive
     /// subagent exit.
@@ -245,6 +254,9 @@ pub struct SessionContext {
     /// The toolset loads existing state on construction and auto-saves
     /// after every tool execution. The file stores serialized `State<T>`
     /// values (e.g., `TodoState`).
+    ///
+    /// Empty means this registry gives the session a handle that reads and writes nothing. `xai-grok-agent` reads
+    /// the same empty value as "use the temp directory" for `session_folder`; unifying the two is a follow-up.
     pub state_path: PathBuf,
     /// Optional memory backend for cross-session knowledge retrieval.
     /// When `Some`, injected into `Resources` so `memory_search` / `memory_get`
@@ -277,7 +289,7 @@ pub struct SessionContext {
     /// `deploy_app` tool connects to the service at call time using the shared
     /// API key provider.
     pub app_builder_deployer_config:
-        crate::implementations::grok_build::deploy_app::AppBuilderDeployerConfig,
+        crate::implementations::grok_build::app_builder::AppBuilderDeployerConfig,
     /// Dynamic API key provider for tool HTTP clients.
     /// When set, clients resolve the API key per-request from this provider
     /// instead of using the key baked into their config at construction time.
@@ -520,6 +532,14 @@ pub struct ToolRegistryBuilder {
     tools: HashMap<String, ToolEntry>,
     reminders: Vec<ReminderEntry>,
     shared_local_registry: Option<xai_computer_hub_sdk::LocalRegistry>,
+    /// Whether the client delivers system reminders (completion
+    /// notifications for backgrounded commands/subagents) to the model.
+    /// Exposed to description templates as `system_reminders_enabled` so
+    /// "you are notified on completion" promises are only rendered when
+    /// the client actually delivers them. Defaults to `true` (prod CLI
+    /// behavior); the tools server sets it from
+    /// `FinalizeToolServerConfigRequest.system_reminders_enabled`.
+    system_reminders_enabled: bool,
 }
 impl Default for ToolRegistryBuilder {
     fn default() -> Self {
@@ -592,7 +612,7 @@ impl ToolRegistryBuilder {
                 kind,
                 requires,
                 default_params: serde_json::to_value(P::default()).unwrap_or_default(),
-                input_schema: generate_schema::<T::Args>(),
+                input_schema: generate_schema_cached::<T::Args>(),
                 metadata: Box::new(tool),
                 output_converter: Box::new(|value| {
                     let typed: T::Output = serde_json::from_value(value)?;
@@ -659,6 +679,7 @@ impl ToolRegistryBuilder {
             tools: HashMap::new(),
             reminders: Vec::new(),
             shared_local_registry: None,
+            system_reminders_enabled: true,
         };
         b.register_with_params::<grok_build::BashTool, grok_build::bash::BashParams>();
         b.register_with_params::<grok_build::ReadFileTool, grok_build::read_file::ReadFileParams>();
@@ -672,6 +693,7 @@ impl ToolRegistryBuilder {
         b.register::<grok_build::KillTerminalCommandTool>();
         b.register::<grok_build::TodoWriteTool>();
         b.register::<grok_build::UpdateGoalTool>();
+        b.register::<grok_build::WorkflowTool>();
         b.register::<grok_build::TaskOutputTool>();
         b.register::<grok_build::GetTerminalCommandOutputTool>();
         b.register::<grok_build::WaitTasksTool>();
@@ -756,11 +778,14 @@ impl ToolRegistryBuilder {
             .map(|(name, e)| {
                 (
                     name.as_str(),
-                    serde_json::json!(
-                        { "namespace" : e.namespace, "id" : e.id, "kind" : e.kind,
-                        "default_params" : e.default_params, "input_schema" : e.input_schema,
-                        "requires" : e.requires, }
-                    ),
+                    serde_json::json!({
+                        "namespace": e.namespace,
+                        "id": e.id,
+                        "kind": e.kind,
+                        "default_params": e.default_params,
+                        "input_schema": e.input_schema,
+                        "requires": e.requires,
+                    }),
                 )
             })
             .collect();
@@ -787,8 +812,8 @@ impl ToolRegistryBuilder {
         for tool_config in &config.tools {
             let Some(entry) = self.tools.get(tool_config.id.as_str()) else {
                 tracing::warn!(
-                    tool_id = % tool_config.id, registered_keys = ? self.tools.keys()
-                    .collect::< Vec < _ >> (),
+                    tool_id = %tool_config.id,
+                    registered_keys = ?self.tools.keys().collect::<Vec<_>>(),
                     "validate_config: tool NOT FOUND in registry"
                 );
                 errors.push(
@@ -912,6 +937,13 @@ impl ToolRegistryBuilder {
     }
     /// Validate and finalize into an immutable toolset.
     /// Consumes the builder — no further modifications possible.
+    /// Set whether the client delivers system reminders to the model.
+    /// Must be called before [`finalize`]; affects how description
+    /// templates render notification promises (see
+    /// `TemplateContext::system_reminders_enabled`).
+    pub fn set_system_reminders_enabled(&mut self, enabled: bool) {
+        self.system_reminders_enabled = enabled;
+    }
     pub fn finalize(
         self,
         config: ToolServerConfig,
@@ -961,7 +993,8 @@ impl ToolRegistryBuilder {
                 map.extend(overrides.iter().map(|(k, v)| (k.clone(), v.clone())));
             }
         }
-        let renderer = TemplateRenderer::new(kind_to_name.clone(), kind_params.clone());
+        let renderer = TemplateRenderer::new(kind_to_name.clone(), kind_params.clone())
+            .with_system_reminders_enabled(self.system_reminders_enabled);
         let mut tools = Vec::new();
         let mut resources = Resources::new();
         resources.insert(crate::types::resources::Terminal(ctx.backend));
@@ -970,8 +1003,14 @@ impl ToolRegistryBuilder {
         resources.insert(crate::types::resources::Cwd(cwd.clone()));
         resources.insert(crate::types::resources::SessionFolder(ctx.session_folder));
         resources.insert(crate::types::resources::SessionEnv(ctx.session_env));
-        if let Some(owner_session_id) = ctx.owner_session_id {
+        if let Some(owner_session_id) = ctx.owner_session_id.clone() {
             resources.insert(crate::types::resources::OwnerSessionId(owner_session_id));
+        }
+        if let Some(subagent) = ctx.subagent {
+            resources.insert(subagent.backend);
+            resources.insert(subagent.event_sender);
+            resources.insert(subagent.depth);
+            resources.insert(subagent.session_id);
         }
         let scheduler_notification_handle = ctx.notification_handle.clone();
         resources.insert(crate::types::resources::NotificationHandle(
@@ -983,6 +1022,9 @@ impl ToolRegistryBuilder {
         ));
         {
             let mut mgr = crate::types::skill_discovery_tracker::SkillManager::new();
+            mgr.set_discovery_snapshot_names(
+                startup_skills.iter().map(|s| s.name.clone()).collect(),
+            );
             mgr.seed(Some(cwd.clone()), None, startup_skills, None, None, None);
             let _ = mgr.take_pending();
             resources.insert(mgr);
@@ -1003,13 +1045,19 @@ impl ToolRegistryBuilder {
         if let Some(lsp) = ctx.lsp {
             resources.insert(lsp);
         }
-        if ctx.image_gen_config.has_credentials() {
+        let image_gen_config = ctx.image_gen_config;
+        let video_gen_config = ctx.video_gen_config;
+        if image_gen_config.has_credentials() {
             match crate::implementations::grok_build::image_gen::ImageGenClient::new(
-                &ctx.image_gen_config,
+                &image_gen_config,
                 ctx.api_key_provider.clone(),
             ) {
                 Ok(client) => {
-                    let client = client.with_attribution_callback(ctx.attribution_callback.clone());
+                    let mut client =
+                        client.with_attribution_callback(ctx.attribution_callback.clone());
+                    if let Some(session_id) = &ctx.owner_session_id {
+                        client = client.with_session_id(session_id);
+                    }
                     resources.insert(client);
                 }
                 Err(e) => {
@@ -1017,13 +1065,17 @@ impl ToolRegistryBuilder {
                 }
             }
         }
-        if ctx.video_gen_config.is_enabled() {
+        if video_gen_config.is_enabled() {
             match crate::implementations::grok_build::video_gen::VideoGenClient::new(
-                &ctx.video_gen_config,
+                &video_gen_config,
                 ctx.api_key_provider.clone(),
             ) {
                 Ok(client) => {
-                    let client = client.with_attribution_callback(ctx.attribution_callback.clone());
+                    let mut client =
+                        client.with_attribution_callback(ctx.attribution_callback.clone());
+                    if let Some(session_id) = &ctx.owner_session_id {
+                        client = client.with_session_id(session_id);
+                    }
                     resources.insert(client);
                 }
                 Err(e) => {
@@ -1065,12 +1117,12 @@ impl ToolRegistryBuilder {
         for entry in self.tools.values() {
             (entry.register_params)(&mut resources);
         }
-        let resources_state_path = ctx
-            .state_path
-            .parent()
-            .unwrap_or(&ctx.state_path)
-            .join("resources_state.json");
-        let persistence = Arc::new(ResourcesPersistence::new(resources_state_path));
+        let persistence = Arc::new(if ctx.state_path.as_os_str().is_empty() {
+            ResourcesPersistence::noop()
+        } else {
+            let dir = ctx.state_path.parent().unwrap_or(&ctx.state_path);
+            ResourcesPersistence::new(dir.join("resources_state.json"))
+        });
         persistence.load(&mut resources);
         let preset_name = config.behavior_preset.as_deref().unwrap_or("current");
         let local_registry = self.shared_local_registry.take().unwrap_or_default();
@@ -1117,9 +1169,16 @@ impl ToolRegistryBuilder {
                     desc,
                     &client_name,
                     crate::DEFAULT_TOOL_OUTPUT_BYTES,
+                    xai_tool_types::max_wait_block_ms(),
                 ));
             }
             renderer.render_schema_descriptions(&mut definition.function.parameters);
+            truncation_config.apply_to_schema(
+                &mut definition.function.parameters,
+                &client_name,
+                crate::DEFAULT_TOOL_OUTPUT_BYTES,
+                xai_tool_types::max_wait_block_ms(),
+            );
             (entry.apply_params)(&effective_params, &mut resources);
             tools.push(FinalizedTool {
                 namespace: entry.namespace,
@@ -1185,9 +1244,13 @@ impl ToolRegistryBuilder {
         if let (Some(cmd_rx), Some(cancel_token)) = (scheduler_cmd_rx, &scheduler_cancel_token) {
             let actor = crate::implementations::grok_build::scheduler::actor::SchedulerActor {
                 resources: shared_resources.clone(),
+                resources_persistence: persistence.clone(),
                 notification_handle: scheduler_notification_handle,
                 cmd_rx,
                 cancel_token: cancel_token.clone(),
+                clock: Default::default(),
+                pending_removal: None,
+                blocked_expiries: Default::default(),
             };
             tokio::spawn(actor.run());
         }
@@ -1274,6 +1337,13 @@ impl FinalizedToolset {
     pub fn local_registry(&self) -> &xai_computer_hub_sdk::LocalRegistry {
         &self.local_registry
     }
+    /// Whether the server must await this tool's in-process cancellation cleanup.
+    pub fn cooperative_cancellation(&self, tool_name: &str) -> bool {
+        {
+            let _ = tool_name;
+            false
+        }
+    }
     /// Get all tool definitions to send to the client.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
@@ -1297,8 +1367,32 @@ impl FinalizedToolset {
             .map(|t| (t.client_name.clone(), t.metadata.kind().as_key().to_owned()))
             .collect()
     }
+    /// Map of client-facing tool name → typed [`ToolKind`].
+    ///
+    /// Unlike the finalize-request `ToolConfig`s (whose `kind` is `None` when
+    /// built from raw IDs over gRPC), the finalized tools always know their
+    /// real kind from the registry metadata — use this for kind-derived
+    /// metadata in server responses (e.g. capability-mode classification).
+    pub fn tool_kind_map(&self) -> HashMap<String, ToolKind> {
+        self.tools
+            .read()
+            .iter()
+            .map(|t| (t.client_name.clone(), t.metadata.kind()))
+            .collect()
+    }
+    /// Finalized canonical-to-client parameter names by tool kind.
+    pub fn template_param_names(&self) -> HashMap<ToolKind, HashMap<String, String>> {
+        self.renderer.param_names()
+    }
     pub async fn update_resource<T: Send + Sync + 'static>(&self, resource: T) {
         self.resources.lock().await.insert(resource);
+    }
+    /// Seed many resources under one lock. The closure runs under the lock; keep it to plain inserts.
+    pub async fn update_resources_with(
+        &self,
+        seed: impl FnOnce(&mut crate::types::resources::Resources),
+    ) {
+        seed(&mut *self.resources.lock().await);
     }
     /// Clone a typed resource out of this toolset, if present.
     ///
@@ -1414,6 +1508,9 @@ impl FinalizedToolset {
         let mut ctx = xai_tool_runtime::ToolCallContext::new(parent_ctx.call_id.clone());
         ctx.extensions.insert(self.resources.clone());
         ctx.extensions.insert_arc(Arc::clone(&self.renderer));
+        if let Some(cancellation) = parent_ctx.get::<xai_tool_runtime::Cancellation>() {
+            ctx.extensions.insert((*cancellation).clone());
+        }
         ctx.extensions.insert(
             crate::types::resources::InvokingToolParamNames::from_reverse_params(&reverse_params),
         );
@@ -1446,8 +1543,26 @@ impl FinalizedToolset {
         tool_call_id: &str,
         cwd_override: Option<std::path::PathBuf>,
     ) -> Result<ToolRunResult, xai_tool_runtime::ToolError> {
+        self.call_with_cancellation(tool_name, tool_args, tool_call_id, cwd_override, None)
+            .await
+    }
+    /// Dispatch with cooperative cancellation exposed to the tool.
+    pub async fn call_with_cancellation(
+        self: &Arc<Self>,
+        tool_name: &str,
+        tool_args: serde_json::Value,
+        tool_call_id: &str,
+        cwd_override: Option<std::path::PathBuf>,
+        cancellation: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<ToolRunResult, xai_tool_runtime::ToolError> {
         use futures::StreamExt;
-        let mut stream = self.call_streaming(tool_name, tool_args, tool_call_id, cwd_override);
+        let mut stream = self.call_streaming_with_cancellation(
+            tool_name,
+            tool_args,
+            tool_call_id,
+            cwd_override,
+            cancellation,
+        );
         while let Some(item) = stream.next().await {
             match item {
                 xai_tool_runtime::ToolStreamItem::Progress(_) => continue,
@@ -1477,27 +1592,69 @@ impl FinalizedToolset {
         tool_call_id: &str,
         cwd_override: Option<std::path::PathBuf>,
     ) -> xai_tool_runtime::ToolStream<ToolRunResult> {
+        self.call_streaming_with_cancellation(
+            tool_name,
+            tool_args,
+            tool_call_id,
+            cwd_override,
+            None,
+        )
+    }
+    /// Streaming dispatch with cooperative cancellation exposed to the tool.
+    pub fn call_streaming_with_cancellation(
+        self: &Arc<Self>,
+        tool_name: &str,
+        tool_args: serde_json::Value,
+        tool_call_id: &str,
+        cwd_override: Option<std::path::PathBuf>,
+        cancellation: Option<tokio_util::sync::CancellationToken>,
+    ) -> xai_tool_runtime::ToolStream<ToolRunResult> {
         use futures::StreamExt;
         let this = Arc::clone(self);
         let tool_name = tool_name.to_owned();
         let tool_call_id = tool_call_id.to_owned();
         Box::pin(async_stream::stream! {
-            let parts = match this.prepare_dispatch(& tool_name, tool_args, &
-            tool_call_id, cwd_override,) { Ok(parts) => parts, Err(e) => { yield
-            xai_tool_runtime::ToolStreamItem::Terminal(Err(e)); return; } }; let
-            DispatchParts { lr_handle, ctx, canonical_params, output_converter,
-            effective_tool_name, } = parts; let mut inner = lr_handle.execute(ctx,
-            canonical_params). await; while let Some(item) = inner.next(). await {
-            match item { xai_tool_runtime::ToolStreamItem::Progress(p) => { yield
-            xai_tool_runtime::ToolStreamItem::Progress(p); }
-            xai_tool_runtime::ToolStreamItem::Terminal(Err(e)) => { yield
-            xai_tool_runtime::ToolStreamItem::Terminal(Err(e)); return; }
-            xai_tool_runtime::ToolStreamItem::Terminal(Ok(typed)) => { let run_result
-            = this.finalize_output(typed.value, & output_converter,
-            effective_tool_name). await; yield
-            xai_tool_runtime::ToolStreamItem::Terminal(run_result); return; } } }
-            yield
-            xai_tool_runtime::ToolStreamItem::Terminal(Err(stream_no_terminal_error()));
+            let parts = match this.prepare_dispatch(
+                &tool_name,
+                tool_args,
+                &tool_call_id,
+                cwd_override,
+                cancellation,
+            ) {
+                Ok(parts) => parts,
+                Err(e) => {
+                    yield xai_tool_runtime::ToolStreamItem::Terminal(Err(e));
+                    return;
+                }
+            };
+            let DispatchParts {
+                lr_handle,
+                ctx,
+                canonical_params,
+                output_converter,
+                effective_tool_name,
+            } = parts;
+
+            let mut inner = lr_handle.execute(ctx, canonical_params).await;
+            while let Some(item) = inner.next().await {
+                match item {
+                    xai_tool_runtime::ToolStreamItem::Progress(p) => {
+                        yield xai_tool_runtime::ToolStreamItem::Progress(p);
+                    }
+                    xai_tool_runtime::ToolStreamItem::Terminal(Err(e)) => {
+                        yield xai_tool_runtime::ToolStreamItem::Terminal(Err(e));
+                        return;
+                    }
+                    xai_tool_runtime::ToolStreamItem::Terminal(Ok(typed)) => {
+                        let run_result = this
+                            .finalize_output(typed.value, &output_converter, effective_tool_name)
+                            .await;
+                        yield xai_tool_runtime::ToolStreamItem::Terminal(run_result);
+                        return;
+                    }
+                }
+            }
+            yield xai_tool_runtime::ToolStreamItem::Terminal(Err(stream_no_terminal_error()));
         })
     }
     /// Pre-dispatch setup shared by [`call`] / [`call_streaming`].
@@ -1512,6 +1669,7 @@ impl FinalizedToolset {
         tool_args: serde_json::Value,
         tool_call_id: &str,
         cwd_override: Option<std::path::PathBuf>,
+        cancellation: Option<tokio_util::sync::CancellationToken>,
     ) -> Result<DispatchParts, xai_tool_runtime::ToolError> {
         let (registry_id, output_converter, reverse_params) = {
             let tools = self.tools.read();
@@ -1550,6 +1708,10 @@ impl FinalizedToolset {
         );
         if let Some(cwd) = cwd_override {
             ctx.extensions.insert(xai_tool_runtime::Cwd(cwd));
+        }
+        if let Some(cancellation) = cancellation {
+            ctx.extensions
+                .insert(xai_tool_runtime::Cancellation(cancellation));
         }
         if let Some(ref version) = contract_version {
             ctx.extensions
@@ -1686,7 +1848,7 @@ impl FinalizedToolset {
         let description = tool.description_template().to_string();
         let kind = tool.kind();
         let registry_id = xai_tool_runtime::Tool::id(&tool).as_str().to_owned();
-        let input_schema = input_schema_override.unwrap_or_else(generate_schema::<T::Args>);
+        let input_schema = input_schema_override.unwrap_or_else(generate_schema_cached::<T::Args>);
         let definition = ToolDefinition::function(&name, Some(&description), input_schema.clone());
         self.local_registry.register(tool);
         tools.push(FinalizedTool {
@@ -1750,13 +1912,11 @@ impl FinalizedToolset {
     pub async fn flush_persistence(&self) {
         self.resources_persistence.flush().await;
     }
-    /// Serialize current in-memory state, write it to disk, and wait for
-    /// the write to complete. Returns the path to the persisted file.
+    /// Serialize current in-memory state, write it to disk, and wait for the write to complete.
+    /// Returns where it landed, or `None` for a session that persists nothing.
     ///
-    /// Unlike `flush_persistence()` (which only flushes previously queued
-    /// snapshots), this method captures a **fresh** snapshot of the current
-    /// `Resources` and ensures it hits disk before returning.
-    pub async fn save_and_flush_persistence(&self) -> &std::path::Path {
+    /// Unlike `flush_persistence()`, which only flushes previously queued snapshots, this takes a fresh snapshot first.
+    pub async fn save_and_flush_persistence(&self) -> Option<&std::path::Path> {
         {
             let res = self.resources.lock().await;
             self.resources_persistence.save(&res);
@@ -1765,11 +1925,43 @@ impl FinalizedToolset {
         self.resources_persistence.state_path()
     }
 }
-/// Generate a JSON Schema for type `T`.
-///
-/// Public so out-of-tree tool packs can
-/// schema-test their tool inputs exactly the way the registry generates
-/// definitions.
+/// Process-global memo of generated tool input schemas, keyed by the exact
+/// [`std::any::TypeId`] of the schema type.
+fn schema_cache() -> &'static RwLock<HashMap<std::any::TypeId, serde_json::Value>> {
+    static CACHE: OnceLock<RwLock<HashMap<std::any::TypeId, serde_json::Value>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+/// Memoized [`generate_schema`], keyed by `TypeId`. Sound as a process-wide cache
+/// because the schema depends on `T` alone, not the agent or toolset; the per-boot
+/// toolset rebuild would otherwise regenerate identical schemas across a fan-out.
+pub(crate) fn generate_schema_cached<T: schemars::JsonSchema + 'static>() -> serde_json::Value {
+    let key = std::any::TypeId::of::<T>();
+    if let Some(cached) = schema_cache().read().get(&key) {
+        return cached.clone();
+    }
+    #[cfg(test)]
+    {
+        *schema_uncached_counts().lock().entry(key).or_insert(0) += 1;
+    }
+    let value = generate_schema::<T>();
+    schema_cache().write().insert(key, value.clone());
+    value
+}
+#[cfg(test)]
+fn schema_uncached_counts() -> &'static Mutex<HashMap<std::any::TypeId, u64>> {
+    static COUNTS: OnceLock<Mutex<HashMap<std::any::TypeId, u64>>> = OnceLock::new();
+    COUNTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+#[cfg(test)]
+fn schema_uncached_calls(key: std::any::TypeId) -> u64 {
+    schema_uncached_counts()
+        .lock()
+        .get(&key)
+        .copied()
+        .unwrap_or(0)
+}
+/// JSON Schema for `T` with the root `title` and `description` stripped. Pure
+/// and uncached; the per-boot hot path uses [`generate_schema_cached`].
 pub fn generate_schema<T: schemars::JsonSchema>() -> serde_json::Value {
     let settings = schemars::generate::SchemaSettings::draft07().with(|s| {
         s.inline_subschemas = true;
@@ -1777,6 +1969,10 @@ pub fn generate_schema<T: schemars::JsonSchema>() -> serde_json::Value {
     let generator = settings.into_generator();
     let schema = generator.into_root_schema_for::<T>();
     let mut value = serde_json::to_value(&schema).unwrap_or_default();
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("title");
+        obj.remove("description");
+    }
     if let Some(obj) = value.as_object_mut()
         && obj.get("type").and_then(|v| v.as_str()) == Some("object")
     {
@@ -1821,9 +2017,9 @@ fn explain_requirement_failure(
                 "unsatisfied requirements".to_string()
             } else {
                 format!(
-                        "enabled_background=true requires {} so background bash tasks can be observed and cancelled",
-                        missing.join(" and ")
-                    )
+                    "enabled_background=true requires {} so background bash tasks can be observed and cancelled",
+                    missing.join(" and ")
+                )
             };
             RequirementError::new(fq_tool_id, message)
                 .with_field_path("params.enabled_background")
@@ -1844,9 +2040,9 @@ fn explain_requirement_failure(
             RequirementError::new(
                     fq_tool_id,
                     format!(
-                        "task requires {} so spawned background subagents can be monitored and cancelled",
-                        missing.join(" and ")
-                    ),
+                    "task requires {} so spawned background subagents can be monitored and cancelled",
+                    missing.join(" and ")
+                ),
                 )
                 .with_field_path("tools")
                 .with_expected("include get_task_output and kill_task")
@@ -2006,6 +2202,7 @@ mod tests {
             session_env: Arc::new(HashMap::new()),
             notification_handle: crate::notification::ToolNotificationHandle::noop(),
             owner_session_id: None,
+            subagent: None,
             parent_scheduler_handle: None,
             skills: vec![],
             state_path: tmp.path().join("state.json"),
@@ -2019,7 +2216,7 @@ mod tests {
             video_gen_config:
                 crate::implementations::grok_build::video_gen::VideoGenConfig::default(),
             app_builder_deployer_config:
-                crate::implementations::grok_build::deploy_app::AppBuilderDeployerConfig::default(),
+                crate::implementations::grok_build::app_builder::AppBuilderDeployerConfig::default(),
             api_key_provider: None,
             auth_provider: None,
             attribution_callback: None,
@@ -2056,11 +2253,10 @@ mod tests {
                 ToolConfig {
                     id: "GrokBuild:search_replace".to_string(),
                     params: Some(
-                        serde_json::json!({
-                "skip_read_before_edit" : true })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
+                        serde_json::json!({ "skip_read_before_edit": true })
+                            .as_object()
+                            .unwrap()
+                            .clone(),
                     ),
                     name_override: None,
                     params_name_overrides: None,
@@ -2080,10 +2276,12 @@ mod tests {
         let result = toolset
             .call(
                 "search_replace",
-                serde_json::json!(
-                    { "file_path" : "test.txt", "old_string" : "aaa", "new_string" :
-                    "ccc", "replace_all" : false, }
-                ),
+                serde_json::json!({
+                    "file_path": "test.txt",
+                    "old_string": "aaa",
+                    "new_string": "ccc",
+                    "replace_all": false,
+                }),
                 "test-call",
                 None,
             )
@@ -2196,6 +2394,7 @@ mod tests {
             .into_iter()
             .map(|id| ToolConfig::from_id(format!("GrokBuild:{id}")))
             .chain(std::iter::empty::<ToolConfig>())
+            .chain(std::iter::empty::<ToolConfig>())
             .collect(),
             behavior_preset: None,
         };
@@ -2204,7 +2403,53 @@ mod tests {
         let toolset = builder
             .finalize(config, ctx)
             .expect("full toolset should finalize");
-        for def in toolset.tool_definitions() {
+        fn assert_no_render_whitespace_artifacts(name: &str, text: &str) {
+            let mut in_code_block = false;
+            for line in text.lines() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("```") {
+                    in_code_block = !in_code_block;
+                    continue;
+                }
+                if in_code_block {
+                    continue;
+                }
+                assert!(
+                    !trimmed.contains("  "),
+                    "{name}: double space (template render artifact?) in line: {line:?}"
+                );
+                assert!(
+                    !trimmed.contains(" , "),
+                    "{name}: stranded space before comma in line: {line:?}"
+                );
+                if let Some((_, roster)) = trimmed.split_once("access to:") {
+                    assert!(
+                        roster.starts_with(' '),
+                        "{name}: roster lost its separators (stripping guard?) in line: {line:?}"
+                    );
+                }
+            }
+        }
+        fn collect_descriptions(v: &serde_json::Value, out: &mut Vec<String>) {
+            match v {
+                serde_json::Value::Object(map) => {
+                    if let Some(serde_json::Value::String(d)) = map.get("description") {
+                        out.push(d.clone());
+                    }
+                    for val in map.values() {
+                        collect_descriptions(val, out);
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    for val in arr {
+                        collect_descriptions(val, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let definitions = toolset.tool_definitions();
+        for def in definitions {
             let name = &def.function.name;
             let desc = def.function.description.as_deref().unwrap_or_default();
             assert!(
@@ -2223,6 +2468,7 @@ mod tests {
                 !desc.contains("the  tool"),
                 "{name}: empty tool name (missing conditional guard)"
             );
+            assert_no_render_whitespace_artifacts(name, desc);
             let params_str = def.function.parameters.to_string();
             assert!(
                 !params_str.contains("${{"),
@@ -2232,6 +2478,15 @@ mod tests {
                 !params_str.contains("${%"),
                 "{name}: unresolved jinja block in a field description"
             );
+            let mut field_descs = Vec::new();
+            collect_descriptions(&def.function.parameters, &mut field_descs);
+            for field_desc in &field_descs {
+                assert_no_render_whitespace_artifacts(name, field_desc);
+                assert!(
+                    !field_desc.contains("{max_"),
+                    "{name}: unresolved {{max_*}} placeholder in a field description"
+                );
+            }
         }
     }
     /// Bash mode resolves the toolset's execute tool by kind, not a hardcoded
@@ -2286,7 +2541,7 @@ mod tests {
         });
         let merged = merge_tool_meta(
             &toolset,
-            Some(serde_json::json!({ "bash_mode" : true })),
+            Some(serde_json::json!({"bash_mode": true})),
             "run_terminal_cmd",
             Some(&bash),
         )
@@ -2296,13 +2551,49 @@ mod tests {
         assert_eq!(merged[TOOL_META_KEY]["input"]["command"], "ls");
         let unchanged = merge_tool_meta(
             &toolset,
-            Some(serde_json::json!({ "backend" : true })),
+            Some(serde_json::json!({"backend": true})),
             "not_a_registered_tool",
             None,
         )
         .unwrap();
         assert_eq!(unchanged["backend"], true);
         assert!(unchanged.get(TOOL_META_KEY).is_none());
+    }
+    /// The wire (`ToolMetadata::is_read_only`) and doom-loop
+    /// (`Tool::capabilities().is_read_only`) must agree for every registered
+    /// tool. Drift here is a client classifying a tool differently from
+    /// in-process loop detection.
+    #[test]
+    fn capabilities_is_read_only_matches_metadata() {
+        let builder = ToolRegistryBuilder::new();
+        let mismatches: Vec<String> = builder
+            .tools
+            .iter()
+            .filter_map(|(name, entry)| {
+                let lr = xai_computer_hub_sdk::LocalRegistry::new();
+                (entry.register_in_local)(&lr);
+                let id = xai_tool_protocol::ToolId::new(&entry.id)
+                    .unwrap_or_else(|_| panic!("{name}: invalid tool id {:?}", entry.id));
+                let caps = lr
+                    .find(&id)
+                    .unwrap_or_else(|| panic!("{name}: missing from LocalRegistry"))
+                    .capabilities()
+                    .is_read_only;
+                let meta = entry.metadata.is_read_only();
+                (meta != caps).then(|| {
+                    format!(
+                        "{name}: ToolMetadata::is_read_only()={meta} \
+                         Tool::capabilities().is_read_only={caps}"
+                    )
+                })
+            })
+            .collect();
+        assert!(
+            mismatches.is_empty(),
+            "every registered tool must give the same is_read_only from \
+             ToolMetadata and Tool::capabilities(); mismatches:\n{}",
+            mismatches.join("\n")
+        );
     }
     /// `read_only` must come from the per-tool override, not the kind default:
     /// `get_task_output` is `BackgroundTaskAction` (default mutating) but
@@ -2336,11 +2627,11 @@ mod tests {
         let parse = |v: serde_json::Value| -> ToolConfig {
             serde_json::from_value(v).expect("ToolConfig deserializes")
         };
-        let known = parse(serde_json::json!({ "id" : "GrokBuild:read_file", "kind" : "read" }));
+        let known = parse(serde_json::json!({"id": "GrokBuild:read_file", "kind": "read"}));
         assert_eq!(known.kind, Some(ToolKind::Read));
-        let typo = parse(serde_json::json!({ "id" : "GrokBuild:read_file", "kind" : "raed" }));
+        let typo = parse(serde_json::json!({"id": "GrokBuild:read_file", "kind": "raed"}));
         assert_eq!(typo.kind, Some(ToolKind::Other));
-        let absent = parse(serde_json::json!({ "id" : "GrokBuild:read_file" }));
+        let absent = parse(serde_json::json!({"id": "GrokBuild:read_file"}));
         assert_eq!(absent.kind, None);
     }
     /// End-to-end: a `params_name_overrides` rename of `old_string` must flow
@@ -2351,6 +2642,7 @@ mod tests {
         let builder = ToolRegistryBuilder::new();
         let config = ToolServerConfig {
             tools: vec![
+                // read_file satisfies search_replace's Read requirement.
                 ToolConfig {
                     id: "GrokBuild:read_file".to_string(),
                     params: None,
@@ -2411,6 +2703,74 @@ mod tests {
             "replace_all description should reference the renamed param: {replace_all_desc}"
         );
     }
+    /// Descriptions promising completion notifications ("You are notified on
+    /// completion") render conditionally on the client's system-reminders
+    /// setting, plumbed via `set_system_reminders_enabled` into the
+    /// `TemplateRenderer`. With reminders disabled, the bash description and
+    /// the `is_background` field description must not promise notifications;
+    /// they point at the get-output tool instead when one is served.
+    #[tokio::test]
+    async fn bash_descriptions_track_system_reminders_setting() {
+        let config_with = |ids: &[&str]| ToolServerConfig {
+            tools: ids
+                .iter()
+                .map(|id| ToolConfig::from_id((*id).to_string()))
+                .collect(),
+            behavior_preset: None,
+        };
+        let bash_texts = |toolset: &FinalizedToolset| {
+            let defs = toolset.tool_definitions();
+            let bash = defs
+                .iter()
+                .find(|d| d.function.name == "run_terminal_cmd")
+                .expect("run_terminal_cmd definition not found")
+                .clone();
+            let desc = bash.function.description.clone().unwrap_or_default();
+            let field_desc = bash.function.parameters["properties"]["is_background"]["description"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            (desc, field_desc)
+        };
+        let ids = [
+            "GrokBuild:run_terminal_cmd",
+            "GrokBuild:get_task_output",
+            "GrokBuild:kill_task",
+        ];
+        let tmp = TempDir::new().unwrap();
+        let toolset = ToolRegistryBuilder::new()
+            .finalize(config_with(&ids), test_session_context(&tmp))
+            .expect("finalize");
+        let (desc, field_desc) = bash_texts(&toolset);
+        assert!(
+            desc.contains("You are notified on completion"),
+            "reminders on: description should promise notification: {desc}"
+        );
+        assert!(
+            field_desc.contains("you are notified on completion"),
+            "reminders on: is_background description should promise notification: {field_desc}"
+        );
+        let tmp = TempDir::new().unwrap();
+        let mut builder = ToolRegistryBuilder::new();
+        builder.set_system_reminders_enabled(false);
+        let toolset = builder
+            .finalize(config_with(&ids), test_session_context(&tmp))
+            .expect("finalize");
+        let (desc, field_desc) = bash_texts(&toolset);
+        assert!(
+            !desc.contains("notified on completion"),
+            "reminders off: description must not promise notification: {desc}"
+        );
+        assert!(
+            desc.contains("Check on it later with the get_task_output tool"),
+            "reminders off: description should point at get_task_output: {desc}"
+        );
+        assert!(
+            !field_desc.contains("notified on completion")
+                && field_desc.contains("check on it later with the get_task_output tool"),
+            "reminders off: is_background description should point at get_task_output: {field_desc}"
+        );
+    }
     /// Each assertion pattern-matches on the exact `ToolOutput::SearchReplace`
     /// variant so the test fails if the renderer silently returns empty strings
     /// or the tool returns the wrong variant.
@@ -2434,7 +2794,7 @@ mod tests {
                 },
                 ToolConfig {
                     id: "GrokBuild:search_replace".to_string(),
-                    params: None,
+                    params: None, // default: skip_read_before_edit = false
                     name_override: None,
                     params_name_overrides: None,
                     description_override: None,
@@ -2454,7 +2814,7 @@ mod tests {
             toolset
                 .call(
                     "read_file",
-                    serde_json::json!({ "target_file" : * fname }),
+                    serde_json::json!({ "target_file": *fname }),
                     "read-call",
                     None,
                 )
@@ -2464,10 +2824,12 @@ mod tests {
         let result = toolset
             .call(
                 "search_replace",
-                serde_json::json!(
-                    { "file_path" : "dup.txt", "old_string" : "aaa", "new_string" :
-                    "ccc", "replace_all" : false, }
-                ),
+                serde_json::json!({
+                    "file_path": "dup.txt",
+                    "old_string": "aaa",
+                    "new_string": "ccc",
+                    "replace_all": false,
+                }),
                 "call-2",
                 None,
             )
@@ -2489,10 +2851,11 @@ mod tests {
         let result = toolset
             .call(
                 "search_replace",
-                serde_json::json!(
-                    { "file_path" : "no_match.txt", "old_string" : "nonexistent_string",
-                    "new_string" : "replacement", }
-                ),
+                serde_json::json!({
+                    "file_path": "no_match.txt",
+                    "old_string": "nonexistent_string",
+                    "new_string": "replacement",
+                }),
                 "call-3",
                 None,
             )
@@ -2502,7 +2865,8 @@ mod tests {
             ToolOutput::SearchReplace(SearchReplaceOutput::NoMatchesFound(e)) => {
                 assert_eq!(
                     e.message,
-                    "The string to replace was not found in the file, use the read_file tool to see the correct string.",
+                    "The string to replace was not found in the file, use the read_file tool to see the correct string. \
+                     The user may have changed the file since you last read it.",
                 );
             }
             other => panic!("Expected SearchReplace(NoMatchesFound), got: {other:?}"),
@@ -2538,7 +2902,7 @@ mod tests {
                 ToolConfig {
                     id: "GrokBuildConcise:run_terminal_cmd".to_string(),
                     params: Some(
-                        serde_json::json!({ "enabled_background" : true })
+                        serde_json::json!({ "enabled_background": true })
                             .as_object()
                             .unwrap()
                             .clone(),
@@ -2573,7 +2937,7 @@ mod tests {
         let result = toolset
             .call(
                 "read_file",
-                serde_json::json!({ "target_file" : "hello.txt" }),
+                serde_json::json!({ "target_file": "hello.txt" }),
                 "call-concise-1",
                 None,
             )
@@ -2669,7 +3033,7 @@ mod tests {
                 ToolConfig {
                     id: "Codex:read_file".to_string(),
                     params: None,
-                    name_override: None,
+                    name_override: None, // both resolve to "read_file"
                     params_name_overrides: None,
                     description_override: None,
                     behavior_version: None,
@@ -2694,8 +3058,9 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuild:run_terminal_cmd".to_string(),
                 params: Some(
-                    serde_json::from_value(serde_json::json!({ "enabled_background" :
-                "yes" }))
+                    serde_json::from_value(serde_json::json!({
+                        "enabled_background": "yes"
+                    }))
                     .unwrap(),
                 ),
                 name_override: None,
@@ -2724,7 +3089,10 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuildHashline:hashline_read".to_string(),
                 params: Some(
-                    serde_json::from_value(serde_json::json!({ "hash_len" : 0 })).unwrap(),
+                    serde_json::from_value(serde_json::json!({
+                        "hash_len": 0
+                    }))
+                    .unwrap(),
                 ),
                 name_override: None,
                 params_name_overrides: None,
@@ -2752,7 +3120,7 @@ mod tests {
                 ToolConfig {
                     id: "GrokBuild:read_file".to_string(),
                     params: None,
-                    name_override: None,
+                    name_override: None, // client_name = "read_file"
                     params_name_overrides: None,
                     description_override: None,
                     behavior_version: None,
@@ -2761,7 +3129,7 @@ mod tests {
                 ToolConfig {
                     id: "Codex:read_file".to_string(),
                     params: None,
-                    name_override: Some("codex_read_file".to_string()),
+                    name_override: Some("codex_read_file".to_string()), // disambiguated
                     params_name_overrides: None,
                     description_override: None,
                     behavior_version: None,
@@ -2875,16 +3243,16 @@ mod tests {
                 FakeMcpTool {
                     description: "Create or update a Linear issue".into(),
                 },
-                Some(serde_json::json!({ "type" : "object", "properties" : {} })),
+                Some(serde_json::json!({"type": "object", "properties": {}})),
             )
             .unwrap();
         let result = toolset
             .call(
                 "use_tool",
-                serde_json::json!(
-                    { "tool_name" : "linear__save_issue", "tool_input" : { "title" :
-                    "hello" } }
-                ),
+                serde_json::json!({
+                    "tool_name": "linear__save_issue",
+                    "tool_input": {"title": "hello"}
+                }),
                 "call-1",
                 None,
             )
@@ -2999,7 +3367,7 @@ mod tests {
             .register_tool(
                 "stub".to_string(),
                 NonStreamingStub,
-                Some(serde_json::json!({ "type" : "object", "properties" : {} })),
+                Some(serde_json::json!({"type": "object", "properties": {}})),
             )
             .unwrap();
         let result = toolset
@@ -3032,7 +3400,7 @@ mod tests {
             .register_tool(
                 "streamer".to_string(),
                 StreamingStub,
-                Some(serde_json::json!({ "type" : "object", "properties" : {} })),
+                Some(serde_json::json!({"type": "object", "properties": {}})),
             )
             .unwrap();
         let mut stream = toolset.call_streaming("streamer", serde_json::json!({}), "call-b", None);
@@ -3146,7 +3514,7 @@ mod tests {
             .register_tool(
                 "no_terminal".to_string(),
                 NoTerminalStub,
-                Some(serde_json::json!({ "type" : "object", "properties" : {} })),
+                Some(serde_json::json!({"type": "object", "properties": {}})),
             )
             .unwrap();
         let err = toolset
@@ -3158,6 +3526,119 @@ mod tests {
             msg.contains("stream_no_terminal") || msg.contains("without a terminal"),
             "error must surface the no-terminal violation, got: {msg}"
         );
+    }
+    #[tokio::test]
+    async fn non_pi_finalized_contract_snapshot_is_unchanged() {
+        let tmp = TempDir::new().unwrap();
+        let toolset = ToolRegistryBuilder::new()
+            .finalize(
+                ToolServerConfig {
+                    tools: vec![
+                        ToolConfig::for_tool::<grok_build::TodoWriteTool>(),
+                        ToolConfig::for_tool::<opencode::OpenCodeWriteTool>(),
+                    ],
+                    behavior_preset: None,
+                },
+                test_session_context(&tmp),
+            )
+            .unwrap();
+        let mut contracts: Vec<serde_json::Value> = toolset
+            .tool_definitions()
+            .into_iter()
+            .map(|definition| {
+                serde_json::json!({
+                    "name": definition.function.name,
+                    "description": definition.function.description,
+                    "parameters": definition.function.parameters,
+                })
+            })
+            .collect();
+        contracts.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+        let expected: serde_json::Value = serde_json::from_str(
+                r##"
+        [
+          {
+            "name": "todo_write",
+            "description": "Create and manage a structured task list. The user sees this list live — it is your primary way to show progress.\n\nUse for any task with 3+ steps. Skip for trivial single-step work.",
+            "parameters": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "required": [
+                "todos"
+              ],
+              "type": "object",
+              "properties": {
+                "merge": {
+                  "description": "Optional. When true (default), merges the provided todos into the existing list by id — send only the items you are changing, and to flip status without changing content send just id + status. When false, the provided todos replace the existing list.",
+                  "type": "boolean",
+                  "default": true
+                },
+                "todos": {
+                  "description": "Array of todo items to write to the workspace",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "description": "Unique identifier for the todo item",
+                        "type": "string"
+                      },
+                      "content": {
+                        "description": "The description/content of the todo item",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "description": "The status of the todo item: pending, in_progress, completed, or cancelled",
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "pending",
+                          "in_progress",
+                          "completed",
+                          "cancelled",
+                          null
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "name": "write",
+            "description": "Create or overwrite a file.\n\n- Writing to an existing path replaces the file.\n- Parent directories are created for you.",
+            "parameters": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "required": [
+                "file_path",
+                "content"
+              ],
+              "properties": {
+                "file_path": {
+                  "description": "The absolute path to the file to write.",
+                  "type": "string"
+                },
+                "content": {
+                  "description": "The full file content to write.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ]
+"##,
+            )
+            .expect("checked-in snapshot parses");
+        assert_eq!(expected, serde_json::Value::Array(contracts));
     }
     #[tokio::test]
     async fn tool_definitions_builtins_only_hides_mcp_tools() {
@@ -3178,7 +3659,7 @@ mod tests {
                 FakeMcpTool {
                     description: "Create or update a Linear issue".into(),
                 },
-                Some(serde_json::json!({ "type" : "object", "properties" : {} })),
+                Some(serde_json::json!({"type": "object", "properties": {}})),
             )
             .unwrap();
         assert_eq!(toolset.tool_definitions().len(), 3);
@@ -3355,7 +3836,7 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuild:run_terminal_cmd".to_string(),
                 params: Some(
-                    serde_json::json!({ "enabled_background" : false })
+                    serde_json::json!({ "enabled_background": false })
                         .as_object()
                         .unwrap()
                         .clone(),
@@ -3406,7 +3887,7 @@ mod tests {
                 ToolConfig {
                     id: "GrokBuild:run_terminal_cmd".to_string(),
                     params: Some(
-                        serde_json::json!({ "enabled_background" : true })
+                        serde_json::json!({ "enabled_background": true })
                             .as_object()
                             .unwrap()
                             .clone(),
@@ -3537,6 +4018,22 @@ mod tests {
                 desc.contains("run_in_background"),
                 "`{name}` description must resolve params.task.run_in_background"
             );
+            let timeout = defs
+                .iter()
+                .find(|d| d.function.name == name)
+                .map(|d| &d.function.parameters["properties"]["timeout_ms"])
+                .unwrap_or_else(|| panic!("`{name}` should expose timeout_ms"));
+            assert!(
+                timeout.get("maximum").is_some(),
+                "`{name}`.timeout_ms must carry the resolved wait ceiling: {timeout}"
+            );
+            assert!(
+                !timeout["description"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("{max_"),
+                "`{name}`.timeout_ms has an unresolved placeholder: {timeout}"
+            );
         }
     }
     #[test]
@@ -3546,11 +4043,10 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuild:run_terminal_cmd".to_string(),
                 params: Some(
-                    serde_json::json!({ "enabled_background" : false,
-                "auto_background_on_timeout" : true })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
+                    serde_json::json!({ "enabled_background": false, "auto_background_on_timeout": true })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
                 ),
                 name_override: None,
                 params_name_overrides: None,
@@ -3583,11 +4079,10 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuild:run_terminal_cmd".to_string(),
                 params: Some(
-                    serde_json::json!({ "enabled_background" : false,
-                "auto_background_on_timeout" : false })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
+                    serde_json::json!({ "enabled_background": false, "auto_background_on_timeout": false })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
                 ),
                 name_override: None,
                 params_name_overrides: None,
@@ -3629,11 +4124,10 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuild:run_terminal_cmd".to_string(),
                 params: Some(
-                    serde_json::json!({ "enabled_background" : false,
-                "auto_background_on_timeout" : false })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
+                    serde_json::json!({ "enabled_background": false, "auto_background_on_timeout": false })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
                 ),
                 name_override: None,
                 params_name_overrides: None,
@@ -4080,11 +4574,10 @@ mod tests {
                 ToolConfig {
                     id: "GrokBuildHashline:hashline_read".to_owned(),
                     params: Some(
-                        serde_json::json!({ "scheme" : "chunk", "hash_len" : 2, "chunk_size"
-                : 16 })
-                        .as_object()
-                        .unwrap()
-                        .clone(),
+                        serde_json::json!({"scheme": "chunk", "hash_len": 2, "chunk_size": 16})
+                            .as_object()
+                            .unwrap()
+                            .clone(),
                     ),
                     name_override: None,
                     params_name_overrides: None,
@@ -4120,7 +4613,7 @@ mod tests {
         ToolConfig {
             id: "GrokBuild:run_terminal_cmd".to_owned(),
             params: Some(
-                serde_json::json!({ "enabled_background" : true })
+                serde_json::json!({ "enabled_background": true })
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -4160,7 +4653,7 @@ mod tests {
         let result = bridge
             .call(
                 "list_dir",
-                serde_json::json!({ "target_directory" : tmp.path().to_str().unwrap() }),
+                serde_json::json!({ "target_directory": tmp.path().to_str().unwrap() }),
                 "test-call-id",
             )
             .await
@@ -4179,9 +4672,7 @@ mod tests {
         let test_dir = tmp.path().join("testdir");
         std::fs::create_dir_all(&test_dir).unwrap();
         std::fs::write(test_dir.join("parity.txt"), "test").unwrap();
-        let args = serde_json::json!(
-            { "target_directory" : test_dir.to_str().unwrap() }
-        );
+        let args = serde_json::json!({ "target_directory": test_dir.to_str().unwrap() });
         let hub_bridge = grok_build_bridge(&tmp).await;
         let hub_result = hub_bridge
             .call("list_dir", args.clone(), "hub-call")
@@ -4191,9 +4682,8 @@ mod tests {
         let legacy_test_dir = legacy_tmp.path().join("testdir");
         std::fs::create_dir_all(&legacy_test_dir).unwrap();
         std::fs::write(legacy_test_dir.join("parity.txt"), "test").unwrap();
-        let legacy_args = serde_json::json!(
-            { "target_directory" : legacy_test_dir.to_str().unwrap() }
-        );
+        let legacy_args =
+            serde_json::json!({ "target_directory": legacy_test_dir.to_str().unwrap() });
         let builder = ToolRegistryBuilder::new();
         let config = ToolServerConfig {
             tools: vec![ToolConfig::for_tool::<grok_build::ListDirTool>()],
@@ -4227,7 +4717,7 @@ mod tests {
         bridge
             .call(
                 "read_file",
-                serde_json::json!({ "target_file" : file.to_str().unwrap() }),
+                serde_json::json!({ "target_file": file.to_str().unwrap() }),
                 "read-call",
             )
             .await
@@ -4235,10 +4725,11 @@ mod tests {
         let result = bridge
             .call(
                 "search_replace",
-                serde_json::json!(
-                    { "file_path" : file.to_str().unwrap(), "old_string" : "hello",
-                    "new_string" : "goodbye" }
-                ),
+                serde_json::json!({
+                    "file_path": file.to_str().unwrap(),
+                    "old_string": "hello",
+                    "new_string": "goodbye"
+                }),
                 "edit-call",
             )
             .await
@@ -4259,10 +4750,10 @@ mod tests {
         let result = bridge
             .call(
                 "run_terminal_cmd",
-                serde_json::json!(
-                    { "command" : "echo hub_dispatch_test_sentinel", "description" :
-                    "test" }
-                ),
+                serde_json::json!({
+                    "command": "echo hub_dispatch_test_sentinel",
+                    "description": "test"
+                }),
                 "bash-call",
             )
             .await
@@ -4382,6 +4873,46 @@ mod tests {
             assert_eq!(skills.0.len(), 2, "should have exactly 2 skills");
         }
     }
+    /// generate_schema strips the boilerplate root `title` (struct name) and
+    /// root `description` (struct doc "Input for the <canonical> tool") so the
+    /// canonical name can't leak via parameters.description after randomization
+    /// renames the tool. $schema and per-property descriptions are retained.
+    #[test]
+    fn generate_schema_strips_root_title_and_description() {
+        let schema = generate_schema::<crate::implementations::grok_build::bash::BashToolInput>();
+        assert!(
+            schema.get("title").is_none(),
+            "root title (struct name) must be stripped: {schema}"
+        );
+        assert!(
+            schema.get("description").is_none(),
+            "root description (leaks canonical tool name) must be stripped: {schema}"
+        );
+        assert!(schema.get("$schema").is_some(), "$schema must be retained");
+        assert!(
+            schema["properties"]
+                .as_object()
+                .is_some_and(|p| !p.is_empty()),
+            "per-property schema must be retained: {schema}"
+        );
+    }
+    #[test]
+    fn generate_schema_memoizes_per_type() {
+        #[derive(schemars::JsonSchema)]
+        #[allow(dead_code)]
+        struct SchemaMemoProbe {
+            field: String,
+        }
+        let key = std::any::TypeId::of::<SchemaMemoProbe>();
+        let first = generate_schema_cached::<SchemaMemoProbe>();
+        let second = generate_schema_cached::<SchemaMemoProbe>();
+        assert_eq!(first, second);
+        assert_eq!(
+            schema_uncached_calls(key),
+            1,
+            "a type's schema must be generated at most once per process"
+        );
+    }
     fn toolset_with_viewer_ctx(
         viewer_ctx: Option<xai_tool_runtime::WorkspaceViewerContext>,
     ) -> (Arc<FinalizedToolset>, TempDir) {
@@ -4419,8 +4950,9 @@ mod tests {
         let parts = toolset
             .prepare_dispatch(
                 "read_file",
-                serde_json::json!({ "target_file" : "noop" }),
+                serde_json::json!({"target_file": "noop"}),
                 "test-call",
+                None,
                 None,
             )
             .expect("prepare_dispatch succeeds");
@@ -4437,8 +4969,9 @@ mod tests {
         let parts = toolset
             .prepare_dispatch(
                 "read_file",
-                serde_json::json!({ "target_file" : "noop" }),
+                serde_json::json!({"target_file": "noop"}),
                 "test-call",
+                None,
                 None,
             )
             .expect("prepare_dispatch succeeds");
@@ -4462,7 +4995,7 @@ mod tests {
             tools: vec![ToolConfig {
                 id: "GrokBuild:run_terminal_cmd".to_string(),
                 params: Some(
-                    serde_json::json!({ "enabled_background" : false })
+                    serde_json::json!({"enabled_background": false})
                         .as_object()
                         .unwrap()
                         .clone(),
@@ -4490,10 +5023,10 @@ mod tests {
         );
         let mut stream = toolset.call_streaming(
             "run_terminal_cmd",
-            serde_json::json!(
-                { "command" : "for i in 1 2 3; do echo $i; sleep 0.1; done",
-                "description" : "stream progress test" }
-            ),
+            serde_json::json!({
+                "command": "for i in 1 2 3; do echo $i; sleep 0.1; done",
+                "description": "stream progress test"
+            }),
             "test-call",
             None,
         );

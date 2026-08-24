@@ -64,7 +64,7 @@ pub static USER_GUIDE: &[Doc] = &[
     guide!(
         "04-slash-commands.md",
         "斜杠命令",
-        "会话、模型、记忆、钩子等 / 命令"
+        "会话、模型、记忆、目标、工作流与钩子等 / 命令"
     ),
     guide!(
         "05-configuration.md",
@@ -154,7 +154,27 @@ pub static USER_GUIDE: &[Doc] = &[
     guide!(
         "22-permissions-and-safety.md",
         "权限与安全",
-        "工具批准、沙箱与安全策略"
+        "模式、授权顺序、允许/询问/拒绝规则匹配与钩子"
+    ),
+    guide!(
+        "23-dashboard.md",
+        "代理仪表盘",
+        "实时多会话名册：快速查看、分发、固定、停止与搜索"
+    ),
+    guide!(
+        "24-monitoring-usage.md",
+        "用量监控 (外部 OpenTelemetry)",
+        "导出用量指标至 OpenTelemetry Collector"
+    ),
+    guide!(
+        "25-status-line.md",
+        "状态栏",
+        "底部实时会话上下文行，或运行自定义脚本输出"
+    ),
+    guide!(
+        "26-config-reference.md",
+        "配置参考",
+        "config.toml、managed_config.toml 与 requirements.toml 字段列表"
     ),
 ];
 
@@ -338,12 +358,8 @@ mod tests {
         for doc in USER_GUIDE {
             let path = docs_dir.join(doc.filename);
             assert!(path.exists(), "Expected doc {} to exist", doc.filename);
-            assert_eq!(
-                std::fs::read_to_string(&path).unwrap(),
-                doc.content,
-                "Content mismatch for {}",
-                doc.filename
-            );
+            let got = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(got, doc.content, "Content mismatch for {}", doc.filename);
         }
         assert!(
             !docs_dir.join("99-removed.md").exists(),

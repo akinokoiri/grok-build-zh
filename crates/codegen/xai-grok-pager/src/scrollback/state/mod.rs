@@ -6,6 +6,7 @@
 pub mod groups;
 mod layout;
 mod nav;
+mod pin_reserve;
 mod selection;
 mod timeline;
 mod types;
@@ -16,7 +17,7 @@ pub use layout::compute_paint_window;
 pub use timeline::TimelineEntry;
 pub use types::*;
 
-use layout::LayoutCache;
+use layout::{LayoutCache, StructuralScrollAnchor};
 
 use std::collections::{HashSet, VecDeque};
 use std::ops::Range;
@@ -36,6 +37,18 @@ use super::wrappers::EntryRenderer;
 use crate::appearance::AppearanceConfig;
 use crate::render::Renderable;
 use crate::theme::Theme;
+
+/// Lifecycle of a scroll-up warm-up that a resize postponed until the width
+/// settles. Settling is measured in FRAMES, not `prepare_layout` calls: one
+/// frame prepares layout several times, so a call-based rule would run the
+/// warm-up during the very resize that deferred it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum DeferredWarmAbove {
+    #[default]
+    Idle,
+    Deferred,
+    Armed,
+}
 
 /// Unified scrollback state for the v3 pager.
 #[derive(Debug)]
@@ -76,9 +89,15 @@ pub struct ScrollbackState {
     /// Minimal mode only: lowest entry index that *might* be uncommitted (not
     /// yet printed into native scrollback). A lower-bound perf hint so the
     /// per-frame commit pass is O(new) rather than O(history); the authoritative
-    /// state is the `committed` id-set above. Clamped to `entries.len()` on
-    /// every removal so a `shift_remove` / `remove_from` can never strand it
-    /// past the end. Unused (always 0) in the alt-screen / inline modes.
+    /// state is the `committed` id-set above. Unused (always 0) in the
+    /// alt-screen / inline modes.
+    ///
+    /// **Contract for every mutation that shifts entry positions:** the cursor
+    /// may be moved *down* freely (the scan re-skips committed entries via the
+    /// id-set; the only cost is a longer walk), but it must never end up
+    /// *above* an uncommitted entry's index. An entry below the cursor is
+    /// scanned by nobody — neither committed to native scrollback nor drawn in
+    /// the live tail — so it silently vanishes.
     commit_scan_cursor: usize,
 
     /// Minimal mode only: a bounded ring of entry IDs that were committed to
@@ -115,6 +134,32 @@ pub struct ScrollbackState {
     /// prompt at the viewport top while still enabling follow for new content.
     follow_preserve_scroll: bool,
 
+    /// Extra rows under the latest user prompt so a page-flip can keep that
+    /// prompt at the top. Independent of follow mode: a user scroll must not
+    /// collapse it (that clamp is the tail-jump). Dropped when the prompt
+    /// scrolls fully below the fold, or when the transcript is cleared.
+    pin_reserve_active: bool,
+
+    /// Rows currently added to `total_height` by [`Self::pin_reserve_active`].
+    /// Kept beside the flag so follow-preserve can still detect real overflow
+    /// against the unpadded content height.
+    pin_reserve_pad: usize,
+
+    /// Scroll offset of the page-flip pin, captured when the reserve is armed.
+    /// Re-deriving it from the last user prompt after a finish-time rebuild
+    /// (thinking collapse, "Worked for…" marker, group fold) can disagree
+    /// with the pose we scrolled to and drop the pad.
+    pin_reserve_target: Option<usize>,
+
+    /// Stable id of the prompt the pin targets, captured when armed. The pin
+    /// tracks this specific prompt, not "the last user prompt", so a mid-turn
+    /// interjection cannot move the above/below boundary the pad shift uses.
+    pin_reserve_prompt_id: Option<EntryId>,
+
+    /// The turn that armed the pin has finished. Midstream overflow still
+    /// chases the tail; after this, a remeasure or terminal marker must not.
+    pin_reserve_after_turn: bool,
+
     // Selection
     /// Currently selected entry index.
     selected: Option<usize>,
@@ -143,6 +188,11 @@ pub struct ScrollbackState {
     /// Layout cache for navigation (entry heights, prompt descriptors).
     layout_cache: Option<LayoutCache>,
 
+    /// One-shot viewport-top anchor armed by a structural entry mutation
+    /// (removal/insertion) just before it invalidates the layout cache, and
+    /// consumed by the next `prepare_layout` — see [`StructuralScrollAnchor`].
+    structural_scroll_anchor: Option<StructuralScrollAnchor>,
+
     // Sticky modes
     /// Display mode applied to thinking blocks when they finish running.
     /// Defaults to `Collapsed` (auto-collapse on finish).
@@ -167,6 +217,8 @@ pub struct ScrollbackState {
     /// leave this false, enabling an O(1) incremental virtual_y patch instead
     /// of an O(n) full rebuild.
     gaps_may_be_dirty: bool,
+
+    warm_above: DeferredWarmAbove,
 
     /// Last observed [`ffmpeg_available`](crate::inline_media_ffmpeg::ffmpeg_available).
     /// A false→true flip (user installs ffmpeg mid-session) must rebuild the
@@ -228,6 +280,11 @@ impl ScrollbackState {
             viewport_height: 0,
             follow_mode: true,
             follow_preserve_scroll: false,
+            pin_reserve_active: false,
+            pin_reserve_pad: 0,
+            pin_reserve_target: None,
+            pin_reserve_prompt_id: None,
+            pin_reserve_after_turn: false,
             selected: None,
             selection_box: None,
             turns: Vec::new(),
@@ -235,11 +292,13 @@ impl ScrollbackState {
             view_mode: ViewMode::AllTurns,
             last_width: 0,
             layout_cache: None,
+            structural_scroll_anchor: None,
             thinking_display_mode: DisplayMode::Collapsed,
             tick: 0,
             appearance: AppearanceConfig::default(),
             batch_depth: 0,
             gaps_may_be_dirty: false,
+            warm_above: DeferredWarmAbove::Idle,
             ffmpeg_available_snapshot: false,
             expanded_groups: HashSet::new(),
             generation: 0,
@@ -366,6 +425,7 @@ impl ScrollbackState {
 
     /// Update the appearance configuration.
     pub fn set_appearance(&mut self, appearance: AppearanceConfig) {
+        crate::render::bidi::set_enabled(appearance.scrollback.display.rtl_bidi);
         self.appearance = appearance;
         // Invalidate caches since appearance affects rendering
         self.layout_cache = None;
@@ -561,22 +621,7 @@ impl ScrollbackState {
         let mut entry = entry;
         entry.id = id;
 
-        // Fresh Edit entries at the block's Collapsed default adopt the
-        // state-owned materialize policy. An explicit non-Collapsed mode
-        // survives; an explicit Collapsed is indistinguishable from the
-        // default and may be upgraded by the effective expanded default.
-        if let RenderBlock::ToolCall(ToolCallBlock::Edit(edit)) = &entry.block
-            && entry.display_mode == DisplayMode::Collapsed
-        {
-            entry.display_mode = edit_default_display_mode(
-                self.appearance
-                    .scrollback
-                    .blocks
-                    .edit
-                    .effective_expanded(crate::appearance::cache::load_collapsed_edit_blocks()),
-                edit,
-            );
-        }
+        self.apply_edit_default_display_mode(&mut entry);
 
         // Track if this entry is running
         if entry.is_running {
@@ -633,16 +678,86 @@ impl ScrollbackState {
         self.push(ScrollbackEntry::new(block))
     }
 
+    /// Add a finalized block positioned immediately **before** the entry `anchor`,
+    /// instead of at the end. Falls back to [`Self::push_block`] when `anchor` is
+    /// no longer present.
+    ///
+    /// # Precondition
+    ///
+    /// **`anchor` must not already be committed.** A terminal's native
+    /// scrollback is append-only, so inserting above a block already printed
+    /// there would emit the new block below content that logically follows it.
+    pub fn insert_block_before(&mut self, anchor: EntryId, block: RenderBlock) -> EntryId {
+        let Some(index) = self.entries.get_index_of(&anchor) else {
+            return self.push_block(block);
+        };
+        debug_assert!(
+            !self.committed.contains(&anchor),
+            "insert_block_before: anchor {anchor:?} is already committed — the inserted \
+             block would print out of order in native scrollback"
+        );
+
+        // Anchor the viewport top before the insertion shifts indices.
+        self.arm_structural_scroll_anchor();
+        let id = EntryId::new(self.next_id);
+        self.next_id += 1;
+        let mut entry = ScrollbackEntry::new(block);
+        entry.id = id;
+        self.apply_edit_default_display_mode(&mut entry);
+        if entry.is_running {
+            self.running.insert(id);
+        }
+        self.entries.shift_insert(index, id, entry);
+
+        if let Some(selected) = self.selected.as_mut()
+            && *selected >= index
+        {
+            *selected += 1;
+        }
+        self.commit_scan_cursor = self.commit_scan_cursor.min(index);
+
+        if self.batch_depth == 0 {
+            self.rebuild_turns();
+        }
+        self.gaps_may_be_dirty = true;
+        self.invalidate_layout_cache();
+        self.bump_content_generation();
+        id
+    }
+
+    /// Fresh Edit entries at the block's Collapsed default adopt the
+    /// state-owned materialize policy. An explicit non-Collapsed mode
+    /// survives; an explicit Collapsed is indistinguishable from the
+    /// default and may be upgraded by the effective expanded default.
+    fn apply_edit_default_display_mode(&self, entry: &mut ScrollbackEntry) {
+        if let RenderBlock::ToolCall(ToolCallBlock::Edit(edit)) = &entry.block
+            && entry.display_mode == DisplayMode::Collapsed
+        {
+            entry.display_mode = edit_default_display_mode(
+                self.appearance
+                    .scrollback
+                    .blocks
+                    .edit
+                    .effective_expanded(crate::appearance::cache::load_collapsed_edit_blocks()),
+                edit,
+            );
+        }
+    }
+
     /// Remove an entry by EntryId. No-op if the id is not present.
     ///
     /// Used by the cancel-with-restore flow to undo the user prompt block
     /// that was pushed at turn start. Returns `true` if an entry was removed.
     pub fn remove_entry(&mut self, id: EntryId) -> bool {
         // Capture the index before the removal shifts everything after it down.
-        let removed_index = self.entries.get_index_of(&id);
-        if self.entries.shift_remove(&id).is_none() {
+        let Some(removed_index) = self.entries.get_index_of(&id) else {
             return false;
-        }
+        };
+        // Anchor the viewport top before the removal shifts indices, then
+        // re-point it at the survivor if this removal deleted its entry.
+        self.arm_structural_scroll_anchor();
+        self.entries.shift_remove(&id);
+        self.migrate_structural_anchor_past_removal(id, removed_index);
         self.running.remove(&id);
         self.dirty_heights.remove(&id);
         self.committed.remove(&id);
@@ -652,18 +767,8 @@ impl ScrollbackState {
         {
             self.selected = self.entries.len().checked_sub(1);
         }
-        // Keep the minimal-mode commit cursor pointing at the same *entry*: a
-        // mid-list `shift_remove` below the cursor shifts every later entry
-        // down one, so the cursor must move down with them. Clamping alone is
-        // NOT enough — with entries past the cursor, `min(cursor, len)` leaves
-        // the cursor unchanged and the first uncommitted entry slides below it,
-        // where no commit/tail walk ever looks again (it would silently vanish
-        // from minimal mode's scrollback AND live tail). A decremented cursor
-        // can only be *low*, which is safe: the walk re-skips already-committed
-        // entries via the authoritative `committed` id-set.
-        if let Some(idx) = removed_index
-            && idx < self.commit_scan_cursor
-        {
+        // Clamping alone is not enough here — see the cursor's contract.
+        if removed_index < self.commit_scan_cursor {
             self.commit_scan_cursor -= 1;
         }
         self.commit_scan_cursor = self.commit_scan_cursor.min(self.entries.len());
@@ -675,6 +780,9 @@ impl ScrollbackState {
     }
 
     pub fn remove_from(&mut self, index: usize) -> Vec<ScrollbackEntry> {
+        // Anchor a viewport parked above the cut; pruned below if the
+        // anchored entry itself is in the removed tail.
+        self.arm_structural_scroll_anchor();
         let mut removed = Vec::new();
         while self.entries.len() > index {
             if let Some((id, entry)) = self.entries.pop() {
@@ -686,6 +794,7 @@ impl ScrollbackState {
             }
         }
         removed.reverse();
+        self.prune_dead_structural_anchor();
         if let Some(sel) = self.selected
             && sel >= self.entries.len()
         {
@@ -735,9 +844,8 @@ impl ScrollbackState {
                 super::blocks::tool::HookPhase::Post => data.post_hooks = hook_entries,
             }
             entry.invalidate_cache();
-            // Structural, not just a height change: hook chrome removes the
-            // row from verb-group membership (`run_step`), so a folded run
-            // must re-run its folds to surface the `[hooks: N/M]` row.
+            // A height remeasure would revive a folded member whose cached
+            // height is zero; reapplying folds keeps hidden members hidden.
             self.mark_structurally_dirty(id);
         }
     }
@@ -767,11 +875,7 @@ impl ScrollbackState {
     /// failed") that can accept a live `stop`/`stop_failure` batch arriving
     /// after the marker (viewer order). The walk skips blocks appended after
     /// the marker. A stamped batch needs the marker to carry the same prompt
-    /// id — and treats parked markers as transparent: they never
-    /// accept hooks themselves (their turn is still running), and pid-exact
-    /// attribution cannot misattach, so a late prior-turn batch may cross
-    /// the current turn's not-yet-settled boundary into its own turn's
-    /// marker. An unstamped batch is positional (tail only) and stops at ANY
+    /// id. An unstamped batch is positional (tail only) and stops at ANY
     /// terminal-event marker — without a pid there is no proof it belongs
     /// further back. A same-name repeat (e.g. the session-end `stop`) is
     /// always refused.
@@ -787,14 +891,6 @@ impl ScrollbackState {
             if !b.event.is_turn_terminal() {
                 continue;
             }
-            if !b.accepts_stop_hooks() {
-                // Parked: transparent to a stamped batch, a hard stop for
-                // a positional one.
-                if batch_prompt_id.is_some() {
-                    continue;
-                }
-                return None;
-            }
             if b.stop_hooks.iter().any(|(name, _)| name == event_name) {
                 return None;
             }
@@ -808,13 +904,10 @@ impl ScrollbackState {
         None
     }
 
-    /// Merge a stop/stop_failure hook batch into a turn-terminal marker
-    /// entry and collapse it so the right-justified summary — not the
-    /// fold-out detail — is the resting state. Returns `false` unless the
-    /// entry is a turn-terminal session event the batch can be attributed to
-    /// (see [`Self::latest_turn_marker_accepting`]) — never a parked
-    /// marker; re-checked here so a stray caller can't attach hooks to the
-    /// wrong entry.
+    /// Fold a turn-end hook batch into a turn-terminal marker and collapse it, so the summary
+    /// rather than the detail is the resting state. `false` unless the entry is such a marker
+    /// (see [`Self::latest_turn_marker_accepting`]); re-checked here so a
+    /// stray caller can't attach hooks to the wrong entry.
     pub fn attach_stop_hooks_to_marker(
         &mut self,
         id: EntryId,
@@ -828,7 +921,7 @@ impl ScrollbackState {
         let RenderBlock::SessionEvent(ref mut block) = entry.block else {
             return false;
         };
-        if !block.accepts_stop_hooks() {
+        if !block.event.is_turn_terminal() {
             return false;
         }
         let attributable = match (batch_prompt_id, block.prompt_id.as_deref()) {
@@ -1035,6 +1128,11 @@ impl ScrollbackState {
         self.turns.clear();
         self.current_turn = None;
         self.scroll_offset = 0;
+        self.pin_reserve_active = false;
+        self.pin_reserve_pad = 0;
+        self.pin_reserve_target = None;
+        self.pin_reserve_prompt_id = None;
+        self.pin_reserve_after_turn = false;
         self.commit_scan_cursor = 0;
         self.commit_expand_ring.clear();
         self.invalidate_layout_cache();
@@ -1126,20 +1224,25 @@ impl ScrollbackState {
     /// the single point where block timing begins — constructors default
     /// to `started_at = None`.
     pub fn set_last_running(&mut self, running: bool) {
-        if let Some((_, entry)) = self.entries.last_mut() {
-            let was_running = entry.is_running;
-            entry.is_running = running;
-            entry.invalidate_cache();
+        if let Some(id) = self.entries.last().map(|(_, entry)| entry.id) {
+            self.set_entry_running(id, running);
+        }
+    }
 
-            // Start timing when a tool block enters running state.
-            if running && !was_running {
-                if let RenderBlock::ToolCall(ref mut tc) = entry.block {
-                    tc.start_timing();
-                }
-                self.running.insert(entry.id);
-            } else if !running && was_running {
-                self.running.remove(&entry.id);
+    pub fn set_entry_running(&mut self, id: EntryId, running: bool) {
+        let Some(entry) = self.entries.get_mut(&id) else {
+            return;
+        };
+        let was_running = entry.is_running;
+        entry.is_running = running;
+        entry.invalidate_cache();
+        if running && !was_running {
+            if let RenderBlock::ToolCall(ref mut tc) = entry.block {
+                tc.start_timing();
             }
+            self.running.insert(entry.id);
+        } else if !running && was_running {
+            self.running.remove(&entry.id);
         }
     }
 
@@ -1523,6 +1626,11 @@ impl ScrollbackState {
         // Update viewport height
         self.viewport_height = height;
 
+        // Take an armed StructuralScrollAnchor unconditionally so it never
+        // outlives the first layout pass after its mutation; only the
+        // same-width full rebuild below applies it.
+        let structural_anchor = self.structural_scroll_anchor.take();
+
         // Case 1: Cache missing or width changed - full rebuild
         if self.layout_cache.is_none() || width != self.last_width {
             // A width change re-wraps every entry, so the absolute wrapped-row
@@ -1539,19 +1647,35 @@ impl ScrollbackState {
                     None
                 };
 
-            if width != self.last_width {
+            let width_changed = width != self.last_width;
+            let resized = width_changed && self.last_width != 0;
+            if width_changed {
                 for entry in self.entries.values_mut() {
-                    entry.invalidate_cache();
+                    entry.invalidate_width_caches();
                 }
                 self.last_width = width;
             }
             // Full rebuild produces cheap height ESTIMATES for every entry.
             self.ensure_layout_cache(width);
+            // Width changes invalidate the captured row coordinate. Re-pin before the release
+            // logic compares the new target with `scroll_offset`.
+            if resized && self.pin_reserve_active {
+                self.pin_reserve_target = self.pin_reserve_prompt_scroll_target();
+                if let Some(target) = self.pin_reserve_target {
+                    self.scroll_offset = target;
+                }
+            }
             self.compute_total_height_from_cache();
             // Re-pin the anchored content to the viewport top now that virtual_y
             // is rebuilt at the new width (before settle clamps / re-pins to it).
             if let Some(anchor) = scroll_anchor {
                 self.restore_scroll_anchor(anchor);
+            } else if !width_changed {
+                // Same-width rebuild forced by a structural mutation: re-pin
+                // the pre-mutation viewport-top content by stable EntryId. On
+                // a width change the anchor is dropped instead — its row
+                // offset is meaningless after a re-wrap.
+                self.apply_structural_scroll_anchor(structural_anchor, width);
             }
             self.fixup_hidden_selection();
             self.handle_follow_mode();
@@ -1560,7 +1684,16 @@ impl ScrollbackState {
             self.settle_visible_measurements(width);
             // Pre-measure a few pages above the bottom so the first scroll-up is
             // glitch-free (no-op unless bottom-pinned).
-            self.warm_measure_pages_above(width);
+            //
+            // Warming three off-screen pages on every event of a drag, only
+            // to throw the work away at the next width, profiled as the single
+            // largest cost of a resize — hence the deferral.
+            if resized {
+                self.warm_above = DeferredWarmAbove::Deferred;
+            } else {
+                self.warm_above = DeferredWarmAbove::Idle;
+                self.warm_measure_pages_above(width);
+            }
             self.dirty_heights.clear();
             self.gaps_may_be_dirty = false;
             return true;
@@ -1568,8 +1701,13 @@ impl ScrollbackState {
 
         // Case 2: Some entries have dirty heights - incremental update
         if !self.dirty_heights.is_empty() {
+            // Viewport-top identity BEFORE heights change. Case 2 retains
+            // the cache (no insert/remove), so the plain index stays valid
+            // for the duration of this call.
+            let top_anchor = self.viewport_top_anchor_point();
             let changes = self.update_dirty_entry_heights(width);
             self.dirty_heights.clear();
+            self.shift_pin_reserve_target_for_changes(&changes);
 
             if !changes.is_empty() {
                 if self.gaps_may_be_dirty {
@@ -1583,11 +1721,12 @@ impl ScrollbackState {
                     // Patch virtual_y in O(n-k) where k is the earliest dirty index.
                     // For streaming (dirty entry at end), this is O(1).
                     let total_delta = self.patch_virtual_y_for_dirty(&changes);
-                    // Apply delta directly instead of re-summing entire visible range.
-                    // Clamp at 0 to avoid underflow; no upper cap (total_height is
-                    // usize, so tall sessions are not truncated).
-                    let new_total = (self.total_height as i64 + total_delta as i64).max(0);
-                    self.total_height = new_total as usize;
+                    // Streamed growth must shrink the reserve rather than inflate max_offset.
+                    let content = self.total_height.saturating_sub(self.pin_reserve_pad);
+                    let new_content = (content as i64 + total_delta as i64).max(0) as usize;
+                    self.release_pin_reserve_if_below_fold();
+                    self.pin_reserve_pad = self.pin_reserve_pad_rows(new_content);
+                    self.total_height = new_content.saturating_add(self.pin_reserve_pad);
                 }
             } else if self.gaps_may_be_dirty {
                 // Heights didn't change, but structural state is dirty (e.g.,
@@ -1602,10 +1741,17 @@ impl ScrollbackState {
                 self.compute_total_height_from_cache();
             }
 
+            // Re-pin the pre-change viewport-top row: geometry above it may
+            // have shifted virtual_y while the absolute scroll_offset stayed
+            // put (an exact no-op for changes at/below the top).
+            if let Some((entry_idx, rows_into_span)) = top_anchor {
+                self.repin_viewport_top_to_entry(entry_idx, rows_into_span);
+            }
             self.handle_follow_mode();
             // A scroll/content change may have brought estimated entries into
             // view (e.g. streaming while scrolled up); measure them exactly.
             self.settle_visible_measurements(width);
+            self.run_pending_warm_above(width);
             return !changes.is_empty();
         }
 
@@ -1623,7 +1769,24 @@ impl ScrollbackState {
         // Scroll-up (no dirty heights) reveals estimated off-screen entries —
         // this is the on-demand measurement path for plain scrolling.
         self.settle_visible_measurements(width);
+        self.run_pending_warm_above(width);
         false
+    }
+
+    /// Mark the start of a frame that will draw this scrollback. Hosts must
+    /// call this once per frame; it is the only signal of a frame boundary
+    /// [`DeferredWarmAbove`] has.
+    pub fn begin_frame(&mut self) {
+        if self.warm_above == DeferredWarmAbove::Deferred {
+            self.warm_above = DeferredWarmAbove::Armed;
+        }
+    }
+
+    fn run_pending_warm_above(&mut self, width: u16) {
+        if self.warm_above == DeferredWarmAbove::Armed {
+            self.warm_above = DeferredWarmAbove::Idle;
+            self.warm_measure_pages_above(width);
+        }
     }
 
     /// Invalidate caches if width changed.
@@ -1691,6 +1854,7 @@ impl ScrollbackState {
             .saturating_sub(self.viewport_height as usize);
         self.scroll_offset = offset.min(max_offset);
         self.follow_mode = false;
+        self.maybe_release_pin_reserve();
         self.bump_generation();
     }
 
@@ -1709,7 +1873,7 @@ impl ScrollbackState {
         let Some(info) = cache.entries.get(idx) else {
             return false;
         };
-        info.is_group_header() || info.height == 0
+        (info.is_group_header() && !info.is_expanded_verb_header()) || info.height == 0
     }
 
     /// Whether entry `idx` overlaps the current viewport (cached offsets + the
@@ -2206,17 +2370,6 @@ mod tests {
         };
 
         let mut state = ScrollbackState::new();
-        // A parked marker renders mid-turn — it must never accept hooks, at
-        // the lookup and at the mutation site alike.
-        let mut parked_block =
-            crate::scrollback::blocks::SessionEventBlock::new(SessionEvent::TurnCompleted {
-                elapsed: Some(std::time::Duration::from_secs(1)),
-            });
-        parked_block.parked = true;
-        let parked = state.push_block(RenderBlock::SessionEvent(parked_block));
-        assert_eq!(state.latest_turn_marker_accepting("stop", None), None);
-        assert!(!state.attach_stop_hooks_to_marker(parked, "stop".into(), entries(), None));
-
         let marker = state.push_block(RenderBlock::session_event(SessionEvent::TurnCompleted {
             elapsed: Some(std::time::Duration::from_secs(2)),
         }));
@@ -2350,68 +2503,6 @@ mod tests {
         ));
         assert_eq!(
             state.latest_turn_marker_accepting("stop", Some("pid-new")),
-            None
-        );
-    }
-
-    #[test]
-    fn stamped_stop_hooks_cross_parked_marker_to_their_turns_marker() {
-        use crate::scrollback::blocks::tool::{HookRunEntry, HookRunStatus};
-        use crate::scrollback::blocks::{SessionEvent, SessionEventBlock};
-        let entries = || {
-            vec![HookRunEntry {
-                name: "h".into(),
-                status: HookRunStatus::Success {
-                    elapsed: std::time::Duration::from_millis(1),
-                },
-                output: None,
-            }]
-        };
-
-        // A prior turn's settled marker, then the current turn's parked
-        // EndLine at the tail (viewer/reattach shape).
-        let mut state = ScrollbackState::new();
-        let prior = state.push_block(RenderBlock::SessionEvent(
-            SessionEventBlock::with_stop_hooks(
-                SessionEvent::TurnCompleted {
-                    elapsed: Some(std::time::Duration::from_secs(2)),
-                },
-                Vec::new(),
-                Some("pid-a".into()),
-            ),
-        ));
-        let mut parked_block = SessionEventBlock::new(SessionEvent::TurnCompleted {
-            elapsed: Some(std::time::Duration::from_secs(1)),
-        });
-        parked_block.parked = true;
-        parked_block.prompt_id = Some("pid-b".into());
-        let parked = state.push_block(RenderBlock::SessionEvent(parked_block));
-
-        // A late batch stamped for the PRIOR turn crosses the parked marker
-        // (pid-exact attribution cannot misattach) and merges into its own
-        // turn's marker; the parked marker itself is untouched.
-        assert_eq!(
-            state.latest_turn_marker_accepting("stop", Some("pid-a")),
-            Some(prior)
-        );
-        assert!(state.attach_stop_hooks_to_marker(prior, "stop".into(), entries(), Some("pid-a")));
-        match &state.get_by_id(parked).unwrap().block {
-            RenderBlock::SessionEvent(b) => {
-                assert!(b.parked);
-                assert!(b.stop_hooks.is_empty(), "the parked marker stays clean");
-            }
-            other => panic!("expected the parked marker, got {other:?}"),
-        }
-
-        // The parked turn's own pid still never accepts (its Stop hooks
-        // cannot have fired yet), and an unstamped positional batch stops at
-        // the parked tail marker as before.
-        assert_eq!(
-            state.latest_turn_marker_accepting("stop_failure", Some("pid-b")),
-            None
-        );
-        assert_eq!(
-            state.latest_turn_marker_accepting("stop_failure", None),
             None
         );
     }
@@ -3127,6 +3218,98 @@ mod tests {
         // Manually mark as dirty
         state.mark_height_dirty(id);
         assert!(state.dirty_heights.contains(&id));
+    }
+
+    #[test]
+    fn insert_block_before_positions_and_keeps_ids_unique() {
+        let mut state = ScrollbackState::new();
+        let a = state.push_block(stub_block("a"));
+        let c = state.push_block(stub_block("c"));
+
+        let b = state.insert_block_before(c, stub_block("b"));
+
+        assert_eq!(state.len(), 3);
+        assert_eq!(state.index_of_id(a), Some(0));
+        assert_eq!(state.index_of_id(b), Some(1));
+        assert_eq!(state.index_of_id(c), Some(2));
+        assert_ne!(b, a);
+        assert_ne!(b, c);
+    }
+
+    #[test]
+    fn insert_block_before_falls_back_to_push_when_the_anchor_is_gone() {
+        let mut state = ScrollbackState::new();
+        let a = state.push_block(stub_block("a"));
+        assert!(state.remove_entry(a));
+
+        let id = state.insert_block_before(a, stub_block("late"));
+        assert_eq!(state.len(), 1);
+        assert_eq!(state.index_of_id(id), Some(0));
+    }
+
+    #[test]
+    fn insert_block_before_keeps_the_selection_on_its_entry() {
+        let mut state = ScrollbackState::new();
+        state.push_block(stub_block("a"));
+        let anchor = state.push_block(stub_block("b"));
+        state.set_selected(Some(1)); // "b"
+
+        state.insert_block_before(anchor, stub_block("inserted"));
+
+        assert_eq!(state.index_of_id(anchor), Some(2));
+        assert_eq!(state.selected(), Some(2));
+    }
+
+    #[test]
+    fn insert_block_before_never_strands_the_entry_below_the_commit_frontier() {
+        // The shape minimal produces: a committed prefix, the cursor parked at
+        // the first uncommitted entry, and a block anchored above that entry.
+        let mut state = ScrollbackState::new();
+        let a = state.push_block(stub_block("a"));
+        let b = state.push_block(stub_block("b"));
+        let anchor = state.push(ScrollbackEntry::running(stub_block("running tool")));
+        state.mark_committed(0);
+        state.mark_committed(1);
+        state.set_commit_scan_cursor(2);
+
+        let inserted = state.insert_block_before(anchor, stub_block("inserted"));
+
+        assert_eq!(state.index_of_id(inserted), Some(2));
+        assert!(
+            state.commit_scan_cursor() <= 2,
+            "cursor must be pulled back to (at most) the insertion point, got {}",
+            state.commit_scan_cursor()
+        );
+        assert!(state.is_committed(a));
+        assert!(state.is_committed(b));
+        assert!(!state.is_committed(inserted));
+        assert!(!state.is_committed(anchor));
+    }
+
+    #[test]
+    #[should_panic(expected = "already committed")]
+    fn insert_block_before_rejects_an_already_committed_anchor() {
+        let mut state = ScrollbackState::new();
+        let anchor = state.push_block(stub_block("printed"));
+        state.mark_committed(0);
+        state.insert_block_before(anchor, stub_block("too late"));
+    }
+
+    #[test]
+    fn insert_block_before_rebuilds_turn_indices() {
+        // Turns are positional, so a mid-list insert must rebuild them.
+        let mut state = ScrollbackState::new();
+        state.push_block(RenderBlock::user_prompt("turn one"));
+        let anchor = state.push_block(stub_block("work"));
+        state.push_block(RenderBlock::user_prompt("turn two"));
+
+        state.insert_block_before(anchor, stub_block("inserted"));
+
+        // turn one = [0, 3), turn two = [3, 4)
+        assert_eq!(state.turn_containing(0), Some(0));
+        assert_eq!(state.turn_containing(1), Some(0));
+        assert_eq!(state.turn_containing(2), Some(0));
+        assert_eq!(state.turn_containing(3), Some(1));
     }
 
     #[test]

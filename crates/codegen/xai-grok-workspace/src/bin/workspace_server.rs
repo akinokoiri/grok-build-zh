@@ -5,20 +5,60 @@
 //! automatically.
 use clap::Parser;
 use std::path::PathBuf;
+use std::time::Duration;
 use url::Url;
+use xai_grok_diag_server::{self as diag_server, DiagHandle, ErrorClass};
 use xai_grok_workspace::config::WorkspaceServerMetadata;
-use xai_grok_workspace::daemonize;
-use xai_grok_workspace::diag_server;
-use xai_grok_workspace::preview_supervisor::{self, PreviewArgs, PreviewVisibility};
+use xai_grok_workspace::error::WorkspaceError;
+use xai_grok_workspace_daemon::daemonize;
+use xai_grok_workspace_daemon::preview_supervisor::{
+    self, PreviewActivitySink, PreviewArgs, PreviewVisibility,
+};
 /// OTLP `service.name` for this binary's exported traces/logs/metrics and
 /// direct-OTLP fastrace export. Single source so the call sites can't drift.
 const SERVICE_NAME: &str = "prod_grok_workspace";
 const EXIT_SERVER_ID_INVALID: i32 = 3;
 const INVALID_SERVER_ID_MARKER: &str = "workspace-server: invalid --server-id";
+const WORKSPACE_HUB_AUTH_FAILED_MARKER: &str = "workspace hub auth failed";
+/// Post-failure dwell so the host can poll `/ready` before exit ([500ms, 2s]).
+const HUB_CONNECT_FAILED_DWELL: Duration = Duration::from_millis(750);
 fn server_id_startup_error(id: &str) -> Option<String> {
     id.parse::<xai_tool_protocol::ServerId>()
         .err()
         .map(|e| format!("{INVALID_SERVER_ID_MARKER} {id:?}: {e}"))
+}
+/// Classify hub-connect Display strings for `/ready` error_class.
+/// Auth needles → `hub_auth`; other hub-connect path failures → `hub_connect`;
+/// pre-hub workspace setup messages → `unknown` (still retryable alongside hub_connect).
+fn classify_hub_connect_failure(err_msg: &str) -> ErrorClass {
+    if err_msg.contains("handshake auth failed") || err_msg.contains("auth error:") {
+        ErrorClass::HubAuth
+    } else if err_msg.contains("failed to create workspace") {
+        ErrorClass::Unknown
+    } else {
+        ErrorClass::HubConnect
+    }
+}
+/// Drop outer `hub error: ` so `/ready` detail is the inner failure text.
+fn hub_connect_error_detail(err_msg: &str) -> &str {
+    err_msg.strip_prefix("hub error: ").unwrap_or(err_msg)
+}
+fn hub_connect_failure_log_message(class: ErrorClass) -> &'static str {
+    match class {
+        ErrorClass::HubAuth => WORKSPACE_HUB_AUTH_FAILED_MARKER,
+        ErrorClass::HubConnect | ErrorClass::Unknown => "failed to connect workspace to hub",
+    }
+}
+/// Mark `/ready` failed and dwell so the host can observe state before exit.
+async fn report_hub_connect_failure(diag: &DiagHandle, err: &WorkspaceError) {
+    let err_msg = err.to_string();
+    let class = classify_hub_connect_failure(&err_msg);
+    diag.set_failed(class, hub_connect_error_detail(&err_msg));
+    tracing::error!(error = %err_msg, "{}", hub_connect_failure_log_message(class));
+    dwell_after_hub_connect_failed().await;
+}
+async fn dwell_after_hub_connect_failed() {
+    tokio::time::sleep(HUB_CONNECT_FAILED_DWELL).await;
 }
 #[derive(Parser)]
 #[command(name = "xai-workspace-server")]
@@ -117,6 +157,12 @@ struct Args {
     /// without `--daemonize`.
     #[arg(long, default_value = daemonize::DEFAULT_PIDFILE_PATH)]
     pid_file: PathBuf,
+    /// Record `workspace_oom_protect_applied`, lower or recheck `oom_score_adj`
+    /// to -900, and force `GROK_TOOLS_RESET_CHILD_OOM` so shell/pty children
+    /// reset to 0. Complements always-on self-protect after pre-unshare
+    /// inheritance; arms child reset even if the early write failed. Off by default.
+    #[arg(long)]
+    oom_protect: bool,
     #[command(flatten)]
     preview: PreviewCliArgs,
 }
@@ -156,7 +202,14 @@ struct PreviewCliArgs {
     preview_workspace_server_port: Option<u16>,
 }
 impl PreviewCliArgs {
-    fn into_preview_args(self, workspace_dir: PathBuf) -> PreviewArgs {
+    /// `discovery_refresh_ms` is env-sourced (`StatusConfig`), not a CLI flag.
+    /// `None` keeps `--discovery-refresh-ms` out of the proxy argv (see
+    /// [`PreviewArgs::discovery_refresh_ms`]).
+    fn into_preview_args(
+        self,
+        workspace_dir: PathBuf,
+        discovery_refresh_ms: Option<u64>,
+    ) -> PreviewArgs {
         PreviewArgs {
             enabled: self.preview_enabled,
             port: self.preview_port,
@@ -166,8 +219,29 @@ impl PreviewCliArgs {
             auth_redirect: self.preview_auth_redirect,
             allow_public: self.preview_allow_public,
             workspace_server_port: self.preview_workspace_server_port,
+            discovery_refresh_ms,
             workspace_dir,
         }
+    }
+}
+/// Binds the preview-activity scraper to the workspace `ActivityTracker`.
+///
+/// `xai-grok-workspace-daemon` deliberately does not depend on
+/// `xai-grok-workspace`, so this binary owns the one adapter between them.
+struct TrackerSink(std::sync::Arc<xai_grok_workspace::activity::ActivityTracker>);
+impl PreviewActivitySink for TrackerSink {
+    fn note_preview_routed_activity(&self) {
+        self.0.note_preview_routed_activity();
+    }
+    fn note_preview_status_activity(&self) {
+        self.0.note_preview_status_activity();
+    }
+    fn set_preview_attached(&self, ws_tunnels_open: u64, routed_in_flight: u64) {
+        self.0
+            .set_preview_attached(ws_tunnels_open, routed_in_flight);
+    }
+    fn preview_activity_window_ms(&self) -> u64 {
+        self.0.preview_activity_window_ms()
     }
 }
 /// Capability manifest printed by `--capabilities`, consumed by the sandbox
@@ -192,6 +266,7 @@ fn main() -> anyhow::Result<()> {
         Some(ref p) => dunce::canonicalize(p)?,
         None => std::env::current_dir()?,
     };
+    let oom_protection = xai_tty_utils::protect_from_oom_kill();
     let _pidfile_guard = if args.daemonize {
         let anchor = |p: PathBuf| if p.is_absolute() { p } else { cwd.join(p) };
         args.log_file = anchor(std::mem::take(&mut args.log_file));
@@ -209,13 +284,45 @@ fn main() -> anyhow::Result<()> {
     } else {
         None
     };
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?
-        .block_on(run(args, cwd))
+    let oom_protect_applied = if args.oom_protect {
+        Some(daemonize::apply_workspace_oom_protect())
+    } else {
+        None
+    };
+    #[cfg(unix)]
+    if should_set_reset_child_oom(oom_protection.is_ok(), args.oom_protect) {
+        unsafe { std::env::set_var(xai_tty_utils::RESET_CHILD_OOM_ENV, "1") };
+    }
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder
+        .worker_threads(xai_tty_utils::runtime::capped_worker_threads().get())
+        .enable_all();
+    let rt = xai_tty_utils::runtime::build_with_blocking_pool(&mut builder)?;
+    rt.block_on(run(args, cwd, oom_protection, oom_protect_applied))
 }
-async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+/// Whether to arm `GROK_TOOLS_RESET_CHILD_OOM` after the always-on protect attempt.
+///
+/// Always-on success must arm so children do not inherit -900. `--oom-protect`
+/// forces the env even when the early write failed (pre-unshare may still have
+/// left the score at -900).
+fn should_set_reset_child_oom(early_protect_ok: bool, oom_protect_flag: bool) -> bool {
+    early_protect_ok || oom_protect_flag
+}
+/// Whether the startup log should report OOM protection as active.
+///
+/// Prefer the `--oom-protect` apply outcome when present (already-at-target after
+/// pre-unshare counts as active even if the early write failed). Without the
+/// flag, report the always-on write only.
+fn oom_protect_log_active(applied: Option<bool>, early_ok: bool) -> bool {
+    applied.unwrap_or(early_ok)
+}
+async fn run(
+    args: Args,
+    cwd: PathBuf,
+    oom_protection: std::io::Result<()>,
+    oom_protect_applied: Option<bool>,
+) -> anyhow::Result<()> {
+    xai_grok_extra_ca::ensure_default_crypto_provider();
     use tracing_subscriber::layer::SubscriberExt as _;
     use tracing_subscriber::util::SubscriberInitExt as _;
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -226,15 +333,22 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(donating.clone())
         .init();
+    if oom_protect_log_active(oom_protect_applied, oom_protection.is_ok()) {
+        tracing::info!("kernel OOM-kill protection active");
+    } else if let (None, Err(e)) = (oom_protect_applied, &oom_protection) {
+        tracing::info!(error = %e, "kernel OOM-kill protection not active");
+    } else {
+        tracing::info!("kernel OOM-kill protection not active");
+    }
     let direct_otlp = match std::env::var("GROK_WORKSPACE_OTLP_ENDPOINT") {
         Ok(endpoint) if !endpoint.is_empty() => {
             match xai_tracing::init_fastrace(endpoint.clone(), SERVICE_NAME.to_owned(), None) {
                 Ok(()) => {
-                    tracing::info!(% endpoint, "trace export enabled (direct OTLP)");
+                    tracing::info!(%endpoint, "trace export enabled (direct OTLP)");
                     true
                 }
                 Err(e) => {
-                    tracing::warn!(error = % e, "direct OTLP trace export init failed");
+                    tracing::warn!(error = %e, "direct OTLP trace export init failed");
                     false
                 }
             }
@@ -250,10 +364,8 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
                     .parse::<ProfileName>()
                     .expect("ProfileName::from_str is infallible");
                 if matches!(parsed, ProfileName::Custom(_)) {
-                    tracing::warn!(
-                        value = % val,
-                        "Unrecognized GROK_SANDBOX_PROFILE, defaulting to workspace"
-                    );
+                    tracing::warn!(value = %val,
+                        "Unrecognized GROK_SANDBOX_PROFILE, defaulting to workspace");
                     ProfileName::Workspace
                 } else {
                     parsed
@@ -264,16 +376,11 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
         };
         let profile_name = profile.to_string();
         if profile == ProfileName::Off {
-            tracing::info!(
-                profile = % profile_name,
-                "Sandbox explicitly disabled via GROK_SANDBOX_PROFILE=off"
-            );
+            tracing::info!(profile = %profile_name, "Sandbox explicitly disabled via GROK_SANDBOX_PROFILE=off");
         } else {
             let mut sandbox = SandboxManager::new(profile, &cwd);
             if let Err(e) = sandbox.apply(&cwd) {
-                tracing::warn!(
-                    error = % e, "Sandbox apply returned error, continuing unsandboxed"
-                );
+                tracing::warn!(error = %e, "Sandbox apply returned error, continuing unsandboxed");
             } else if !sandbox.is_applied() {
                 tracing::warn!("Sandbox could not be applied (unsupported platform)");
             }
@@ -285,14 +392,19 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
                 "Workspace server sandbox NOT active"
             };
             tracing::info!(
-                profile = % profile_name, active,
-                restrict_network_at_known_linux_launches =
-                xai_grok_sandbox::should_restrict_child_network(), "{status_msg}"
+                profile = %profile_name,
+                active,
+                restrict_network_at_known_linux_launches = xai_grok_sandbox::should_restrict_child_network(),
+                "{status_msg}"
             );
         }
     }
     let auth_provider = xai_grok_workspace::hub_auth::provider(&url, args.auth_config.as_deref())?;
-    tracing::info!(hub_url = % url, cwd = % cwd.display(), "Starting workspace server");
+    tracing::info!(
+        hub_url = %url,
+        cwd = %cwd.display(),
+        "Starting workspace server"
+    );
     let cwd_display = cwd.display().to_string();
     let session_id = std::env::var("GROK_SESSION_ID").ok();
     let parsed_metadata = match args.metadata {
@@ -309,38 +421,43 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
     let diag_handle = diag_server::DiagHandle::new(launch_id);
+    {
+        let caps = xai_grok_workspace::image_capabilities::image_capabilities();
+        diag_handle.set_image_capabilities(caps.wire(), caps.is_declared());
+    }
     #[cfg(unix)]
     let diag_listener = diag_server::DiagListener::Unix(args.diag_socket);
     #[cfg(windows)]
     let diag_listener = diag_server::DiagListener::Tcp(args.diag_port);
     let diag_log_file = args.daemonize.then_some(args.log_file);
-    let _diag_server =
-        match diag_server::serve(diag_listener, diag_handle.clone(), diag_log_file).await {
-            Ok(bound) => {
-                tracing::info!(addr = % bound.addr, "diagnostics server listening");
-                Some(bound)
+    let _diag_server = match diag_server::serve(diag_listener, diag_handle.clone(), diag_log_file)
+        .await
+    {
+        Ok(bound) => {
+            tracing::info!(addr = %bound.addr, "diagnostics server listening");
+            Some(bound)
+        }
+        Err(e) => {
+            if args.daemonize {
+                tracing::error!(error = %e, "{}", diag_server::DIAG_BIND_FAILED_MARKER);
+                std::process::exit(diag_server::EXIT_DIAG_BIND_FAILED);
             }
-            Err(e) => {
-                if args.daemonize {
-                    tracing::error!(error = % e, "{}", diag_server::DIAG_BIND_FAILED_MARKER);
-                    std::process::exit(diag_server::EXIT_DIAG_BIND_FAILED);
-                }
-                tracing::warn!(
-                    error = % e, "{} (continuing without)",
-                    diag_server::DIAG_BIND_FAILED_MARKER
-                );
-                None
-            }
-        };
+            tracing::warn!(error = %e, "{} (continuing without)", diag_server::DIAG_BIND_FAILED_MARKER);
+            None
+        }
+    };
     tracing::info!(
-        cwd = % cwd_display,
+        cwd = %cwd_display,
         "Workspace server starting — sessions created dynamically via server bind"
     );
     let server_id = args.server_id.clone();
-    let status_config = xai_grok_workspace::StatusConfig::from_env();
+    let mut status_config = xai_grok_workspace::StatusConfig::from_env();
+    status_config.preview_control_port = args.preview.preview_control_port;
     let preview_shutdown = if args.preview.preview_enabled {
         let control_port = args.preview.preview_control_port;
-        let cfg = args.preview.into_preview_args(cwd.clone());
+        let cfg = args
+            .preview
+            .into_preview_args(cwd.clone(), status_config.preview_discovery_refresh_ms());
         let (tx, rx) = tokio::sync::watch::channel(false);
         tokio::spawn(preview_supervisor::supervise_preview(cfg, rx));
         Some((tx, control_port))
@@ -349,7 +466,7 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
     };
     let preview_scrape_interval = status_config.preview_activity_scrape_interval;
     xai_grok_workspace::init_metrics();
-    let ws_handle = xai_grok_workspace::handle::connect_local_workspace(
+    let ws_handle = match xai_grok_workspace::handle::connect_local_workspace(
         cwd,
         url,
         auth_provider,
@@ -365,11 +482,17 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
         args.confine_fs_to_workspace_root,
     )
     .await
-    .map_err(|e| anyhow::anyhow!("failed to connect workspace to hub: {e}"))?;
+    {
+        Ok(handle) => handle,
+        Err(e) => {
+            report_hub_connect_failure(&diag_handle, &e).await;
+            return Err(anyhow::anyhow!("failed to connect workspace to hub: {e}"));
+        }
+    };
     if let Some((tx, control_port)) = &preview_shutdown {
         tokio::spawn(preview_supervisor::supervise_preview_activity(
             *control_port,
-            ws_handle.activity_tracker().clone(),
+            std::sync::Arc::new(TrackerSink(ws_handle.activity_tracker().clone())),
             preview_scrape_interval,
             tx.subscribe(),
         ));
@@ -402,15 +525,25 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
         }
         None => tracing::info!("metric export disabled (not connected)"),
     }
+    if metric_donation_pump.is_some()
+        && let Some((tx, control_port)) = &preview_shutdown
+    {
+        tokio::spawn(preview_supervisor::supervise_preview_metrics(
+            *control_port,
+            tx.subscribe(),
+        ));
+    }
     tracing::info!(
-        server_id = ? server_id, "Workspace server connected to hub. Serving tools."
+        server_id = ?server_id,
+        "Workspace server connected to hub. Serving tools."
     );
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
         let mut sigterm = signal(SignalKind::terminate())?;
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {} _ = sigterm.recv() => {}
+            _ = tokio::signal::ctrl_c() => {}
+            _ = sigterm.recv() => {}
         }
     }
     #[cfg(not(unix))]
@@ -448,6 +581,246 @@ async fn run(args: Args, cwd: PathBuf) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// The env-resolved discovery refresh must reach the proxy argv only when
+    /// set; `None` (env unset or 0) yields a refresh-free argv.
+    #[test]
+    fn into_preview_args_forwards_the_discovery_refresh_only_when_resolved() {
+        let cli = || PreviewCliArgs {
+            preview_enabled: true,
+            preview_port: None,
+            preview_control_port: Some(6015),
+            preview_visibility: None,
+            preview_instance_suffix: None,
+            preview_auth_redirect: None,
+            preview_allow_public: false,
+            preview_workspace_server_port: None,
+        };
+        let argv = cli()
+            .into_preview_args(PathBuf::from("/workspace"), Some(500))
+            .to_argv();
+        assert_eq!(
+            argv,
+            vec!["--control-port", "6015", "--discovery-refresh-ms", "500"],
+        );
+        let argv = cli()
+            .into_preview_args(PathBuf::from("/workspace"), None)
+            .to_argv();
+        assert_eq!(
+            argv,
+            vec!["--control-port", "6015"],
+            "without the env the flag must be omitted"
+        );
+    }
+    #[test]
+    fn hub_connect_failed_dwell_is_within_design_bounds() {
+        assert!(HUB_CONNECT_FAILED_DWELL >= Duration::from_millis(500));
+        assert!(HUB_CONNECT_FAILED_DWELL <= Duration::from_secs(2));
+    }
+    #[tokio::test(start_paused = true)]
+    async fn hub_connect_failed_dwell_elapses_exact_budget() {
+        let start = tokio::time::Instant::now();
+        dwell_after_hub_connect_failed().await;
+        assert_eq!(start.elapsed(), HUB_CONNECT_FAILED_DWELL);
+    }
+    #[test]
+    fn classify_hub_connect_auth_needles() {
+        assert_eq!(
+            classify_hub_connect_failure("hub error: handshake auth failed: HTTP 401"),
+            ErrorClass::HubAuth
+        );
+        assert_eq!(
+            classify_hub_connect_failure("handshake auth failed: HTTP 401"),
+            ErrorClass::HubAuth
+        );
+        assert_eq!(
+            classify_hub_connect_failure("hub error: auth error: token rejected"),
+            ErrorClass::HubAuth
+        );
+        assert_eq!(
+            classify_hub_connect_failure("HTTP 401 unauthorized"),
+            ErrorClass::HubConnect
+        );
+        assert_eq!(
+            classify_hub_connect_failure("token refresh failed"),
+            ErrorClass::HubConnect
+        );
+    }
+    #[test]
+    fn classify_from_client_error_display_round_trip() {
+        let handshake = WorkspaceError::HubError(
+            xai_computer_hub_sdk::ClientError::HandshakeAuthFailed { status: 401 }.to_string(),
+        );
+        let handshake_msg = handshake.to_string();
+        assert_eq!(
+            classify_hub_connect_failure(&handshake_msg),
+            ErrorClass::HubAuth
+        );
+        assert_eq!(
+            hub_connect_failure_log_message(ErrorClass::HubAuth),
+            WORKSPACE_HUB_AUTH_FAILED_MARKER
+        );
+        let auth = WorkspaceError::HubError(
+            xai_computer_hub_sdk::ClientError::AuthError("token rejected".into()).to_string(),
+        );
+        assert_eq!(
+            classify_hub_connect_failure(&auth.to_string()),
+            ErrorClass::HubAuth
+        );
+        let network = WorkspaceError::HubError(
+            xai_computer_hub_sdk::ClientError::NetworkError("connection refused".into())
+                .to_string(),
+        );
+        assert_eq!(
+            classify_hub_connect_failure(&network.to_string()),
+            ErrorClass::HubConnect
+        );
+        assert_ne!(
+            hub_connect_failure_log_message(ErrorClass::HubConnect),
+            WORKSPACE_HUB_AUTH_FAILED_MARKER
+        );
+    }
+    #[test]
+    fn classify_hub_connect_non_auth_is_hub_connect() {
+        assert_eq!(
+            classify_hub_connect_failure("hub error: network error: connection refused"),
+            ErrorClass::HubConnect
+        );
+        assert_eq!(
+            classify_hub_connect_failure("hub error: protocol error: bad hello"),
+            ErrorClass::HubConnect
+        );
+        assert_eq!(
+            classify_hub_connect_failure("failed to create workspace: disk full"),
+            ErrorClass::Unknown
+        );
+    }
+    #[test]
+    fn hub_auth_marker_is_stable_literal() {
+        assert_eq!(
+            WORKSPACE_HUB_AUTH_FAILED_MARKER,
+            "workspace hub auth failed"
+        );
+    }
+    #[test]
+    fn hub_connect_error_detail_strips_hub_error_prefix() {
+        let err = WorkspaceError::HubError("handshake auth failed: HTTP 401".into());
+        assert_eq!(
+            hub_connect_error_detail(&err.to_string()),
+            "handshake auth failed: HTTP 401"
+        );
+        let other = WorkspaceError::HubError("network error: timeout".into());
+        assert_eq!(
+            hub_connect_error_detail(&other.to_string()),
+            "network error: timeout"
+        );
+    }
+    /// Install a capturing tracing subscriber for the duration of an async
+    /// report; returns emitted event messages.
+    async fn report_with_captured_messages(
+        handle: &DiagHandle,
+        err: &WorkspaceError,
+    ) -> (Duration, Vec<String>) {
+        use std::sync::{Arc, Mutex};
+        use tracing::field::{Field, Visit};
+        use tracing_subscriber::layer::{Context, SubscriberExt as _};
+        use tracing_subscriber::{Layer, Registry};
+        #[derive(Default)]
+        struct MsgVisitor {
+            message: Option<String>,
+        }
+        impl Visit for MsgVisitor {
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    self.message = Some(format!("{value:?}").trim_matches('"').to_owned());
+                }
+            }
+            fn record_str(&mut self, field: &Field, value: &str) {
+                if field.name() == "message" {
+                    self.message = Some(value.to_owned());
+                }
+            }
+        }
+        struct CaptureLayer {
+            msgs: Arc<Mutex<Vec<String>>>,
+        }
+        impl<S: tracing::Subscriber> Layer<S> for CaptureLayer {
+            fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+                let mut v = MsgVisitor::default();
+                event.record(&mut v);
+                if let Some(msg) = v.message {
+                    self.msgs
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(msg);
+                }
+            }
+        }
+        let msgs = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = Registry::default().with(CaptureLayer { msgs: msgs.clone() });
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let start = tokio::time::Instant::now();
+        report_hub_connect_failure(handle, err).await;
+        let elapsed = start.elapsed();
+        let messages = msgs.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        (elapsed, messages)
+    }
+    #[tokio::test(start_paused = true)]
+    async fn report_hub_connect_failure_sets_ready_failed_auth_and_dwells() {
+        let handle = DiagHandle::new(Some("nonce-auth".to_owned()));
+        let bound = diag_server::serve(diag_server::DiagListener::Tcp(0), handle.clone(), None)
+            .await
+            .expect("bind");
+        let port = bound.port.expect("tcp port");
+        let err = WorkspaceError::HubError("handshake auth failed: HTTP 401".into());
+        let (elapsed, messages) = report_with_captured_messages(&handle, &err).await;
+        assert_eq!(elapsed, HUB_CONNECT_FAILED_DWELL);
+        assert!(
+            messages
+                .iter()
+                .any(|m| m == WORKSPACE_HUB_AUTH_FAILED_MARKER),
+            "auth path must emit marker, got {messages:?}"
+        );
+        let response = reqwest::get(format!("http://127.0.0.1:{port}/ready"))
+            .await
+            .expect("request");
+        assert_eq!(response.status().as_u16(), 503);
+        let body: serde_json::Value = response.json().await.expect("json");
+        assert_eq!(body["state"], "failed");
+        assert_eq!(body["error_class"], "hub_auth");
+        assert_eq!(body["error_detail"], "handshake auth failed: HTTP 401");
+        assert_eq!(body["launch_id"], "nonce-auth");
+    }
+    #[tokio::test(start_paused = true)]
+    async fn report_hub_connect_failure_sets_ready_failed_hub_connect() {
+        let handle = DiagHandle::new(None);
+        let bound = diag_server::serve(diag_server::DiagListener::Tcp(0), handle.clone(), None)
+            .await
+            .expect("bind");
+        let port = bound.port.expect("tcp port");
+        let err = WorkspaceError::HubError("network error: connection refused".into());
+        let (elapsed, messages) = report_with_captured_messages(&handle, &err).await;
+        assert_eq!(elapsed, HUB_CONNECT_FAILED_DWELL);
+        assert!(
+            messages
+                .iter()
+                .any(|m| m == "failed to connect workspace to hub"),
+            "non-auth path must emit connect failure line, got {messages:?}"
+        );
+        assert!(
+            messages
+                .iter()
+                .all(|m| m != WORKSPACE_HUB_AUTH_FAILED_MARKER),
+            "non-auth path must not emit auth marker, got {messages:?}"
+        );
+        let response = reqwest::get(format!("http://127.0.0.1:{port}/ready"))
+            .await
+            .expect("request");
+        assert_eq!(response.status().as_u16(), 503);
+        let body: serde_json::Value = response.json().await.expect("json");
+        assert_eq!(body["state"], "failed");
+        assert_eq!(body["error_class"], "hub_connect");
+        assert_eq!(body["error_detail"], "network error: connection refused");
+    }
     #[test]
     fn capabilities_flag_parses_and_defaults_off() {
         let args = Args::try_parse_from(["xai-workspace-server"]).unwrap();
@@ -467,7 +840,7 @@ mod tests {
     #[test]
     fn capabilities_manifest_shape() {
         let value = serde_json::to_value(CAPABILITIES).unwrap();
-        assert_eq!(value, serde_json::json!({ "diag" : true }));
+        assert_eq!(value, serde_json::json!({"diag": true}));
     }
     #[test]
     fn capabilities_probe_of_legacy_binary_exits_nonzero() {
@@ -490,12 +863,32 @@ mod tests {
     fn daemonize_defaults_are_inert() {
         let args = Args::try_parse_from(["xai-workspace-server"]).unwrap();
         assert!(!args.daemonize);
+        assert!(!args.oom_protect);
         assert_eq!(args.log_file, PathBuf::from(daemonize::DEFAULT_LOG_PATH));
         assert_eq!(
             args.pid_file,
             PathBuf::from(daemonize::DEFAULT_PIDFILE_PATH)
         );
         assert_eq!(args.ready_file, None);
+    }
+    #[test]
+    fn should_set_reset_child_oom_truth_table() {
+        assert!(!should_set_reset_child_oom(false, false));
+        assert!(should_set_reset_child_oom(true, false));
+        assert!(should_set_reset_child_oom(false, true));
+        assert!(should_set_reset_child_oom(true, true));
+    }
+    #[test]
+    fn oom_protect_log_active_truth_table() {
+        assert!(oom_protect_log_active(Some(true), false));
+        assert!(!oom_protect_log_active(Some(false), true));
+        assert!(oom_protect_log_active(None, true));
+        assert!(!oom_protect_log_active(None, false));
+    }
+    #[test]
+    fn oom_protect_flag_parses() {
+        let args = Args::try_parse_from(["xai-workspace-server", "--oom-protect"]).unwrap();
+        assert!(args.oom_protect);
     }
     #[test]
     fn ready_file_is_accepted_as_a_deprecated_no_op() {
@@ -529,7 +922,9 @@ mod tests {
     fn preview_defaults_are_inert() {
         let args = Args::try_parse_from(["xai-workspace-server"]).unwrap();
         assert!(!args.preview.preview_enabled);
-        let cfg = args.preview.into_preview_args(PathBuf::from("/workspace"));
+        let cfg = args
+            .preview
+            .into_preview_args(PathBuf::from("/workspace"), None);
         assert!(!cfg.enabled);
         assert!(
             cfg.to_argv().is_empty(),
@@ -557,7 +952,9 @@ mod tests {
         ])
         .unwrap();
         assert!(args.preview.preview_enabled);
-        let cfg = args.preview.into_preview_args(PathBuf::from("/workspace"));
+        let cfg = args
+            .preview
+            .into_preview_args(PathBuf::from("/workspace"), None);
         assert!(cfg.enabled);
         assert_eq!(cfg.port, Some(6014));
         assert_eq!(cfg.control_port, Some(6015));
@@ -610,8 +1007,33 @@ mod tests {
             "owner",
         ])
         .unwrap();
-        let cfg = args.preview.into_preview_args(PathBuf::from("/workspace"));
+        let cfg = args
+            .preview
+            .into_preview_args(PathBuf::from("/workspace"), None);
         assert_eq!(cfg.visibility, Some(PreviewVisibility::Owner));
         assert_eq!(cfg.to_argv(), vec!["--visibility", "owner"]);
+    }
+    /// The scraper reports through `PreviewActivitySink`, so this adapter is the
+    /// only place the preview signal meets the tracker's idle accounting. The
+    /// scraper's own behavior is tested in `xai-grok-workspace-daemon`, and the
+    /// tracker's in `xai_grok_workspace::activity`; this covers the seam.
+    #[test]
+    fn tracker_sink_forwards_every_signal_to_the_activity_tracker() {
+        use xai_grok_workspace::activity::ActivityTracker;
+        let tracker = std::sync::Arc::new(ActivityTracker::new());
+        let sink = TrackerSink(std::sync::Arc::clone(&tracker));
+        assert_eq!(
+            sink.preview_activity_window_ms(),
+            tracker.preview_activity_window_ms()
+        );
+        sink.set_preview_attached(2, 1);
+        assert_eq!(tracker.preview_ws_tunnels_open(), 2);
+        assert!(tracker.snapshot().idle_since_ms.is_none());
+        sink.set_preview_attached(0, 0);
+        assert_eq!(tracker.preview_ws_tunnels_open(), 0);
+        sink.note_preview_routed_activity();
+        assert!(tracker.snapshot().idle_since_ms.is_none());
+        sink.note_preview_status_activity();
+        assert!(tracker.snapshot().idle_since_ms.is_none());
     }
 }

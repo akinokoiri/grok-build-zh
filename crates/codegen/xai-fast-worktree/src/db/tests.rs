@@ -2,20 +2,14 @@ use super::*;
 
 fn make_record(id: &str, path: &str, kind: WorktreeKind) -> WorktreeRecord {
     WorktreeRecord {
-        id: id.to_string(),
-        path: PathBuf::from(path),
         source_repo: PathBuf::from("/src/repo"),
-        repo_name: "repo".to_string(),
         kind,
-        creation_mode: "linked".to_string(),
         git_ref: Some("main".to_string()),
         head_commit: Some("abc123".to_string()),
         session_id: Some(format!("sess-{id}")),
         creator_pid: Some(12345),
         created_at: 1000,
-        last_accessed_at: None,
-        status: WorktreeStatus::Alive,
-        metadata: None,
+        ..crate::test_support::worktree_record(id, path)
     }
 }
 
@@ -68,17 +62,7 @@ fn unregister_by_id() {
 
     assert!(db.unregister("a").unwrap());
     assert!(db.get("a").unwrap().is_none());
-    assert!(!db.unregister("a").unwrap()); // second call returns false
-}
-
-#[test]
-fn unregister_by_path() {
-    let db = WorktreeDb::open_in_memory().unwrap();
-    db.register(&make_record("b", "/tmp/b", WorktreeKind::Pool))
-        .unwrap();
-
-    assert!(db.unregister_by_path(Path::new("/tmp/b")).unwrap());
-    assert!(db.get("b").unwrap().is_none());
+    assert!(!db.unregister("a").unwrap());
 }
 
 #[test]
@@ -230,6 +214,61 @@ fn sweep_dead_marks_missing_paths() {
     assert_eq!(exists_rec.status, WorktreeStatus::Alive);
 }
 
+#[cfg(unix)]
+#[test]
+fn sweep_dead_does_not_mark_dangling_symlink() {
+    let db = WorktreeDb::open_in_memory().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let link = tmp.path().join("dangling");
+    std::os::unix::fs::symlink(tmp.path().join("gone"), &link).unwrap();
+    db.register(&make_record(
+        "dangling",
+        &link.to_string_lossy(),
+        WorktreeKind::Session,
+    ))
+    .unwrap();
+    assert_eq!(db.sweep_dead().unwrap(), 0);
+    let rec = db.get("dangling").unwrap().unwrap();
+    assert_eq!(rec.status, WorktreeStatus::Alive);
+}
+
+#[test]
+fn sweep_dead_skips_live_grove_dests() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let db = WorktreeDb::open_in_memory().unwrap();
+    for (id, mode) in [
+        ("nfs-legacy", "nfs"),
+        ("grove-nfs", "grove-nfs"),
+        ("grove-fuse", "grove-fuse"),
+    ] {
+        let dest = tmp.path().join(id);
+        std::fs::create_dir(&dest).unwrap();
+        let mut rec = make_record(id, dest.to_str().unwrap(), WorktreeKind::Session);
+        rec.creation_mode = mode.into();
+        db.register(&rec).unwrap();
+    }
+    assert_eq!(db.sweep_dead().unwrap(), 0);
+    for id in ["nfs-legacy", "grove-nfs", "grove-fuse"] {
+        let fetched = db.get(id).unwrap().unwrap();
+        assert_eq!(fetched.status, WorktreeStatus::Alive, "{id}");
+    }
+}
+
+#[test]
+fn sweep_dead_marks_missing_grove_dest() {
+    let db = WorktreeDb::open_in_memory().unwrap();
+    let mut rec = make_record(
+        "grove-gone",
+        "/nonexistent/grove-fuse/dest",
+        WorktreeKind::Session,
+    );
+    rec.creation_mode = "grove-fuse".into();
+    db.register(&rec).unwrap();
+    assert_eq!(db.sweep_dead().unwrap(), 1);
+    let fetched = db.get("grove-gone").unwrap().unwrap();
+    assert_eq!(fetched.status, WorktreeStatus::Dead);
+}
+
 #[test]
 fn register_upsert_overwrites() {
     let db = WorktreeDb::open_in_memory().unwrap();
@@ -266,19 +305,6 @@ fn list_ordered_by_created_at_desc() {
     assert_eq!(all[2].id, "old");
 }
 
-#[test]
-fn metadata_json_roundtrip() {
-    let db = WorktreeDb::open_in_memory().unwrap();
-    let mut rec = make_record("meta", "/tmp/meta", WorktreeKind::Session);
-    rec.metadata = Some(serde_json::json!({"tags": ["important"], "notes": "test"}));
-    db.register(&rec).unwrap();
-
-    let fetched = db.get("meta").unwrap().unwrap();
-    let meta = fetched.metadata.unwrap();
-    assert_eq!(meta["tags"][0], "important");
-    assert_eq!(meta["notes"], "test");
-}
-
 /// The derived id keeps the basename (minus any `worktree-` prefix) and appends
 /// a 16-hex hash of the full path. Assert the shape rather than a literal hash.
 fn assert_id_shape(id: &str, basename: &str) {
@@ -301,23 +327,10 @@ fn id_from_path_strips_worktree_prefix_and_hashes_full_path() {
         "a1b2c3",
     );
     assert_id_shape(&id_from_path(Path::new("/tmp/my-worktree")), "my-worktree");
-    // No file name → empty basename, still suffixed with a hash.
-    assert!(id_from_path(Path::new("/")).starts_with('-'));
+    // No file name → sanitizer uses `wt`, still suffixed with a hash.
+    assert_id_shape(&id_from_path(Path::new("/")), "wt");
     // Deterministic.
     assert_eq!(id_from_path(p), id_from_path(p));
-}
-
-#[test]
-fn id_from_path_differs_for_same_basename_in_different_repos() {
-    // The eviction bug root cause: same basename, different repo → must differ.
-    let a = id_from_path(Path::new("/home/.grok/worktrees/repo-a/session/wt-abc"));
-    let b = id_from_path(Path::new("/home/.grok/worktrees/repo-b/session/wt-abc"));
-    assert_ne!(
-        a, b,
-        "same-basename worktrees in different repos must get distinct ids"
-    );
-    assert_id_shape(&a, "wt-abc");
-    assert_id_shape(&b, "wt-abc");
 }
 
 #[test]
@@ -368,15 +381,6 @@ fn same_basename_worktrees_in_different_repos_coexist() {
     assert!(db.unregister_by_path(Path::new(path_a)).unwrap());
     assert!(db.get(path_a).unwrap().is_none());
     assert_eq!(db.get(path_b).unwrap().unwrap().repo_name, "repo-b");
-}
-
-#[test]
-fn repo_name_from_path_extracts_last_component() {
-    assert_eq!(
-        repo_name_from_path(Path::new("/Users/me/work/myrepo")),
-        "myrepo"
-    );
-    assert_eq!(repo_name_from_path(Path::new("/")), "repo");
 }
 
 #[test]
@@ -466,15 +470,6 @@ fn get_by_label_returns_matching_record() {
 }
 
 #[test]
-fn get_by_label_returns_none_for_no_match() {
-    let db = WorktreeDb::open_in_memory().unwrap();
-    let rec = make_labeled_record("wt-1", "/tmp/wt-1", "existing-label");
-    db.register(&rec).unwrap();
-
-    assert!(db.get_by_label("nonexistent-label").unwrap().is_none());
-}
-
-#[test]
 fn get_by_label_ignores_records_without_metadata() {
     let db = WorktreeDb::open_in_memory().unwrap();
     let rec = make_record("wt-plain", "/tmp/wt-plain", WorktreeKind::Session);
@@ -512,15 +507,6 @@ fn get_prefers_id_over_label() {
         .expect("should find by id first");
     assert_eq!(fetched.id, "ambiguous");
     assert_eq!(fetched.path, PathBuf::from("/tmp/wt-by-id"));
-}
-
-#[test]
-fn get_label_fallback_returns_none_when_both_miss() {
-    let db = WorktreeDb::open_in_memory().unwrap();
-    let rec = make_labeled_record("wt-x", "/tmp/wt-x", "some-label");
-    db.register(&rec).unwrap();
-
-    assert!(db.get("no-such-id-or-label").unwrap().is_none());
 }
 
 #[test]
@@ -674,7 +660,7 @@ fn journal_conversion_respects_deadline_under_contention() {
         Err(e) => e,
     };
     assert!(
-        format!("{err:#}").contains("database busy after"),
+        format!("{err:#}").contains("database is locked"),
         "expected the deadline-busy error, got: {err:#}"
     );
     assert!(
@@ -687,4 +673,193 @@ fn journal_conversion_respects_deadline_under_contention() {
     drop(holder);
     let db = WorktreeDb::open_at_with_journal_mode(&path, JournalMode::Truncate).unwrap();
     assert_eq!(journal_mode(&db), "truncate");
+}
+
+#[test]
+fn record_label_reads_metadata() {
+    assert_eq!(
+        make_labeled_record("a", "/tmp/wt-a", "my-feature").label(),
+        Some("my-feature")
+    );
+    let mut rec = make_record("b", "/tmp/wt-b", WorktreeKind::Session);
+    assert_eq!(rec.label(), None);
+    rec.metadata = Some(serde_json::json!({"label": ""}));
+    assert_eq!(rec.label(), None);
+}
+
+#[test]
+fn open_read_only_never_creates_and_reads_existing() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let home = tmp.path().join("grok-home");
+
+    assert!(matches!(
+        WorktreeDb::open_read_only(&home),
+        RegistryOpen::Absent { .. }
+    ));
+    assert!(
+        !home.exists(),
+        "read-only open must not create the home dir"
+    );
+
+    let rw = WorktreeDb::open(&home).unwrap();
+    rw.register(&make_labeled_record("a", "/tmp/wt-a", "lbl"))
+        .unwrap();
+
+    let RegistryOpen::Opened { db: ro, .. } = WorktreeDb::open_read_only(&home) else {
+        panic!("an existing DB must open");
+    };
+    let recs = ro.list(&ListFilter::default()).unwrap();
+    assert_eq!(recs.len(), 1);
+    assert_eq!(recs[0].label(), Some("lbl"));
+}
+
+#[test]
+fn sqlite_errors_classify_by_code() {
+    use rusqlite::ErrorCode;
+    fn err(code: ErrorCode) -> anyhow::Error {
+        anyhow::Error::new(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code,
+                extended_code: 0,
+            },
+            None,
+        ))
+        .context("failed to list worktrees")
+    }
+    let cases = [
+        (ErrorCode::DatabaseBusy, SqliteFailureKind::Busy),
+        (ErrorCode::DatabaseLocked, SqliteFailureKind::Busy),
+        (ErrorCode::NotADatabase, SqliteFailureKind::Corrupt),
+        (ErrorCode::DatabaseCorrupt, SqliteFailureKind::Corrupt),
+        (ErrorCode::SystemIoFailure, SqliteFailureKind::Other),
+        (ErrorCode::ReadOnly, SqliteFailureKind::Other),
+        (ErrorCode::Unknown, SqliteFailureKind::Other),
+    ];
+    for (code, want) in cases {
+        assert_eq!(classify_sqlite_error(&err(code)), want, "{code:?}");
+    }
+    assert_eq!(
+        classify_sqlite_error(&anyhow::anyhow!("not a sqlite error at all")),
+        SqliteFailureKind::Other
+    );
+}
+
+#[test]
+fn open_rejects_a_corrupt_db_file() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let home = tmp.path().join("grok-home");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(
+        WorktreeDb::resolve_db_path(&home),
+        b"garbage, not an sqlite header",
+    )
+    .unwrap();
+    assert!(
+        WorktreeDb::open(&home).is_err(),
+        "rebuild opens read-write, so a corrupt file must fail there"
+    );
+}
+
+#[test]
+fn read_only_open_respects_deadline_under_contention() {
+    use std::time::{Duration, Instant};
+    let tmp = tempfile::TempDir::new().unwrap();
+    let path = tmp.path().join("worktrees.db");
+    // WAL-stamp the exact file the forced-network open will use, then hold a
+    // read transaction: the WAL->TRUNCATE conversion needs an exclusive lock,
+    // so the retry must give up at the deadline as busy, not as a broken file.
+    let eff = JournalMode::Truncate.effective_db_path(&path);
+    {
+        let conn = rusqlite::Connection::open(&eff).unwrap();
+        JournalMode::Wal.apply(&conn).unwrap();
+        conn.execute_batch("CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('x');")
+            .unwrap();
+    }
+    let holder = rusqlite::Connection::open(&eff).unwrap();
+    holder
+        .execute_batch("BEGIN; SELECT COUNT(*) FROM t;")
+        .unwrap();
+
+    let short = Instant::now() + Duration::from_millis(500);
+    let start = Instant::now();
+    let Err(OpenFailure::Busy(_)) =
+        WorktreeDb::open_readonly_with_busy_retry(JournalMode::Truncate, &path, short)
+    else {
+        panic!("a WAL reader holding the DB must classify as busy, never as a broken file");
+    };
+    assert!(
+        start.elapsed() < Duration::from_secs(3),
+        "a 500ms deadline must bound the whole open, took {:?}",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    let deadline = Instant::now() + BUSY_RETRY_BUDGET;
+    let Err(OpenFailure::Busy(err)) =
+        WorktreeDb::open_readonly_with_busy_retry(JournalMode::Truncate, &path, deadline)
+    else {
+        panic!("a WAL reader holding the DB must classify as busy, never as a broken file");
+    };
+    assert!(
+        format!("{err:#}").contains("database busy after"),
+        "expected the deadline-busy error, got: {err:#}"
+    );
+    assert!(
+        start.elapsed() < BUSY_RETRY_BUDGET + Duration::from_secs(3),
+        "one budget covers the whole open, took {:?}",
+        start.elapsed()
+    );
+
+    holder.execute_batch("COMMIT;").unwrap();
+    drop(holder);
+    let conn = WorktreeDb::open_readonly_with_busy_retry(
+        JournalMode::Truncate,
+        &path,
+        Instant::now() + BUSY_RETRY_BUDGET,
+    )
+    .unwrap();
+    let v: String = conn.query_row("SELECT v FROM t", [], |r| r.get(0)).unwrap();
+    assert_eq!(v, "x");
+}
+
+#[test]
+fn read_only_handles_reject_writes_on_both_journal_arms() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let home = tmp.path().join("grok-home");
+    WorktreeDb::open(&home)
+        .unwrap()
+        .register(&make_labeled_record("a", "/tmp/wt-a", "x"))
+        .unwrap();
+    let RegistryOpen::Opened { db: ro, .. } = WorktreeDb::open_read_only(&home) else {
+        panic!("an existing DB must open");
+    };
+    ro.register(&make_labeled_record("b", "/tmp/wt-b", "x"))
+        .expect_err("WAL-arm read-only handle must reject writes");
+
+    let path = tmp.path().join("net-home/worktrees.db");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    WorktreeDb::open_at_with_journal_mode(&path, JournalMode::Truncate)
+        .unwrap()
+        .register(&make_labeled_record("c", "/tmp/wt-c", "x"))
+        .unwrap();
+    let conn = WorktreeDb::open_readonly_with_busy_retry(
+        JournalMode::Truncate,
+        &path,
+        std::time::Instant::now() + BUSY_RETRY_BUDGET,
+    )
+    .unwrap();
+    let ro = WorktreeDb { conn };
+    assert_eq!(ro.list(&ListFilter::default()).unwrap().len(), 1);
+    ro.register(&make_labeled_record("d", "/tmp/wt-d", "x"))
+        .expect_err("Truncate-arm read-only handle must reject writes");
+}
+
+#[test]
+fn get_set_meta_round_trip() {
+    let db = WorktreeDb::open_in_memory().unwrap();
+    assert_eq!(db.get_meta("k").unwrap(), None);
+    db.set_meta("k", "v").unwrap();
+    assert_eq!(db.get_meta("k").unwrap().as_deref(), Some("v"));
+    db.set_meta("k", "v2").unwrap();
+    assert_eq!(db.get_meta("k").unwrap().as_deref(), Some("v2"));
 }

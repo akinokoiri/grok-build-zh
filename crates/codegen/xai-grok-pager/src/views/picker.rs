@@ -1014,12 +1014,22 @@ pub fn render_picker_row(
     } else {
         row.badge.width() as u16 + 1
     }; // +1 space before badge
-    let right_width = row.right_label.width() as u16;
-    let gap = if right_width > 0 { 2u16 } else { 0 };
-    let max_label_width = width
-        .saturating_sub(right_width + gap + trailing_pad + badge_width + prefix_width)
-        as usize;
+    // Cap right column at half width so long descriptions don't crush labels.
+    let fixed = prefix_width + trailing_pad + badge_width;
+    let content_width = width.saturating_sub(fixed);
+    let (max_label_width, truncated_right) = if row.right_label.is_empty() {
+        (content_width as usize, String::new())
+    } else {
+        let gap = 2u16;
+        let usable = content_width.saturating_sub(gap);
+        let max_right = (usable / 2) as usize;
+        let right = truncate_str(row.right_label, max_right);
+        let right_cols = right.width() as u16;
+        let max_label = usable.saturating_sub(right_cols) as usize;
+        (max_label, right)
+    };
     let truncated_label = truncate_str(row.label, max_label_width);
+    let right_width = truncated_right.width() as u16;
 
     // Render as separate spans: indent, fold indicator (shared), label.
     let mut cur_x = x;
@@ -1090,14 +1100,13 @@ pub fn render_picker_row(
         );
     }
 
-    // Right side (with trailing padding).
     if right_width > 0 {
         let right_style = Style::default().fg(meta_fg).bg(row_bg);
         let right_x = x + width.saturating_sub(right_width + trailing_pad);
         buf.set_span(
             right_x,
             y,
-            &Span::styled(row.right_label, right_style),
+            &Span::styled(&truncated_right, right_style),
             right_width,
         );
     }
@@ -1736,8 +1745,12 @@ pub struct PickerConfig<'a> {
     pub filter_label: Option<&'a str>,
     /// Key hint for the filter (e.g., "f").
     pub filter_key_hint: Option<&'a str>,
-    /// Whether the filter is active (not in default/All state).
+    /// Whether the filter is active (not in its default state).
     pub filter_active: bool,
+    /// Pinned single-line note rendered between the search/filter chrome and
+    /// the first entry (e.g. the hidden-external sessions hint). Render-only:
+    /// never part of the entry list, hit areas, or scrolling.
+    pub header_note: Option<&'a str>,
     /// Custom action keys that produce `PickerOutcome::Action`.
     /// Each entry is `(key_char, description)` shown in shortcuts.
     pub action_keys: &'a [(char, &'a str)],
@@ -1864,6 +1877,7 @@ pub fn render_picker_content(
         non_selectable_clickable,
         bg,
         loading,
+        0,
         None,
     )
 }
@@ -1872,6 +1886,7 @@ pub fn render_picker_content(
 /// x-position. When `scrollbar_x` is `Some(x)`, the scrollbar is
 /// rendered at that column instead of `content_area.x + content_area.width - 1`.
 /// Used by modals with h_pad to place the scrollbar flush against the border.
+/// `loading_tick` animates the loading spinner (pass 0 for a static frame).
 #[allow(clippy::too_many_arguments)]
 pub fn render_picker_content_with_scrollbar_x(
     buf: &mut Buffer,
@@ -1883,6 +1898,7 @@ pub fn render_picker_content_with_scrollbar_x(
     non_selectable_clickable: &[bool],
     bg: Option<ratatui::style::Color>,
     loading: bool,
+    loading_tick: u64,
     scrollbar_x: u16,
 ) -> PickerContentHitAreas {
     render_picker_content_inner(
@@ -1895,6 +1911,7 @@ pub fn render_picker_content_with_scrollbar_x(
         non_selectable_clickable,
         bg,
         loading,
+        loading_tick,
         Some(scrollbar_x),
     )
 }
@@ -1977,6 +1994,7 @@ pub fn render_picker_in_modal_inner(
         &[],
         Some(theme.bg_base),
         loading,
+        0,
         inner_x + inner_width - 1,
     );
     state.hit_areas = Some(PickerHitAreas {
@@ -2000,6 +2018,7 @@ fn render_picker_content_inner(
     non_selectable_clickable: &[bool],
     bg: Option<ratatui::style::Color>,
     loading: bool,
+    loading_tick: u64,
     scrollbar_x_override: Option<u16>,
 ) -> PickerContentHitAreas {
     // Cleared each paint; set below if a row underlines its last description line.
@@ -2014,11 +2033,17 @@ fn render_picker_content_inner(
         return empty_hit;
     }
 
-    // Loading state — centered in the content area.
+    // Loading state — animated dot spinner centered in the content area.
     if loading {
+<<<<<<< HEAD
         let msg = "加载中...";
+=======
+        let spinner_frames = crate::glyphs::dot_spinner_frames();
+        let frame = spinner_frames[(loading_tick / 4) as usize % spinner_frames.len()];
+        let msg = format!("{frame} Loading\u{2026}");
+>>>>>>> official/main
         let msg_style = Style::default().fg(theme.gray);
-        let cx = content_area.x + content_area.width.saturating_sub(msg.len() as u16) / 2;
+        let cx = content_area.x + content_area.width.saturating_sub(msg.width() as u16) / 2;
         let cy = content_area.y + content_area.height / 2;
         buf.set_string(cx, cy, msg, msg_style);
         return empty_hit;
@@ -2198,6 +2223,7 @@ fn render_picker_content_inner(
 ///
 /// Returns hit areas for mouse interaction. The caller stores these in
 /// `state.hit_areas` for use by `handle_picker_input`.
+/// `loading_tick` animates the loading spinner (pass 0 for a static frame).
 #[allow(clippy::too_many_arguments)]
 pub fn render_picker(
     buf: &mut Buffer,
@@ -2207,6 +2233,7 @@ pub fn render_picker(
     entries: &[PickerEntry<'_>],
     config: &PickerConfig<'_>,
     loading: bool,
+    loading_tick: u64,
 ) -> PickerHitAreas {
     let empty_hit = PickerHitAreas {
         close_button: Rect::default(),
@@ -2420,7 +2447,28 @@ pub fn render_picker(
         render_divider(buf, content.x, sep_y, content.width, theme, bg);
     }
 
-    let entries_start_y = sep_y + 1;
+    let mut entries_start_y = sep_y + 1;
+
+    // Pinned header note: reserve the first list row so it stays visible
+    // regardless of list scroll.
+    if let Some(note) = config.header_note
+        && entries_start_y < content.y + content.height
+    {
+        let note_style = Style::default().fg(theme.gray_dim);
+        let note_style = if let Some(c) = bg {
+            note_style.bg(c)
+        } else {
+            note_style
+        };
+        buf.set_stringn(
+            content.x + 1,
+            entries_start_y,
+            note,
+            content.width.saturating_sub(1) as usize,
+            note_style,
+        );
+        entries_start_y += 1;
+    }
 
     // Delegate entry rendering + scrollbar to render_picker_content.
     let entries_area = Rect {
@@ -2429,7 +2477,7 @@ pub fn render_picker(
         width: content.width,
         height: (content.y + content.height).saturating_sub(entries_start_y),
     };
-    let content_hit = render_picker_content(
+    let content_hit = render_picker_content_inner(
         buf,
         entries_area,
         theme,
@@ -2439,6 +2487,8 @@ pub fn render_picker(
         config.non_selectable_clickable,
         bg,
         loading,
+        loading_tick,
+        None,
     );
     let item_rects = content_hit.item_rects;
     let entry_indices = content_hit.entry_indices;
@@ -2518,27 +2568,41 @@ pub fn render_picker(
     }
 }
 
+/// First selectable index at or after `selected`.
+///
+/// Scans forward from the clamped selection, then restarts from the top when
+/// needed. If every row is non-selectable, both scans stop at the last index,
+/// so that last index is returned. Shared by picker input clamping and modal
+/// render so highlight and footer stay aligned.
+pub fn first_selectable_index(
+    selected: usize,
+    entry_count: usize,
+    non_selectable: &[bool],
+) -> usize {
+    if entry_count == 0 {
+        return 0;
+    }
+    let is_non_sel = |i: usize| non_selectable.get(i).copied().unwrap_or(false);
+    let mut s = selected.min(entry_count - 1);
+    while is_non_sel(s) && s < entry_count - 1 {
+        s += 1;
+    }
+    if is_non_sel(s) {
+        s = 0;
+        while is_non_sel(s) && s < entry_count - 1 {
+            s += 1;
+        }
+    }
+    s
+}
+
 /// Clamp selection to a selectable row after a host changes the picker entries.
 pub fn clamp_picker_selection(
     state: &mut PickerState,
     entry_count: usize,
     non_selectable: &[bool],
 ) {
-    let is_non_sel = |i: usize| non_selectable.get(i).copied().unwrap_or(false);
-    if entry_count > 0 {
-        state.selected = state.selected.min(entry_count.saturating_sub(1));
-        while is_non_sel(state.selected) && state.selected < entry_count - 1 {
-            state.selected += 1;
-        }
-        if is_non_sel(state.selected) {
-            state.selected = 0;
-            while is_non_sel(state.selected) && state.selected < entry_count - 1 {
-                state.selected += 1;
-            }
-        }
-    } else {
-        state.selected = 0;
-    }
+    state.selected = first_selectable_index(state.selected, entry_count, non_selectable);
 }
 
 /// Handle one picker event; hosts re-filter only after [`PickerOutcome::QueryChanged`].
@@ -3222,6 +3286,7 @@ mod tests {
             filter_label: None,
             filter_key_hint: None,
             filter_active: false,
+            header_note: None,
             action_keys: &[],
             disable_search: false,
             compact_bottom_bar: false,
@@ -3339,7 +3404,7 @@ mod tests {
             let mut state = PickerState::with_mode(PickerMode::FullScreen);
             state.search_active = search_active;
             let mut buf = Buffer::empty(area);
-            let hit = render_picker(&mut buf, area, &theme, &mut state, &[], &config, false);
+            let hit = render_picker(&mut buf, area, &theme, &mut state, &[], &config, false, 0);
             let y = hit.search_bar.y;
             let mut has_cursor = false;
             let mut text = String::new();

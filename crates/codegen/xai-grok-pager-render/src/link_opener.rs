@@ -45,21 +45,37 @@ pub fn browser_open_likely_available() -> bool {
     browser_open_likely_available_from_env(&env)
 }
 
-/// User-facing copy when the browser opener cannot run. Includes the full
-/// URL on its own line so it is easy to select/copy in the TUI.
+const BROWSER_UNAVAILABLE_NOTICE: &str = "无法打开浏览器。请手动打开此 URL";
+
+/// Multi-line copy for agent scrollback: notice, then the full URL alone
+/// so it is easy to select/copy in the TUI.
 pub fn browser_unavailable_message(url: &str) -> String {
-    format!("无法打开浏览器。请手动打开此 URL：\n{url}")
+    format!("{BROWSER_UNAVAILABLE_NOTICE}：\n{url}")
+}
+
+/// Single-line welcome toast: URL first so prefix truncation keeps the
+/// destination. `copied` is true only when clipboard delivery reported
+/// success — never claim a copy that did not happen.
+pub fn browser_unavailable_line(url: &str, copied: bool) -> String {
+    if copied {
+        format!("{url} \u{00b7} {BROWSER_UNAVAILABLE_NOTICE}（已复制 URL）")
+    } else {
+        format!("{url} \u{00b7} {BROWSER_UNAVAILABLE_NOTICE}")
+    }
 }
 
 /// Open a URL in the system's default browser/handler.
 ///
-/// Spawns the platform-native opener (`open` on macOS, `xdg-open` on
-/// Linux, `cmd /c start` on Windows) with fully detached stdio so it
-/// cannot block the pager.
+/// Uses the platform-native opener: `open` on macOS and `xdg-open` on
+/// Linux (spawned with fully detached stdio so it cannot block the pager),
+/// and `ShellExecuteW` on Windows — never `cmd /c start`, whose `&`
+/// metacharacter splitting and `%VAR%` expansion would let a crafted URL
+/// run arbitrary commands.
 ///
 /// Returns `true` when the opener was launched (or the test seam recorded
 /// the URL). Returns `false` when the environment looks headless or spawn
-/// fails — callers should show [`browser_unavailable_message`].
+/// fails — callers should surface the URL via [`browser_unavailable_message`]
+/// (scrollback) or [`browser_unavailable_line`] (welcome toast).
 ///
 /// **Callers handling untrusted input** should call [`is_safe_to_open`]
 /// first, or use [`open_url_if_safe`] / [`try_open_url`] which combine both.
@@ -90,16 +106,62 @@ pub fn open_url(url: &str) -> bool {
         return false;
     }
 
+    let opened = spawn_url_opener(url);
+    if !opened {
+        // Redact URL to avoid leaking sensitive query params to logs.
+        let redacted = url::Url::parse(url)
+            .map(|mut u| {
+                u.set_query(None);
+                u.set_fragment(None);
+                u.to_string()
+            })
+            .unwrap_or_else(|_| "<unparseable>".to_string());
+        tracing::warn!(url = %redacted, "failed to open URL");
+    }
+    opened
+}
+
+/// Hand the URL to the default browser via `ShellExecuteW`, which takes it
+/// as a single argument. The URL must never pass through `cmd.exe`: `start`
+/// splits on `&` and expands `%VAR%`, so a server-supplied URL such as
+/// `https://example.com/&calc.exe` would execute a command.
+#[cfg(target_os = "windows")]
+fn spawn_url_opener(url: &str) -> bool {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+    let verb = wide("open");
+    let target = wide(url);
+    // SAFETY: `verb` and `target` are NUL-terminated UTF-16 buffers that
+    // outlive the call; `hwnd`, `lpparameters`, and `lpdirectory` are
+    // documented as optional and passed null. Per the ShellExecuteW
+    // contract the returned pseudo-HINSTANCE is only compared (> 32 means
+    // success), never dereferenced.
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            target.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    result as usize > 32
+}
+
+#[cfg(not(target_os = "windows"))]
+#[allow(clippy::disallowed_methods)] // fire and forget; the child is reaped when this process exits
+fn spawn_url_opener(url: &str) -> bool {
     #[cfg(target_os = "macos")]
     let cmd = "open";
-    #[cfg(target_os = "windows")]
-    let cmd = "cmd";
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     let cmd = "xdg-open";
 
     let mut command = std::process::Command::new(cmd);
-    #[cfg(target_os = "windows")]
-    command.args(["/c", "start", ""]);
     command
         .arg(url)
         .stdin(std::process::Stdio::null())
@@ -109,15 +171,7 @@ pub fn open_url(url: &str) -> bool {
     match command.spawn() {
         Ok(_) => true,
         Err(e) => {
-            // Redact URL to avoid leaking sensitive query params to logs.
-            let redacted = url::Url::parse(url)
-                .map(|mut u| {
-                    u.set_query(None);
-                    u.set_fragment(None);
-                    u.to_string()
-                })
-                .unwrap_or_else(|_| "<unparseable>".to_string());
-            tracing::warn!(url = %redacted, error = %e, "failed to open URL");
+            tracing::debug!(error = %e, "URL opener failed to spawn");
             false
         }
     }
@@ -156,6 +210,7 @@ fn build_open_path_command(path: &std::path::Path) -> std::process::Command {
 ///   expansion corrupts the percent-encoded session-directory segment in
 ///   imagine media paths (e.g. `…\C%3A%5CUsers…`).
 /// - **macOS / Linux**: `open` / `xdg-open` open the file in its default app.
+#[allow(clippy::disallowed_methods)] // fire and forget; the child is reaped when this process exits
 pub fn open_path(path: &std::path::Path) -> bool {
     // Never launch a real GUI app in tests.
     #[cfg(test)]
@@ -189,6 +244,7 @@ pub fn open_path(path: &std::path::Path) -> bool {
 /// Prefer the on-disk path as-is. When the file is missing, open the parent
 /// folder (no `/select`) so the user lands near the media instead of Home.
 #[cfg(all(not(test), target_os = "windows"))]
+#[allow(clippy::disallowed_methods)] // fire and forget; the child is reaped when this process exits
 fn reveal_in_explorer(path: &std::path::Path) -> bool {
     use std::os::windows::process::CommandExt;
 
@@ -569,11 +625,34 @@ mod tests {
     #[test]
     fn browser_unavailable_message_includes_full_url() {
         let url = "https://grok.com/supergrok?referrer=grok-build";
-        let msg = browser_unavailable_message(url);
-        assert!(msg.contains("无法打开浏览器"));
-        assert!(msg.contains(url));
-        // URL on its own line for easy select/copy in the TUI.
-        assert!(msg.lines().any(|l| l == url));
+        assert_eq!(
+            browser_unavailable_message(url),
+            format!("{BROWSER_UNAVAILABLE_NOTICE}：\n{url}")
+        );
+    }
+
+    #[test]
+    fn browser_unavailable_line_is_url_first_single_line() {
+        let url = "https://grok.com/supergrok?referrer=grok-build";
+        let plain = browser_unavailable_line(url, false);
+        assert!(plain.starts_with(url), "{plain}");
+        assert!(!plain.contains('\n'), "{plain}");
+        assert!(
+            !plain.to_ascii_lowercase().contains("copied"),
+            "must not claim copy on failure: {plain}"
+        );
+        assert!(
+            plain.contains(BROWSER_UNAVAILABLE_NOTICE),
+            "shares notice stem with multi-line form: {plain}"
+        );
+
+        let with_copy = browser_unavailable_line(url, true);
+        assert!(with_copy.starts_with(url), "{with_copy}");
+        assert!(!with_copy.contains('\n'), "{with_copy}");
+        assert!(
+            with_copy.contains("已复制 URL"),
+            "copy claim only when copied=true: {with_copy}"
+        );
     }
 
     #[test]

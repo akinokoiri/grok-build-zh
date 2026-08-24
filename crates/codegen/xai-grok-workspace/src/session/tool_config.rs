@@ -191,7 +191,8 @@ pub(crate) fn merge_and_filter(
     for mcp_tool in mcp_snapshot {
         if baseline_ids.contains(mcp_tool.id.as_str()) {
             tracing::warn!(
-                mcp_id = % mcp_tool.id, session = % session_id,
+                mcp_id = %mcp_tool.id,
+                session = %session_id,
                 "skipping MCP tool: id collides with baseline"
             );
             continue;
@@ -199,8 +200,9 @@ pub(crate) fn merge_and_filter(
         let client_name = mcp_tool.resolve_client_name(&mcp_tool.id);
         if !taken_names.insert(client_name.clone()) {
             tracing::warn!(
-                mcp_id = % mcp_tool.id, client_name = % client_name, session = %
-                session_id,
+                mcp_id = %mcp_tool.id,
+                client_name = %client_name,
+                session = %session_id,
                 "skipping MCP tool: resolved client name collides with another tool"
             );
             continue;
@@ -211,14 +213,16 @@ pub(crate) fn merge_and_filter(
     for hub_tool in hub_snapshot {
         if baseline_ids.contains(hub_tool.id.as_str()) {
             tracing::debug!(
-                hub_id = % hub_tool.id, session = % session_id,
+                hub_id = %hub_tool.id,
+                session = %session_id,
                 "skipping remote tool: id collides with baseline"
             );
             continue;
         }
         if mcp_tool_ids.contains(hub_tool.id.as_str()) {
             tracing::debug!(
-                hub_id = % hub_tool.id, session = % session_id,
+                hub_id = %hub_tool.id,
+                session = %session_id,
                 "skipping remote tool: id collides with MCP tool"
             );
             continue;
@@ -226,8 +230,9 @@ pub(crate) fn merge_and_filter(
         let client_name = hub_tool.resolve_client_name(&hub_tool.id);
         if !taken_names.insert(client_name.clone()) {
             tracing::debug!(
-                hub_id = % hub_tool.id, client_name = % client_name, session = %
-                session_id,
+                hub_id = %hub_tool.id,
+                client_name = %client_name,
+                session = %session_id,
                 "skipping remote tool: resolved client name collides with another tool"
             );
             continue;
@@ -363,13 +368,16 @@ impl WorkspaceSessionContextFactory {
         let (dir, created) = ensure_session_dir(home, session_id);
         if let Err(e) = created {
             tracing::warn!(
-                session = % session_id, dir = % dir.display(), error = % e,
+                session = %session_id,
+                dir = %dir.display(),
+                error = %e,
                 "tool_state: failed to create session dir; persistence disabled for session"
             );
             return PathBuf::new();
         }
         tracing::debug!(
-            session = % session_id, dir = % dir.display(),
+            session = %session_id,
+            dir = %dir.display(),
             "tool_state: persistence bound to session-keyed dir"
         );
         dir.join("tool_state.json")
@@ -379,7 +387,9 @@ impl WorkspaceSessionContextFactory {
         let (dir, created) = ensure_session_dir(std::path::Path::new("/tmp"), session_id);
         if let Err(e) = created {
             tracing::warn!(
-                session = % session_id, dir = % dir.display(), error = % e,
+                session = %session_id,
+                dir = %dir.display(),
+                error = %e,
                 "session_folder: failed to create dir; tools may create it on write"
             );
         }
@@ -394,7 +404,7 @@ impl SessionContextFactory for WorkspaceSessionContextFactory {
         session_env: Arc<HashMap<String, String>>,
         backend: Arc<dyn xai_grok_tools::computer::types::TerminalBackend>,
     ) -> xai_grok_tools::registry::types::SessionContext {
-        use xai_grok_tools::implementations::grok_build::deploy_app::AppBuilderDeployerConfig;
+        use xai_grok_tools::implementations::grok_build::app_builder::AppBuilderDeployerConfig;
         use xai_grok_tools::implementations::grok_build::image_gen::ImageGenConfig;
         use xai_grok_tools::implementations::grok_build::video_gen::VideoGenConfig;
         use xai_grok_tools::implementations::web_search::WebSearchConfig;
@@ -415,6 +425,7 @@ impl SessionContextFactory for WorkspaceSessionContextFactory {
                                 image_gen_enabled: true,
                                 image_edit_enabled: true,
                                 model_override: None,
+                                edit_model_override: None,
                                 tier_restricted: false,
                             },
                             VideoGenConfig::Enabled {
@@ -423,6 +434,7 @@ impl SessionContextFactory for WorkspaceSessionContextFactory {
                                 extra_headers: headers.clone(),
                                 zdr_video_output_s3: None,
                                 tier_restricted: false,
+                                zdr_restricted: false,
                             },
                             WebSearchConfig::Enabled {
                                 api_key: token,
@@ -430,6 +442,8 @@ impl SessionContextFactory for WorkspaceSessionContextFactory {
                                 model: default_web_search_model(),
                                 extra_headers: headers,
                                 alpha_test_key: None,
+                                allowed_domains: None,
+                                excluded_domains: None,
                             },
                             AppBuilderDeployerConfig::default(),
                         )
@@ -456,7 +470,8 @@ impl SessionContextFactory for WorkspaceSessionContextFactory {
             session_folder: Self::resolve_session_folder(session_id),
             session_env,
             notification_handle,
-            owner_session_id: None,
+            owner_session_id: Some(session_id.to_string()),
+            subagent: None,
             parent_scheduler_handle: None,
             skills: vec![],
             state_path: self.resolve_state_path(session_id),
@@ -528,7 +543,7 @@ fn build_web_fetch_config() -> xai_grok_tools::implementations::grok_build::web_
     WebFetchConfig::Enabled { params }
 }
 fn default_web_search_model() -> String {
-    std::env::var("GROK_WEB_SEARCH_MODEL").unwrap_or_else(|_| "grok-4.20-multi-agent".to_string())
+    std::env::var("GROK_WEB_SEARCH_MODEL").unwrap_or_else(|_| "grok-4.5".to_string())
 }
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
@@ -546,6 +561,7 @@ pub mod test_support {
     /// Test factory: builds a `SessionContext` rooted at a per-test temp dir.
     pub struct TestSessionContextFactory {
         pub temp: TempDir,
+        tool_state: bool,
     }
     impl Default for TestSessionContextFactory {
         fn default() -> Self {
@@ -556,6 +572,14 @@ pub mod test_support {
         pub fn new() -> Self {
             Self {
                 temp: TempDir::new().expect("create temp dir"),
+                tool_state: true,
+            }
+        }
+        /// Matches production, where `GROK_WORKSPACE_TOOL_STATE_ENABLED` is unset and the real factory returns an empty path.
+        pub fn without_tool_state() -> Self {
+            Self {
+                tool_state: false,
+                ..Self::new()
             }
         }
     }
@@ -580,9 +604,14 @@ pub mod test_support {
                 session_env,
                 notification_handle: ToolNotificationHandle::noop(),
                 owner_session_id: None,
+                subagent: None,
                 parent_scheduler_handle: None,
                 skills: vec![],
-                state_path: session_root.join("tool_state.json"),
+                state_path: if self.tool_state {
+                    session_root.join("tool_state.json")
+                } else {
+                    PathBuf::new()
+                },
                 memory_backend: None,
                 web_search_config: Default::default(),
                 web_fetch_config: Default::default(),
@@ -721,6 +750,7 @@ mod tests {
             tools: vec![
                 test_support::tc("GrokBuild:search_replace", None),
                 test_support::tc("adhoc.opaque", None),
+                // Pre-set kinds must never be overwritten by the registry.
                 test_support::tc("GrokBuild:read_file", Some(ToolKind::Search)),
             ],
             behavior_preset: Some("current".to_owned()),
@@ -1156,7 +1186,9 @@ mod tests {
             let counter = res.get_or_default::<State<WebCitationCounter>>();
             counter.counter = 123;
         }
-        ts_a.save_and_flush_persistence().await;
+        ts_a.save_and_flush_persistence()
+            .await
+            .expect("the test factory gives this session a state path");
         drop(ts_a);
         let (_eff, ts_b, _backend_b) = resolve_session_toolset(
             test_support::baseline_config(),

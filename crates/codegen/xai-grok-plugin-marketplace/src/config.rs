@@ -268,6 +268,10 @@ pub fn load_extra_sources_from_settings_in(
 mod tests {
     use super::*;
 
+    /// Serializes every test that touches the process-global
+    /// `GROK_MARKETPLACE_REQUIRE_SHA`, so they cannot race each other.
+    static REQUIRE_SHA_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn parse_local_source() {
         let config: toml::Value = toml::from_str(
@@ -281,8 +285,9 @@ mod tests {
         let sources = load_sources(&config);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].name, "Local Dev");
-        assert!(matches!(&sources[0].kind, SourceKind::Local { path }
-if path == &PathBuf::from("/home/user/plugins")));
+        assert!(
+            matches!(&sources[0].kind, SourceKind::Local { path } if path == &PathBuf::from("/home/user/plugins"))
+        );
     }
 
     #[test]
@@ -299,8 +304,9 @@ if path == &PathBuf::from("/home/user/plugins")));
         let sources = load_sources(&config);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].name, "xAI Official");
-        assert!(matches!(&sources[0].kind, SourceKind::Git { url, branch }
-if url.contains("xai-org") && branch.as_deref() == Some("main")));
+        assert!(
+            matches!(&sources[0].kind, SourceKind::Git { url, branch } if url.contains("xai-org") && branch.as_deref() == Some("main"))
+        );
     }
 
     #[test]
@@ -332,8 +338,9 @@ if url.contains("xai-org") && branch.as_deref() == Some("main")));
     #[test]
     fn require_sha_policy_composition() {
         // Process-global env: serialize against any other env-touching test.
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().unwrap();
+        let _guard = REQUIRE_SHA_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
 
         let empty: toml::Value = toml::from_str("").unwrap();
         let enabled: toml::Value = toml::from_str("[marketplace]\nrequire_sha = true\n").unwrap();
@@ -353,6 +360,24 @@ if url.contains("xai-org") && branch.as_deref() == Some("main")));
         );
 
         unsafe { std::env::remove_var("GROK_MARKETPLACE_REQUIRE_SHA") };
+    }
+
+    #[test]
+    fn overlay_cannot_loosen_require_sha() {
+        let _guard = REQUIRE_SHA_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        unsafe { std::env::remove_var("GROK_MARKETPLACE_REQUIRE_SHA") };
+
+        let layers = xai_grok_config::ConfigLayers {
+            user: toml::from_str("[marketplace]\nrequire_sha = true\n").unwrap(),
+            env_overlay: Some(toml::from_str("[marketplace]\nrequire_sha = false\n").unwrap()),
+            ..Default::default()
+        };
+        assert!(load_require_sha(
+            &layers.effective_config_base_without_overlay()
+        ));
+        assert!(!load_require_sha(&layers.effective_config_base()));
     }
 
     #[test]
@@ -395,8 +420,9 @@ if url.contains("xai-org") && branch.as_deref() == Some("main")));
         extract_marketplace_entries(marketplaces, &mut seen, &mut sources);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].name, "my-marketplace");
-        assert!(matches!(&sources[0].kind, SourceKind::Git { url, .. }
-if url == "https://github.com/anthropics/claude-plugins-official.git"));
+        assert!(
+            matches!(&sources[0].kind, SourceKind::Git { url, .. } if url == "https://github.com/anthropics/claude-plugins-official.git")
+        );
     }
 
     #[test]
@@ -417,8 +443,9 @@ if url == "https://github.com/anthropics/claude-plugins-official.git"));
         let mut sources = Vec::new();
         extract_marketplace_entries(marketplaces, &mut seen, &mut sources);
         assert_eq!(sources.len(), 1);
-        assert!(matches!(&sources[0].kind, SourceKind::Git { url, .. }
-if url == "git@github.com:org/repo.git"));
+        assert!(
+            matches!(&sources[0].kind, SourceKind::Git { url, .. } if url == "git@github.com:org/repo.git")
+        );
     }
 
     #[test]

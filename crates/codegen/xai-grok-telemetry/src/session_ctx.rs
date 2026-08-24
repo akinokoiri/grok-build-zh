@@ -5,6 +5,7 @@
 //! Extracted from `xai-grok-shell::agent::telemetry`.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde::Serialize;
 use serde_json::json;
@@ -198,6 +199,71 @@ pub fn emit_event<T: Serialize + Send + 'static>(event_suffix: impl Into<String>
     emit_event_with_origin(EmitterOrigin::Shell, event_suffix, data);
 }
 
+/// Posts spawned by [`emit_event_with_origin`] that haven't finished. Emission
+/// is fire-and-forget so it never blocks a turn, which also means a process
+/// exiting right after emitting drops the event — see [`drain_pending`].
+static PENDING_EVENTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Decrement on every exit path, including a panicking, cancelled, or
+/// never-polled post.
+struct PendingEventGuard;
+
+impl PendingEventGuard {
+    fn register() -> Self {
+        PENDING_EVENTS.fetch_add(1, Ordering::Release);
+        Self
+    }
+}
+
+impl Drop for PendingEventGuard {
+    fn drop(&mut self) {
+        PENDING_EVENTS.fetch_sub(1, Ordering::Release);
+    }
+}
+
+/// Drain bound for one-shot CLI commands. Returns once the post lands
+/// (~1.7s cold); the bound only bites on a black-holed network.
+pub const CLI_DRAIN: std::time::Duration = std::time::Duration::from_secs(5);
+
+const SESSION_EXIT_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
+
+pub(crate) fn drains_at_session_exit(entrypoint: Option<crate::process_info::Entrypoint>) -> bool {
+    use crate::process_info::Entrypoint;
+    matches!(
+        entrypoint,
+        None | Some(Entrypoint::Headless | Entrypoint::Cli)
+    )
+}
+
+/// Session end is process end only for one-shot flows; every other
+/// process drains at [`drain_at_process_exit`].
+pub async fn drain_at_session_exit() {
+    if drains_at_session_exit(crate::process_info::entrypoint()) {
+        drain_pending(SESSION_EXIT_DRAIN).await;
+    }
+}
+
+pub async fn drain_at_process_exit() {
+    drain_pending(SESSION_EXIT_DRAIN).await;
+}
+
+/// Wait (up to `timeout`) for in-flight event posts to finish. For commands
+/// that exit as soon as their work is done; the agent runs long enough that
+/// its events land on their own.
+pub async fn drain_pending(timeout: std::time::Duration) {
+    let deadline = std::time::Instant::now() + timeout;
+    while PENDING_EVENTS.load(Ordering::Acquire) > 0 {
+        if std::time::Instant::now() >= deadline {
+            tracing::debug!(
+                pending = PENDING_EVENTS.load(Ordering::Acquire),
+                "telemetry: gave up draining pending events"
+            );
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
 /// Emit an event whose analytics name is `{origin prefix}{event_suffix}`.
 pub fn emit_event_with_origin<T: Serialize + Send + 'static>(
     origin: EmitterOrigin,
@@ -213,8 +279,18 @@ pub fn emit_event_with_origin<T: Serialize + Send + 'static>(
             )
         })
         .ok();
+    // Read here, not in the spawned post: boundary events see their moment.
+    let activity = crate::activity::ActivitySnapshot::read();
 
+    if tokio::runtime::Handle::try_current().is_err() {
+        // `spawn` below panics without a runtime; counting first would pin the
+        // gauge above zero for the rest of the process.
+        tracing::debug!(event = %event_name, "telemetry: no runtime, dropping event");
+        return;
+    }
+    let pending = PendingEventGuard::register();
     tokio::spawn(async move {
+        let _pending = pending;
         let user_ctx = UserContext::collect();
         let request_id = format!("{}-{}", event_name, uuid::Uuid::new_v4());
 
@@ -235,12 +311,38 @@ pub fn emit_event_with_origin<T: Serialize + Send + 'static>(
             }
         }
 
+        if let Ok(serde_json::Value::Object(gauges)) = serde_json::to_value(activity) {
+            for (key, value) in gauges {
+                metadata.entry(key).or_insert(value);
+            }
+        }
+
         client::track(&event_name, &request_id, &user_ctx, metadata).await;
     });
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_one_shot_flows_drain_at_session_exit() {
+        use crate::process_info::Entrypoint;
+        use crate::session_ctx::drains_at_session_exit;
+        assert!(drains_at_session_exit(None), "undeclared stays fail-open");
+        assert!(drains_at_session_exit(Some(Entrypoint::Headless)));
+        assert!(drains_at_session_exit(Some(Entrypoint::Cli)));
+        for outlives in [
+            Entrypoint::Embedded,
+            Entrypoint::Pager,
+            Entrypoint::Leader,
+            Entrypoint::Workspace,
+        ] {
+            assert!(
+                !drains_at_session_exit(Some(outlives)),
+                "{outlives:?} outlives its sessions and must not block teardown"
+            );
+        }
+    }
+
     use super::*;
 
     /// The debug-log firehose router (`debug_log`) finds the session span by its
@@ -262,6 +364,30 @@ mod tests {
                 "session span must expose `{SESSION_ID_FIELD}` for debug-log routing",
             );
         });
+    }
+
+    /// What a command exiting right after emitting (`grok login`) relies on.
+    /// Asserts on the wait, not on the gauge: it is process-global and other
+    /// tests in this binary emit concurrently.
+    #[tokio::test]
+    async fn drain_pending_waits_for_in_flight_posts() {
+        emit_event_with_origin(
+            EmitterOrigin::Shell,
+            "drain_probe",
+            json!({ "probe": true }),
+        );
+        assert!(
+            PENDING_EVENTS.load(Ordering::Acquire) > 0,
+            "emission must register before the post is awaited"
+        );
+
+        let started = std::time::Instant::now();
+        let budget = std::time::Duration::from_secs(5);
+        drain_pending(budget).await;
+        assert!(
+            started.elapsed() < budget,
+            "drain must observe the post finish, not time out"
+        );
     }
 
     /// Event-name prefixes are wire contract — analytics queries match on them, so

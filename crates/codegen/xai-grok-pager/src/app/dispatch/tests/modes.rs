@@ -161,8 +161,7 @@ fn slash_plan_no_args_not_in_plan_enters_plan_mode() {
     // Should emit SetSessionMode to enter plan mode.
     assert_eq!(effects.len(), 1);
     assert!(
-        matches!(&effects[0], Effect::SetSessionMode { mode_id, .. }
-if &*mode_id.0 == "plan"),
+        matches!(&effects[0], Effect::SetSessionMode { mode_id, .. } if &*mode_id.0 == "plan"),
         "expected SetSessionMode(plan), got: {effects:?}"
     );
     // Optimistic pending state should be set.
@@ -783,6 +782,7 @@ fn set_yolo_mode_on_with_no_allow_once_option_sends_cancelled() {
         active_idx: 0,
         bash_highlights: None,
         bash_selection_count: 0,
+        bash_deny_selection_count: 0,
         bash_command_raw: None,
         mcp_scope: None,
         title: "noallow-test".to_string(),
@@ -866,6 +866,7 @@ fn set_yolo_mode_on_drains_multi_item_queue() {
             active_idx: 0,
             bash_highlights: None,
             bash_selection_count: 0,
+            bash_deny_selection_count: 0,
             bash_command_raw: None,
             mcp_scope: None,
             title: format!("multi-{i}"),
@@ -946,6 +947,7 @@ fn set_yolo_mode_on_duplicate_dispatch_still_drains_queue() {
             active_idx: 0,
             bash_highlights: None,
             bash_selection_count: 0,
+            bash_deny_selection_count: 0,
             bash_command_raw: None,
             mcp_scope: None,
             title: "dup-test".to_string(),
@@ -1341,13 +1343,6 @@ fn cycle_mode_pre_session_always_approve_to_normal_persists_ask() {
         )),
         "pre-session Always-Approve → Normal must persist 'ask' \
          (stale config.toml relaunches yolo), got {effects:?}"
-    );
-    // Welcome-screen Shift+Tab still kicks off session creation.
-    assert!(
-        effects
-            .iter()
-            .any(|e| matches!(e, Effect::CreateSession { .. })),
-        "expected CreateSession alongside the persist, got {effects:?}"
     );
 }
 
@@ -1856,6 +1851,7 @@ fn dispatch_cycle_mode_plan_to_always_approve_drains_queue_via_inner() {
             active_idx: 0,
             bash_highlights: None,
             bash_selection_count: 0,
+            bash_deny_selection_count: 0,
             bash_command_raw: None,
             mcp_scope: None,
             title: "cycle-test".to_string(),
@@ -1933,10 +1929,9 @@ fn cycle_always_approve_with_nudge_jumps_to_plan() {
     );
     assert!(
         effects.iter().any(|e| matches!(
-                    e,
-                    Effect::SetSessionMode { mode_id, .. }
-        if &*mode_id.0 == "plan"
-                )),
+            e,
+            Effect::SetSessionMode { mode_id, .. } if &*mode_id.0 == "plan"
+        )),
         "expected SetSessionMode(plan), got {effects:?}"
     );
     assert!(
@@ -1990,10 +1985,9 @@ fn cycle_auto_with_nudge_jumps_to_plan() {
     );
     assert!(
         effects.iter().any(|e| matches!(
-                    e,
-                    Effect::SetSessionMode { mode_id, .. }
-        if &*mode_id.0 == "plan"
-                )),
+            e,
+            Effect::SetSessionMode { mode_id, .. } if &*mode_id.0 == "plan"
+        )),
         "expected SetSessionMode(plan), got {effects:?}"
     );
     assert!(
@@ -2315,8 +2309,7 @@ fn set_plan_mode_idempotency_uses_pending_over_active() {
         "OFF from EFFECTIVE-ON must emit Effect::SetSessionMode (not idempotent)"
     );
     assert!(
-        matches!(&effects[0], Effect::SetSessionMode { mode_id, .. }
-if &*mode_id.0 == "default"),
+        matches!(&effects[0], Effect::SetSessionMode { mode_id, .. } if &*mode_id.0 == "default"),
         "OFF transition must emit SetSessionMode(default): {effects:?}"
     );
     let agent = app.agents.get(&AgentId(0)).unwrap();

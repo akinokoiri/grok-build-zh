@@ -6,7 +6,6 @@
 //! [`AgentMessageBlock`](super::AgentMessageBlock) and
 //! [`ThinkingBlock`](super::ThinkingBlock).
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 
 use ratatui::text::Line;
@@ -68,17 +67,6 @@ pub struct WrappedLines<'a> {
     pub joiners: &'a [Option<String>],
 }
 
-/// Expand tab characters to spaces using the current global tab_width.
-///
-/// Returns `Cow::Borrowed` when the input contains no tabs (zero-copy fast path).
-fn expand_tabs(text: &str) -> Cow<'_, str> {
-    let tw = crate::appearance::tab_width();
-    if tw == 0 || !text.contains('\t') {
-        return Cow::Borrowed(text);
-    }
-    Cow::Owned(text.replace('\t', &" ".repeat(tw as usize)))
-}
-
 impl MarkdownContent {
     /// Create with initial text (rendered immediately).
     pub fn new(text: impl Into<String>) -> Self {
@@ -113,7 +101,7 @@ impl MarkdownContent {
         renderer.set_max_table_width(max_table_width);
         renderer.set_collapse_soft_breaks(collapse_soft_breaks);
         let text = text.into();
-        let expanded = expand_tabs(&text);
+        let expanded = xai_grok_pager_render::appearance::expand_tabs(&text);
         renderer.push(&expanded);
         // finish() (not render()) so the streaming LaTeX-delimiter normalizer
         // flushes any trailing held-back delimiter bytes for this complete,
@@ -155,7 +143,7 @@ impl MarkdownContent {
 
     /// Append a streaming chunk and re-render.
     pub fn push_chunk(&mut self, chunk: &str) {
-        let expanded = expand_tabs(chunk);
+        let expanded = xai_grok_pager_render::appearance::expand_tabs(chunk);
         self.state
             .get_mut()
             .renderer
@@ -168,7 +156,7 @@ impl MarkdownContent {
     /// Used for historical replay during `session/load` so the pager can batch
     /// markdown work and render once after replay completes.
     pub fn push_chunk_deferred(&mut self, chunk: &str) {
-        let expanded = expand_tabs(chunk);
+        let expanded = xai_grok_pager_render::appearance::expand_tabs(chunk);
         self.state.get_mut().renderer.push(&expanded);
         self.generation += 1;
     }
@@ -534,6 +522,41 @@ mod tests {
                 width,
                 "table line {i} must fill the content width, got {:?}",
                 text
+            );
+        }
+    }
+
+    /// In-cell reflow regression: a six-column table of unbreakable tokens at
+    /// width 30 must keep its right border on every line — a table that
+    /// overflows the budget gets hard-clipped by the wrap layer, which eats
+    /// the right `│`.
+    #[test]
+    fn test_six_col_table_output_30_keeps_right_border() {
+        use unicode_width::UnicodeWidthStr;
+
+        let md = "| Alpha | Bravo | Ident | DeptName | RoleName | Amount |\n\
+                  |---|---|---|---|---|---|\n\
+                  | LongalphaToken | TokenTwo | ID-AA1001 | EngineeringOps | ManagerRole | $145,000 |\n";
+        let width = 30;
+        let out = MarkdownContent::new(md).output(width);
+
+        assert!(out.lines.len() >= 5, "table should produce borders + rows");
+        for (i, line) in out.lines.iter().enumerate() {
+            let text: String = line
+                .content
+                .spans
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect();
+            assert_eq!(
+                text.width(),
+                width,
+                "table line {i} must fill the content width, got {text:?}"
+            );
+            let right_edge = text.trim_end().chars().last();
+            assert!(
+                matches!(right_edge, Some('│' | '┐' | '┘' | '┤')),
+                "table line {i} lost its right border: {text:?}"
             );
         }
     }

@@ -54,11 +54,15 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
             let app = axum::Router::new().route(
                 "/v1/models-v2",
                 get(|| async {
-                    axum::Json(serde_json::json!(
-                        { "data" : [{ "model" : "test-model", "name" : "Test Model",
-                        "context_window" : 300_000, "max_completion_tokens" : 16384,
-                        "base_url" : "http://localhost/v1" }] }
-                    ))
+                    axum::Json(serde_json::json!({
+                        "data": [{
+                            "model": "test-model",
+                            "name": "Test Model",
+                            "context_window": 300_000,
+                            "max_completion_tokens": 16384,
+                            "base_url": "http://localhost/v1"
+                        }]
+                    }))
                 }),
             );
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -88,9 +92,11 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
             let state = TokioMutex::new(State {
                 running_task: None,
                 pending_inputs: VecDeque::new(),
+                edit_holds: HashMap::new(),
                 pending_notifications: Vec::new(),
                 notifications_suppressed: false,
                 rewindable: false,
+                front_message_committed: false,
                 nudges_used_this_session: 0,
             });
             let (chat_event_tx, _) = tokio::sync::mpsc::unbounded_channel();
@@ -105,6 +111,8 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                     top_p: None,
                     api_backend: Default::default(),
                     extra_headers: Default::default(),
+                    query_params: Default::default(),
+                    env_http_headers: Default::default(),
                     context_window: std::num::NonZeroU64::new(200_000).unwrap(),
                     reasoning_effort: None,
                     stream_tool_calls: None,
@@ -121,6 +129,7 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
             });
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             let actor = SessionActor {
+                status_wake: Default::default(),
                 session_info: SessionInfo {
                     id: acp::SessionId::new("test-idle-resume"),
                     cwd: cwd.as_str().to_string(),
@@ -143,18 +152,23 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                     std::mem::forget(dir);
                     Some(mgr)
                 },
+                is_chat_kind: false,
                 state,
                 notifications: NotificationSender {
                     gateway: GatewaySender::new(gateway_tx),
                     gateway_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
                     persistence_tx,
+                    disk_full: crate::session::notifications::idle_disk_full_rx(),
                 },
                 permissions: xai_grok_workspace::permission::PermissionHandle::allow_all(),
                 tool_context,
                 deny_read_globs: Vec::new(),
                 mcp_state: Arc::new(TokioMutex::new(McpState::new(vec![]))),
-                mcp_strategy: McpInitStrategy::Blocking,
+                mcp_strategy: std::cell::Cell::new(McpInitStrategy::Blocking),
+                delivery_tools: std::cell::RefCell::new(Vec::new()),
+                attach_non_interactive: std::rc::Rc::new(std::cell::Cell::new(false)),
                 chat_state_handle,
+                unattributed_background_usage: std::sync::atomic::AtomicBool::new(false),
                 current_prompt_id: std::sync::Arc::new(std::sync::Mutex::new(None)),
                 pending_interactions: std::sync::Arc::new(std::sync::Mutex::new(
                     std::collections::HashMap::new(),
@@ -164,6 +178,8 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 turn_prompt_mode: Arc::new(parking_lot::Mutex::new(PromptMode::Agent)),
                 telemetry_enabled: false,
                 supports_backend_search: std::cell::Cell::new(false),
+                tool_overrides: std::cell::RefCell::new(None),
+                resolved_tool_overrides: std::sync::Arc::new(arc_swap::ArcSwapOption::empty()),
                 compactions_remaining: std::cell::Cell::new(None),
                 compaction_at_tokens: std::cell::Cell::new(None),
                 doom_loop_recovery: None,
@@ -184,6 +200,7 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                     tool_choice: crate::util::config::CompactionToolChoice::Auto,
                     prefire: crate::session::compaction_config::PrefireState::default(),
                     prefix_released: std::sync::atomic::AtomicBool::new(false),
+                    cancel: Default::default(),
                 },
                 memory: crate::session::memory_state::SessionMemory {
                     flush_config: crate::config::MemoryFlushConfig::default(),
@@ -210,6 +227,7 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 session_start: std::time::Instant::now(),
                 inference_idle_timeout: Duration::from_secs(300),
                 max_retries: 3,
+                rate_limit_waits: crate::session::acp_session::RateLimitWaitConfig::default(),
                 max_turns: None,
                 pending_interjections: InterjectionBuffer::new(),
                 pending_skill_reminders: Mutex::new(Vec::new()),
@@ -226,6 +244,7 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 agent: std::cell::RefCell::new(test_agent_default().await),
                 last_reported_branch: std::sync::Arc::new(parking_lot::Mutex::new(None)),
                 git_head_enabled: false,
+                status_line_enabled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 models_manager: Default::default(),
                 display_cwd: std::sync::OnceLock::new(),
                 active_agent_type: parking_lot::Mutex::new(None),
@@ -239,6 +258,7 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                     )),
                 )),
                 goal_enabled: false,
+                background_workflows_enabled: false,
                 goal_harness_enabled: std::sync::atomic::AtomicBool::new(false),
                 goal_harness_availability_reconciled: std::sync::atomic::AtomicBool::new(false),
                 goal_tracker: Arc::new(parking_lot::Mutex::new(
@@ -249,10 +269,11 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 goal_turn_task_ids: parking_lot::Mutex::new(std::collections::HashSet::new()),
                 goal_continuation_streak: std::sync::atomic::AtomicU32::new(0),
                 goal_blocked_streak: std::sync::atomic::AtomicU32::new(0),
-                goal_update_rx: std::cell::RefCell::new(Some(
-                    tokio::sync::mpsc::unbounded_channel().1,
-                )),
+                goal_update_rx: std::cell::RefCell::new(None),
                 goal_update_tx: tokio::sync::mpsc::unbounded_channel().0,
+                workflow_manager: crate::session::workflow::manager::WorkflowManager::test_bundle()
+                    .0,
+                workflow_launch_tx: tokio::sync::mpsc::unbounded_channel().0,
                 goal_classifier_enabled: false,
                 goal_planner_enabled: false,
                 goal_summary_enabled: false,
@@ -264,10 +285,11 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 goal_strategist_every: 5,
                 goal_reverify_after: crate::session::acp_session::GOAL_REVERIFY_AFTER_DEFAULT,
                 goal_plan_reconciled: std::sync::atomic::AtomicBool::new(false),
-                pending_classifier_completions: parking_lot::Mutex::new(VecDeque::new()),
+                pending_classifier_completions: parking_lot::Mutex::new(
+                    std::collections::VecDeque::new(),
+                ),
                 goal_classifier_in_flight: std::sync::atomic::AtomicBool::new(false),
                 managed_mcp_handle: Default::default(),
-                managed_mcp_expires_at: std::sync::Mutex::new(None),
                 initial_client_mcp_servers: vec![],
                 tool_metadata_snapshot: Arc::new(std::sync::Mutex::new(Default::default())),
                 mcp_announced_servers: Mutex::new(HashMap::new()),
@@ -277,12 +299,17 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 mcp_handshakes_done: Arc::new(tokio::sync::Notify::new()),
                 user_input_generation: std::sync::atomic::AtomicU64::new(0),
                 laziness_debug_log: None,
+                last_live_orphan_reconcile: std::cell::Cell::new(None),
                 deferred_prefix: TaskSlot::new(),
                 extension_registry: xai_agent_lifecycle::LocalExtensionRegistry::default(),
                 last_announced_local_date: std::cell::Cell::new(chrono::Local::now().date_naive()),
+                prefix_carries_fallback_date: std::cell::Cell::new(false),
                 last_search_prompt_index: std::sync::atomic::AtomicI64::new(-1),
                 last_api_request_at: std::sync::atomic::AtomicI64::new(0),
                 hook_registry: std::cell::RefCell::new(None),
+                turn_report: Default::default(),
+                turn_abort: Default::default(),
+                turn_end_tx: Default::default(),
                 client_hooks: Default::default(),
                 hook_resolved_workspace_root: String::new(),
                 vcs_kind: xai_grok_workspace::session::git::VcsKind::Git,
@@ -295,9 +322,17 @@ async fn test_e2e_idle_resume_refreshes_model_metadata() {
                 last_recap_main_turn: std::cell::Cell::new(0),
                 recap_in_flight: std::cell::Cell::new(false),
                 recap_epoch: std::cell::Cell::new(0),
+                turn_summary_task: std::cell::RefCell::new(None),
+                turn_summary_generation: std::cell::Cell::new(0),
+                title_refresh_task: std::cell::RefCell::new(None),
+                title_refresh_generation: std::cell::Cell::new(0),
+                next_title_refresh_idx: std::cell::Cell::new(0),
+                turn_summary_enabled: false,
+                title_refresh_enabled: false,
                 session_turn_active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 streaming_turn_capture: parking_lot::Mutex::new(StreamingTurnCapture::default()),
                 turn_stream_drained: parking_lot::Mutex::new(None),
+                pending_image_strip: parking_lot::Mutex::new(None),
                 sampler_handle: xai_grok_sampler::SamplerHandle::noop(),
                 rebuild_spec: crate::session::agent_rebuild::test_rebuild_spec_default(),
                 image_description_model: crate::test_support::TEST_MODEL.to_owned(),

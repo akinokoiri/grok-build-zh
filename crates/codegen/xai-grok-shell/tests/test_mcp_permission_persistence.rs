@@ -157,7 +157,7 @@ async fn request(handle: &PermissionHandle, access: AccessKind, id: &str) -> Dec
     let cmd = PermissionCommand::Request {
         access,
         tool_call_update: tool_call_update(id, "mcp"),
-        edit_path_context: None,
+        path_context: None,
         respond_to: tx,
         session_id: None,
         subagent_type: None,
@@ -167,7 +167,7 @@ async fn request(handle: &PermissionHandle, access: AccessKind, id: &str) -> Dec
         panic!("expected actor handle");
     };
     cmd_tx.send(cmd).unwrap();
-    rx.await.unwrap()
+    rx.await.unwrap().decision
 }
 
 /// Build an MCP access kind from a tool name; these persistence tests only
@@ -332,7 +332,7 @@ async fn fallback_client_plain_allow_always_persists_mcp_tool() {
 #[tokio::test]
 #[serial]
 async fn policy_ask_suppresses_mcp_tool_allowlist() {
-    // With `remember_tool_approvals` OFF (the default), a policy `Ask` rule on an
+    // With `remember_tool_approvals` OFF (explicitly disabled), a policy `Ask` rule on an
     // MCP tool overrides a session tool-scope grant: the actor must prompt rather
     // than auto-allow. (The gate-ON "grant satisfies ask" path is covered by the
     // `mcp_pre_decision` unit tests in `manager.rs`.)

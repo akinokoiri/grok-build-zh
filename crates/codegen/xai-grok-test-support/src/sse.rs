@@ -47,7 +47,10 @@ pub fn messages_api_events(text: &str, model: &str, stop_reason: &str) -> Vec<Ev
 /// (whitespace-collapsing; use [`chat_completion_events_exact`] when the
 /// receiver must reconstruct `text` byte-for-byte).
 pub fn chat_completion_events(text: &str, model: &str) -> Vec<Event> {
-    chat_completion_events_from_deltas(&space_prefixed_deltas(text.split_whitespace()), model)
+    scripted_to_axum(chat_completion_script_from_deltas(
+        &space_prefixed_deltas(text.split_whitespace()),
+        model,
+    ))
 }
 
 /// Like [`chat_completion_events`] but byte-exact: concatenating the deltas
@@ -55,7 +58,12 @@ pub fn chat_completion_events(text: &str, model: &str) -> Vec<Event> {
 /// Fenced code blocks (mermaid etc.) need their newlines to parse as a block,
 /// which `split_whitespace` would destroy.
 pub fn chat_completion_events_exact(text: &str, model: &str) -> Vec<Event> {
-    chat_completion_events_from_deltas(&chat_completion_deltas(text), model)
+    scripted_to_axum(chat_completion_script_exact(text, model))
+}
+
+/// Byte-exact Chat Completions events for a [`crate::ScriptedResponse`].
+pub fn chat_completion_script_exact(text: &str, model: &str) -> Vec<SseEvent> {
+    chat_completion_script_from_deltas(&chat_completion_deltas(text), model)
 }
 
 /// Split `text` into deltas that reconstruct it byte-for-byte: the first
@@ -80,7 +88,7 @@ fn space_prefixed_deltas<'a>(words: impl Iterator<Item = &'a str>) -> Vec<String
         .collect()
 }
 
-fn chat_completion_events_from_deltas(deltas: &[String], model: &str) -> Vec<Event> {
+fn chat_completion_script_from_deltas(deltas: &[String], model: &str) -> Vec<SseEvent> {
     let n = deltas.len();
     let mut events = Vec::new();
 
@@ -116,28 +124,25 @@ fn chat_completion_events_from_deltas(deltas: &[String], model: &str) -> Vec<Eve
                 }]
             })
         };
-        events.push(Event::default().data(chunk.to_string()));
+        events.push(SseEvent::data(chunk.to_string()));
     }
 
-    // Usage chunk
-    events.push(
-        Event::default().data(
-            json!({
-                "id": "chatcmpl-test",
-                "object": "chat.completion.chunk",
-                "created": 1234567890,
-                "model": model,
-                "choices": [],
-                "usage": {
-                    "prompt_tokens": 10,
-                    "completion_tokens": n,
-                    "total_tokens": 10 + n
-                }
-            })
-            .to_string(),
-        ),
-    );
-    events.push(Event::default().data("[DONE]"));
+    events.push(SseEvent::data(
+        json!({
+            "id": "chatcmpl-test",
+            "object": "chat.completion.chunk",
+            "created": 1234567890,
+            "model": model,
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": n,
+                "total_tokens": 10 + n
+            }
+        })
+        .to_string(),
+    ));
+    events.push(SseEvent::data("[DONE]"));
     events
 }
 
@@ -149,13 +154,18 @@ pub fn responses_api_events(text: &str, model: &str) -> Vec<Event> {
         .split_whitespace()
         .map(|word| format!("{word} "))
         .collect();
-    responses_api_events_from_deltas(&deltas, text, model)
+    scripted_to_axum(responses_api_script_from_deltas(&deltas, text, model))
 }
 
 /// Like [`responses_api_events`] but byte-exact: concatenating the deltas
 /// reproduces `text` byte-for-byte (newlines and whitespace runs preserved).
 pub fn responses_api_events_exact(text: &str, model: &str) -> Vec<Event> {
-    responses_api_events_from_deltas(&responses_api_deltas(text), text, model)
+    scripted_to_axum(responses_api_script_exact(text, model))
+}
+
+/// Byte-exact Responses API events for a [`crate::ScriptedResponse`].
+pub fn responses_api_script_exact(text: &str, model: &str) -> Vec<SseEvent> {
+    responses_api_script_from_deltas(&responses_api_deltas(text), text, model)
 }
 
 /// `split_inclusive(' ')` keeps each chunk's trailing space, so concatenating
@@ -166,85 +176,89 @@ fn responses_api_deltas(text: &str) -> Vec<String> {
 
 // `deltas` and `text` deliberately disagree in echo mode: collapsed deltas, uncollapsed
 // `response.completed` text — inherited load-bearing shell behavior, do not unify.
-fn responses_api_events_from_deltas(deltas: &[String], text: &str, model: &str) -> Vec<Event> {
+fn responses_api_script_from_deltas(deltas: &[String], text: &str, model: &str) -> Vec<SseEvent> {
     let mut events = Vec::new();
     let mut seq = 0;
 
-    // response.created
-    events.push(
-        Event::default().data(
-            json!({
-                "type": "response.created",
-                "sequence_number": seq,
-                "response": {
-                    "id": "resp_test",
-                    "object": "response",
-                    "created_at": 1234567890,
-                    "model": model,
-                    "status": "in_progress",
-                    "output": []
-                }
-            })
-            .to_string(),
-        ),
-    );
+    events.push(SseEvent::data(
+        json!({
+            "type": "response.created",
+            "sequence_number": seq,
+            "response": {
+                "id": "resp_test",
+                "object": "response",
+                "created_at": 1234567890,
+                "model": model,
+                "status": "in_progress",
+                "output": []
+            }
+        })
+        .to_string(),
+    ));
     seq += 1;
 
-    // Text deltas
     for chunk in deltas {
-        events.push(
-            Event::default().data(
-                json!({
-                    "type": "response.output_text.delta",
-                    "sequence_number": seq,
-                    "item_id": "item_test",
-                    "output_index": 0,
-                    "content_index": 0,
-                    "delta": chunk
-                })
-                .to_string(),
-            ),
-        );
+        events.push(SseEvent::data(
+            json!({
+                "type": "response.output_text.delta",
+                "sequence_number": seq,
+                "item_id": "item_test",
+                "output_index": 0,
+                "content_index": 0,
+                "delta": chunk
+            })
+            .to_string(),
+        ));
         seq += 1;
     }
 
-    // response.completed
-    events.push(
-        Event::default().data(
-            json!({
-                "type": "response.completed",
-                "sequence_number": seq,
-                "response": {
-                    "id": "resp_test",
-                    "object": "response",
-                    "created_at": 1234567890,
-                    "model": model,
+    events.push(SseEvent::data(
+        json!({
+            "type": "response.completed",
+            "sequence_number": seq,
+            "response": {
+                "id": "resp_test",
+                "object": "response",
+                "created_at": 1234567890,
+                "model": model,
+                "status": "completed",
+                "output": [{
+                    "type": "message",
+                    "id": "msg_test",
+                    "role": "assistant",
                     "status": "completed",
-                    "output": [{
-                        "type": "message",
-                        "id": "msg_test",
-                        "role": "assistant",
-                        "status": "completed",
-                        "content": [{
-                            "type": "output_text",
-                            "text": text,
-                            "annotations": []
-                        }]
-                    }],
-                    "usage": {
-                        "input_tokens": 10,
-                        "output_tokens": 5,
-                        "total_tokens": 15,
-                        "input_tokens_details": { "cached_tokens": 0 },
-                        "output_tokens_details": { "reasoning_tokens": 0 }
-                    }
+                    "content": [{
+                        "type": "output_text",
+                        "text": text,
+                        "annotations": []
+                    }]
+                }],
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                    "input_tokens_details": { "cached_tokens": 0 },
+                    "output_tokens_details": { "reasoning_tokens": 0 }
                 }
-            })
-            .to_string(),
-        ),
-    );
-    events.push(Event::default().data("[DONE]"));
+            }
+        })
+        .to_string(),
+    ));
+    events.push(SseEvent::data("[DONE]"));
     events
+}
+
+fn scripted_to_axum(events: Vec<SseEvent>) -> Vec<Event> {
+    events
+        .into_iter()
+        .map(|scripted| {
+            let event = Event::default().data(scripted.data);
+            match scripted.event {
+                Some(name) => event.event(name),
+                None => event,
+            }
+        })
+        .collect()
 }
 
 /// Generate Responses API SSE events for a reasoning-only completion: the
@@ -555,6 +569,109 @@ pub fn responses_api_with_doom_loop_frame(
     events.insert(
         1,
         SseEvent::with_event(DOOM_LOOP_CHECK_EVENT, check_frame_data),
+    );
+    events
+}
+
+/// Replace the `output` list of a turn's terminal `response.completed` frame,
+/// composing over any turn builder. The deltas the turn streamed are left
+/// alone, so a caller can script a terminal shape that deliberately differs
+/// from them — a reasoning item carrying `encrypted_content`, or a tool item
+/// (`mcp_call`) the conversation form does not model.
+pub fn with_terminal_output_items(
+    mut events: Vec<SseEvent>,
+    output: Vec<serde_json::Value>,
+) -> Vec<SseEvent> {
+    let at = completed_frame_index(&events);
+    let mut value: serde_json::Value =
+        serde_json::from_str(&events[at].data).expect("the completed frame is valid JSON");
+    value["response"]["output"] = json!(output);
+    events[at].data = value.to_string();
+    events
+}
+
+/// Index of a turn's terminal `response.completed` frame.
+fn completed_frame_index(events: &[SseEvent]) -> usize {
+    events
+        .iter()
+        .position(|event| {
+            serde_json::from_str::<serde_json::Value>(&event.data)
+                .ok()
+                .is_some_and(|value| value["type"] == "response.completed")
+        })
+        .expect("turn builders always emit a response.completed frame")
+}
+
+/// Splice ONE named `response.doom_loop_check` frame in just before the first
+/// frame of `before_type`, composing over any turn builder. An armed client
+/// observes the signal and aborts on that next frame, so the caller chooses
+/// which frame the abort lands on — `response.function_call_arguments.delta`
+/// to abort on tool activity, for instance. Panics when the turn has no such
+/// frame, since that is a script bug.
+pub fn with_doom_loop_frame_before_type(
+    mut events: Vec<SseEvent>,
+    check_frame_data: &str,
+    before_type: &str,
+) -> Vec<SseEvent> {
+    let at = events
+        .iter()
+        .position(|event| {
+            serde_json::from_str::<serde_json::Value>(&event.data)
+                .ok()
+                .is_some_and(|value| value["type"] == before_type)
+        })
+        .unwrap_or_else(|| panic!("the turn emits no {before_type} frame"));
+    events.insert(
+        at,
+        SseEvent::with_event(DOOM_LOOP_CHECK_EVENT, check_frame_data),
+    );
+    events
+}
+
+/// Splice ONE named `response.doom_loop_check` frame in just before a turn's
+/// terminal `response.completed`, composing over any turn builder (the
+/// think-then-call turn, for instance). The frame is the last thing an armed
+/// client sees before the terminal frame, so the signal lands with the turn's
+/// items complete — the terminal-detection lane. Append a non-terminal event
+/// after it (as
+/// [`responses_api_with_doom_loop_frame_after_text`] does) to exercise the
+/// mid-stream abort instead.
+pub fn with_doom_loop_frame_before_completed(
+    events: Vec<SseEvent>,
+    check_frame_data: &str,
+) -> Vec<SseEvent> {
+    with_doom_loop_frame_before_type(events, check_frame_data, "response.completed")
+}
+
+/// A reasoning + text turn whose check frame arrives after all of its text,
+/// followed by an empty typed delta — a non-terminal event that observes the
+/// signal, so the mid-stream abort fires with the whole streamed turn already
+/// captured. Exercises the exact text a client retains before detection.
+pub fn responses_api_with_doom_loop_frame_after_text(
+    check_frame_data: &str,
+    reasoning: &str,
+    text: &str,
+    model: &str,
+) -> Vec<SseEvent> {
+    let mut events = with_doom_loop_frame_before_completed(
+        responses_api_reasoning_and_text_events(reasoning, text, model),
+        check_frame_data,
+    );
+    let at = completed_frame_index(&events);
+    events.insert(
+        at,
+        SseEvent::data(
+            json!({
+                "type": "response.output_text.delta",
+                "sequence_number": at,
+                "item_id": "item_test",
+                "output_index": 1,
+                "content_index": 0,
+                "delta": "",
+                "logprobs": []
+            })
+            .to_string(),
+        ),
     );
     events
 }
@@ -1100,5 +1217,126 @@ mod tests {
         assert_eq!(events[1].data, payload);
         let created: serde_json::Value = serde_json::from_str(&events[0].data).unwrap();
         assert_eq!(created["type"], "response.created");
+    }
+
+    /// Shape guard for the positional composer: the named frame lands
+    /// immediately before the first frame of the requested type, so an armed
+    /// client aborts on that frame.
+    #[test]
+    fn with_doom_loop_frame_before_type_lands_before_the_named_frame() {
+        let payload = r#"{"type":"response.doom_loop_check","doom_loop_check":{"triggers":["tail_repetition:8@thinking"]}}"#;
+        let events = with_doom_loop_frame_before_type(
+            responses_api_reasoning_then_tool_call_events("hm", "call-1", "read_file", "{}", "m"),
+            payload,
+            "response.function_call_arguments.delta",
+        );
+
+        let at = events
+            .iter()
+            .position(|e| e.event.as_deref() == Some(DOOM_LOOP_CHECK_EVENT))
+            .expect("the named frame is spliced in");
+        assert_eq!(events[at].data, payload);
+        let next: serde_json::Value = serde_json::from_str(&events[at + 1].data).unwrap();
+        assert_eq!(next["type"], "response.function_call_arguments.delta");
+    }
+
+    /// Shape guard for the terminal-output composer: the completed frame
+    /// carries exactly the caller's items (including wire shapes the
+    /// conversation form does not model), the rest of the frame survives, and
+    /// the streamed deltas are untouched.
+    #[test]
+    fn with_terminal_output_items_replaces_only_the_completed_output() {
+        let events = with_terminal_output_items(
+            responses_api_reasoning_and_text_events("thinking", "the answer", "m"),
+            vec![json!({
+                "type": "mcp_call",
+                "id": "mcp-1",
+                "name": "search",
+                "server_label": "docs",
+                "arguments": "{}"
+            })],
+        );
+
+        let parsed: Vec<serde_json::Value> = events
+            .iter()
+            .filter(|e| e.data != "[DONE]")
+            .map(|e| serde_json::from_str(&e.data).expect("each event is valid JSON"))
+            .collect();
+        assert!(
+            parsed
+                .iter()
+                .any(|v| v["type"] == "response.output_text.delta"),
+            "the streamed deltas are left alone"
+        );
+        let completed = parsed
+            .iter()
+            .find(|v| v["type"] == "response.completed")
+            .expect("must emit a completed event");
+        let output = completed["response"]["output"].as_array().unwrap();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0]["type"], "mcp_call");
+        assert_eq!(
+            completed["response"]["model"], "m",
+            "the rest of the frame survives"
+        );
+    }
+
+    /// Shape guard for the terminal-side composer: the caller's payload rides
+    /// verbatim in the slot immediately before `response.completed`, over an
+    /// arbitrary turn builder (here the think-then-call turn).
+    #[test]
+    fn with_doom_loop_frame_before_completed_lands_last_before_the_terminal_frame() {
+        let payload = r#"{"type":"response.doom_loop_check","doom_loop_check":{"triggers":["tail_repetition:8@thinking"]}}"#;
+        let events = with_doom_loop_frame_before_completed(
+            responses_api_reasoning_then_tool_call_events("hm", "call-1", "read_file", "{}", "m"),
+            payload,
+        );
+
+        let at = events
+            .iter()
+            .position(|e| e.event.as_deref() == Some(DOOM_LOOP_CHECK_EVENT))
+            .expect("the named frame is spliced in");
+        assert_eq!(events[at].data, payload);
+        let next: serde_json::Value = serde_json::from_str(&events[at + 1].data).unwrap();
+        assert_eq!(
+            next["type"], "response.completed",
+            "the frame is the last event before the terminal frame"
+        );
+        let output = next["response"]["output"].as_array().unwrap();
+        assert!(
+            output.iter().any(|o| o["type"] == "function_call"),
+            "the composed turn keeps its tool call"
+        );
+    }
+
+    /// Shape guard for the mid-stream variant: the check frame follows every
+    /// text delta and is itself followed by one empty typed delta — the
+    /// non-terminal event an armed client aborts on — before the terminal
+    /// frame.
+    #[test]
+    fn doom_loop_frame_after_text_is_followed_by_an_empty_delta() {
+        let payload = r#"{"type":"response.doom_loop_check","doom_loop_check":{"triggers":["tail_repetition:8@thinking"]}}"#;
+        let events =
+            responses_api_with_doom_loop_frame_after_text(payload, "hm", "the answer", "m");
+
+        let at = events
+            .iter()
+            .position(|e| e.event.as_deref() == Some(DOOM_LOOP_CHECK_EVENT))
+            .expect("the named frame is spliced in");
+        let text_delta_before = events[..at]
+            .iter()
+            .filter(|e| e.data != "[DONE]")
+            .filter_map(|e| serde_json::from_str::<serde_json::Value>(&e.data).ok())
+            .any(|v| v["type"] == "response.output_text.delta");
+        assert!(
+            text_delta_before,
+            "the frame arrives after the turn's visible text"
+        );
+
+        let next: serde_json::Value = serde_json::from_str(&events[at + 1].data).unwrap();
+        assert_eq!(next["type"], "response.output_text.delta");
+        assert_eq!(next["delta"], "", "the abort rides an empty typed delta");
+        let terminal: serde_json::Value = serde_json::from_str(&events[at + 2].data).unwrap();
+        assert_eq!(terminal["type"], "response.completed");
     }
 }

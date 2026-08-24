@@ -6,26 +6,53 @@ use std::path::{Path, PathBuf};
 use tree_sitter::Node;
 
 use crate::permission::bash_command_splitting::{
-    try_parse_shell, unwrap_wrappers, wrapper_has_chdir,
+    MAX_INLINE_SHELL_DEPTH, decode_shell_literal_spelling, normalize_command_words,
+    try_parse_shell, unwrap_wrappers,
 };
-use crate::permission::policy::CompiledPolicy;
+use crate::permission::policy::{
+    CompiledPolicy, GateDecision, InlineShellScript, ShellWord, combine_gate_decisions,
+    shell_dash_c_script,
+};
 use crate::permission::types::{AccessKind, Decision};
 
 impl CompiledPolicy {
     /// Escalate (never auto-allow) a shell reader/writer/redirect touching a
     /// restricted path; unpinnable operands return `Ask`.
     pub fn evaluate_shell_file_access(&self, cmd: &str, cwd: &Path) -> Option<Decision> {
+        self.evaluate_shell_file_access_gate(cmd, cwd)
+            .map(GateDecision::into_decision)
+    }
+
+    /// [`Self::evaluate_shell_file_access`] with `Ask` provenance kept: a
+    /// rule-match Ask stays binding while the manager may defer a fail-closed
+    /// Ask to the auto-mode classifier.
+    pub(crate) fn evaluate_shell_file_access_gate(
+        &self,
+        cmd: &str,
+        cwd: &Path,
+    ) -> Option<GateDecision> {
         if !self.has_file_restrictions {
             return None;
         }
-        // Parser always yields a tree; real syntax errors surface via `has_error`.
-        let tree = try_parse_shell(cmd)?;
+        self.evaluate_shell_file_access_inner(cmd, cwd, MAX_INLINE_SHELL_DEPTH, false, false)
+    }
+
+    fn evaluate_shell_file_access_inner(
+        &self,
+        cmd: &str,
+        cwd: &Path,
+        inline_depth_remaining: usize,
+        cwd_unpinned: bool,
+        entered_inline: bool,
+    ) -> Option<GateDecision> {
+        let Some(tree) = try_parse_shell(cmd) else {
+            return entered_inline.then_some(GateDecision::AskFailClosed);
+        };
         let root = tree.root_node();
-        // Syntax errors make operands untrustworthy → prompt.
         let parse_failed = root.has_error();
-        let mut forced_ask = false;
-        // Strongest outcome wins: a deny beats an earlier ask.
-        let mut decision: Option<Decision> = None;
+        // WHY: only recursively entered scripts gain a general malformed-script Ask floor.
+        let mut forced_ask = entered_inline && parse_failed;
+        let mut decision: Option<GateDecision> = None;
 
         let invocations = shell_command_invocations(root, cmd);
 
@@ -34,67 +61,106 @@ impl CompiledPolicy {
         // still match — only exact-path rules are affected.
         let cwd_changes = cwd_poison_positions(root, cmd);
 
-        // Redirects from the AST cover glued/fd-prefixed forms.
-        for (start_byte, path, mode, ambiguous) in shell_redirect_targets(root, cmd) {
-            if ambiguous {
+        for redirect in shell_redirect_targets(root, cmd) {
+            if redirect.ambiguous {
                 forced_ask = true;
             }
-            if let Some(path) = path {
-                if cwd_unpinned_before(&cwd_changes, start_byte)
-                    && !is_absolute_shell_path(&normalize_shell_path(&path))
-                {
-                    forced_ask = true;
-                }
-                decision = combine_decisions(decision, self.evaluate_shell_path(&path, cwd, mode));
+            if let Some(path) = redirect.path {
+                let path_cwd_unpinned = cwd_unpinned
+                    || cwd_unpinned_before(&cwd_changes, redirect.start_byte, redirect.scope);
+                decision = combine_gate_decisions(
+                    decision,
+                    self.evaluate_shell_path(&path, cwd, redirect.mode, path_cwd_unpinned),
+                );
             }
         }
 
-        // A known reader/writer with an unpinnable operand prompts.
-        for (start_byte, raw_words, arg_ambiguous) in &invocations {
-            let words = unwrap_wrappers(raw_words);
-            let Some(program) = words.first().map(|w| shell_program_name(w)) else {
+        for invocation in &invocations {
+            let peeled = unwrap_invocation_checked(invocation);
+            let words = peeled.words;
+            let invocation_cwd_unpinned = cwd_unpinned
+                || cwd_unpinned_before(&cwd_changes, invocation.start_byte, invocation.scope)
+                || peeled.has_chdir;
+            forced_ask |= peeled.exhausted;
+            forced_ask |= peeled.has_split_string;
+            forced_ask |= peeled.env_options_uncertain;
+            forced_ask |= peeled.transparent_ambiguous;
+            let shell_words = words.shell_words();
+            let inline_script = shell_dash_c_script(&shell_words);
+            if parse_failed && !matches!(inline_script, InlineShellScript::NotInline) {
+                forced_ask = true;
+            }
+            match inline_script {
+                InlineShellScript::Literal(index) => {
+                    if inline_depth_remaining == 0 {
+                        forced_ask = true;
+                    } else if let ShellWord::Literal(inner) = shell_words[index] {
+                        decision = combine_gate_decisions(
+                            decision,
+                            self.evaluate_shell_file_access_inner(
+                                inner,
+                                cwd,
+                                inline_depth_remaining - 1,
+                                invocation_cwd_unpinned,
+                                true,
+                            ),
+                        );
+                    }
+                }
+                // Potential -c (Untrusted) and unmodeled options without -c
+                // (Unrecognized) both fail closed; only Literal may recurse.
+                InlineShellScript::Untrusted | InlineShellScript::Unrecognized => {
+                    forced_ask = true;
+                }
+                InlineShellScript::NotInline => {}
+            }
+            let literal_words = words.literal_words();
+            let has_ambiguous_word = words
+                .words
+                .iter()
+                .any(|word| matches!(word, InvocationWord::Untrusted));
+            let Some(InvocationWord::Literal(program)) = words.words.first() else {
                 continue;
             };
+            let program = shell_program_name(program);
             let program_lower = program.to_ascii_lowercase();
-            if program_lower == "cd" {
+            if matches!(program_lower.as_str(), "cd" | "pushd" | "popd") {
                 continue;
             }
-            // Unpinnable after a preceding `cd`/`pushd`, or under an `env -C`.
-            let cwd_unpinned =
-                cwd_unpinned_before(&cwd_changes, *start_byte) || wrapper_has_chdir(raw_words);
-            let candidates = shell_file_candidates(words);
-            let path_operands = shell_path_command_operands(&program_lower, words);
+            let candidates = shell_file_candidates(&literal_words);
+            let path_operands = shell_path_command_operands(&program_lower, &literal_words);
             let is_known = program_lower == "dd"
                 || shell_file_mode(&program_lower).is_some()
                 || path_operands.is_some();
-            if is_known && (cwd_unpinned || *arg_ambiguous || parse_failed) {
+            if is_known && (invocation_cwd_unpinned || has_ambiguous_word || parse_failed) {
                 forced_ask = true;
             }
-            // Operands named by flag, not position — the positional loop below misses these.
-            for (path, mode) in special_file_operands(&program_lower, words) {
+            for (path, mode) in special_file_operands(&program_lower, &literal_words) {
                 if shell_arg_is_ambiguous(&path) {
                     forced_ask = true;
                 }
-                decision = combine_decisions(decision, self.evaluate_shell_path(&path, cwd, mode));
+                decision = combine_gate_decisions(
+                    decision,
+                    self.evaluate_shell_path(&path, cwd, mode, invocation_cwd_unpinned),
+                );
             }
-            // dd's only file operands are if=/of=, handled above.
             if program_lower == "dd" {
                 continue;
             }
-            // Path-moving commands (cp/mv/rm/…) imply Read/Edit on operands.
             if let Some(operands) = path_operands {
                 for (path, mode) in operands {
                     if shell_arg_is_ambiguous(path) {
                         forced_ask = true;
                     }
-                    decision =
-                        combine_decisions(decision, self.evaluate_shell_path(path, cwd, mode));
+                    decision = combine_gate_decisions(
+                        decision,
+                        self.evaluate_shell_path(path, cwd, mode, invocation_cwd_unpinned),
+                    );
                 }
                 continue;
             }
-            // In-place sed both reads and rewrites each operand.
             let modes: &[ShellFileMode] = match shell_file_mode(&program_lower) {
-                Some(_) if program_lower == "sed" && shell_sed_in_place(words) => {
+                Some(_) if program_lower == "sed" && shell_sed_in_place(&literal_words) => {
                     &[ShellFileMode::Read, ShellFileMode::Write]
                 }
                 Some(ShellFileMode::Read) => &[ShellFileMode::Read],
@@ -106,15 +172,17 @@ impl CompiledPolicy {
                     forced_ask = true;
                 }
                 for &mode in modes {
-                    decision =
-                        combine_decisions(decision, self.evaluate_shell_path(token, cwd, mode));
+                    decision = combine_gate_decisions(
+                        decision,
+                        self.evaluate_shell_path(token, cwd, mode, invocation_cwd_unpinned),
+                    );
                 }
             }
-            if shell_reader_can_recurse(&program_lower, words, &candidates) {
+            if shell_reader_can_recurse(&program_lower, &literal_words, &candidates) {
                 forced_ask = true;
             }
         }
-        combine_decisions(decision, forced_ask.then_some(Decision::Ask))
+        combine_gate_decisions(decision, forced_ask.then_some(GateDecision::AskFailClosed))
     }
 
     fn evaluate_shell_path(
@@ -122,17 +190,20 @@ impl CompiledPolicy {
         token: &str,
         cwd: &Path,
         mode: ShellFileMode,
-    ) -> Option<Decision> {
+        cwd_unpinned: bool,
+    ) -> Option<GateDecision> {
         let path = normalize_shell_path(token);
-        let absolute = if is_absolute_shell_path(&path) {
-            path.clone()
-        } else {
-            normalize_shell_path(&cwd.join(&path).to_string_lossy())
-        };
+        let is_absolute = is_absolute_shell_path(&path);
+        // Cwd-aware rule match mirrors the direct Read/Edit tool gate, so a
+        // rooted rule like `Read(src/**)` also keys on the same file spelled
+        // absolutely. An unpinned cwd anchors nothing: relative operands then
+        // keep text-only matching (absolute operands are cwd-independent).
+        let rule_cwd = (is_absolute || !cwd_unpinned).then_some(cwd);
         // Escalate only: drop Allow so a file allow-rule can't auto-approve here.
-        let escalate = |access: &AccessKind| match self.evaluate(access) {
-            Some(Decision::Allow) | None => None,
-            other => other,
+        let escalate = |access: &AccessKind| match self.evaluate_with_cwd(access, rule_cwd) {
+            Some(Decision::Reject(reason)) => Some(GateDecision::Reject(reason)),
+            Some(Decision::Ask) => Some(GateDecision::AskRuleMatch),
+            _ => None,
         };
         // Also re-check the resolved symlink target so a deny keyed on the real
         // path can't be dodged via an in-workspace symlink (`ln -s /etc x`).
@@ -140,24 +211,43 @@ impl CompiledPolicy {
         // physically, not erased textually before the link is followed.
         let raw = normalize_shell_path_raw(token);
         let raw_absolute = if is_absolute_shell_path(&raw) {
-            raw
+            Some(raw)
+        } else if cwd_unpinned {
+            None
         } else {
-            normalize_shell_path_raw(&cwd.join(&raw).to_string_lossy())
+            Some(normalize_shell_path_raw(&cwd.join(&raw).to_string_lossy()))
         };
-        let resolved_decision = match resolve_symlink_target(&raw_absolute) {
-            Some(resolved) if resolved != absolute => escalate(&shell_access(mode, resolved)),
-            Some(_) => None,
-            // Unresolvable (depth/cycle/error): fail closed to Ask when any
-            // component of the operand is a symlink, rather than silently
-            // allowing it (covers mid-path chains, not just the leaf).
-            None => path_has_symlink(&raw_absolute).then_some(Decision::Ask),
+        let resolved_decision = raw_absolute.and_then(|raw_absolute| {
+            let absolute = if is_absolute {
+                path.clone()
+            } else {
+                normalize_shell_path(&cwd.join(&path).to_string_lossy())
+            };
+            match resolve_symlink_target(&raw_absolute) {
+                Some(resolved) if resolved != absolute => escalate(&shell_access(mode, resolved)),
+                Some(_) => None,
+                // Unresolvable (depth/cycle/error): fail closed to Ask when any
+                // component of the operand is a symlink, rather than silently
+                // allowing it (covers mid-path chains, not just the leaf).
+                None => path_has_symlink(&raw_absolute).then_some(GateDecision::AskFailClosed),
+            }
+        });
+        let path_decision = escalate(&shell_access(mode, path.clone()));
+        // WHY: unknown cwd permits text matches only, never original-cwd resolution.
+        let anchored_decision = if cwd_unpinned && !is_absolute {
+            None
+        } else {
+            let absolute = if is_absolute {
+                path.clone()
+            } else {
+                normalize_shell_path(&cwd.join(&path).to_string_lossy())
+            };
+            combine_gate_decisions(escalate(&shell_access(mode, absolute)), resolved_decision)
         };
-        combine_decisions(
-            combine_decisions(
-                escalate(&shell_access(mode, path)),
-                escalate(&shell_access(mode, absolute)),
-            ),
-            resolved_decision,
+        let decision = combine_gate_decisions(path_decision, anchored_decision);
+        combine_gate_decisions(
+            decision,
+            (cwd_unpinned && !is_absolute).then_some(GateDecision::AskFailClosed),
         )
     }
 }
@@ -208,21 +298,50 @@ pub(crate) fn command_words_write_paths(words: &[String]) -> Vec<String> {
 /// `git --output`, `cp`/`mv` dest, `tee`/`truncate`, in-place `sed`/`rustfmt`,
 /// `uniq` output, ...). No safe-sink filtering — the caller decides.
 pub(crate) fn command_write_paths_in_tree(root: Node<'_>, src: &str) -> Vec<String> {
-    let mut out = Vec::new();
+    let split = command_write_paths_split(root, src);
+    let mut out = split.redirect_paths;
+    out.extend(split.word_paths);
+    out
+}
 
+/// [`command_write_paths_in_tree`] split by provenance: redirect targets
+/// (`> f`, `>> f` — invisible to allow-rule word matching) vs command-word
+/// operands (`touch f`, `sed -i` — part of the words a rule matches). The
+/// distinction decides whether a narrow allow rule can vouch for the write.
+pub(crate) struct WritePathsSplit {
+    pub(crate) redirect_paths: Vec<String>,
+    /// A write redirect had no extractable target (`> $OUT`, `> "$(…)"`).
+    /// Fail-closed signal: the write exists but nothing can vouch for it.
+    pub(crate) unextracted_write_redirect: bool,
+    pub(crate) word_paths: Vec<String>,
+}
+
+pub(crate) fn command_write_paths_split(root: Node<'_>, src: &str) -> WritePathsSplit {
     // Output redirects (`> f`, `>> f`); fd-dups/heredocs are already skipped.
-    for (_start, path, mode, _ambiguous) in shell_redirect_targets(root, src) {
-        if matches!(mode, ShellFileMode::Write)
-            && let Some(path) = path
-        {
-            out.push(path);
+    let mut redirect_paths = Vec::new();
+    let mut unextracted_write_redirect = false;
+    for r in shell_redirect_targets(root, src) {
+        if matches!(r.mode, ShellFileMode::Write) {
+            match r.path {
+                Some(path) => redirect_paths.push(path),
+                None => unextracted_write_redirect = true,
+            }
         }
     }
     // Per-command writers, after peeling env/timeout/... wrappers.
-    for (_start, raw_words, _ambiguous) in shell_command_invocations(root, src) {
-        out.extend(command_words_write_paths(&raw_words));
+    let mut word_paths = Vec::new();
+    for invocation in shell_command_invocations(root, src) {
+        let words = InvocationSlice {
+            words: &invocation.words,
+        }
+        .literal_words();
+        word_paths.extend(command_words_write_paths(&words));
     }
-    out
+    WritePathsSplit {
+        redirect_paths,
+        unextracted_write_redirect,
+        word_paths,
+    }
 }
 
 /// Safe write sinks that do not touch a real file. Exact match.
@@ -230,26 +349,114 @@ pub(crate) fn is_safe_write_sink(path: &str) -> bool {
     matches!(path, "/dev/null" | "/dev/stdout" | "/dev/stderr")
 }
 
-/// Whether an already-resolved direct edit target needs explicit confirmation.
+/// Why acceptEdits must still prompt for this edit target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProtectedEditReason {
+    HookRoot,
+    GitHooks,
+    Ssh,
+    StartupFile,
+    Etc,
+    GrokConfig,
+    GrokSandbox,
+    ClaudeSettings,
+    CursorHooks,
+    /// Fail-closed / unclassified sensitive path; no user copy yet.
+    Sensitive,
+}
+
+impl ProtectedEditReason {
+    pub fn kind(self) -> &'static str {
+        match self {
+            Self::HookRoot => "hook_root",
+            Self::GitHooks => "git_hooks",
+            Self::Ssh => "ssh",
+            Self::StartupFile => "startup_file",
+            Self::Etc => "etc",
+            Self::GrokConfig => "grok_config",
+            Self::GrokSandbox => "grok_sandbox",
+            Self::ClaudeSettings => "claude_settings",
+            Self::CursorHooks => "cursor_hooks",
+            Self::Sensitive => "sensitive",
+        }
+    }
+
+    pub fn description(self) -> Option<&'static str> {
+        match self {
+            Self::HookRoot => Some(
+                "Note: This edit contains changes to hooks, which can be executed as code on later sessions without a separate execution approval.",
+            ),
+            Self::GitHooks => Some(
+                "Note: This edit contains changes to Git hooks, which can run automatically on commit, push, or other Git actions without a separate execution approval.",
+            ),
+            Self::Ssh => Some(
+                "Note: This edit contains changes under `.ssh`, which can affect credentials and authentication for future sessions.",
+            ),
+            Self::StartupFile => Some(
+                "Note: This edit contains changes to a shell startup file, which can run automatically in future terminals without a separate execution approval.",
+            ),
+            Self::Etc => Some(
+                "Note: This edit contains changes under `/etc`, which is system configuration and can affect this machine beyond the current project.",
+            ),
+            Self::GrokConfig => Some(
+                "Note: This edit contains changes to Grok config, which can alter permissions, tools, and other behavior in later sessions.",
+            ),
+            Self::GrokSandbox => Some(
+                "Note: This edit contains changes to the Grok sandbox config, which can loosen filesystem and network restrictions on commands.",
+            ),
+            Self::ClaudeSettings => Some(
+                "Note: This edit contains changes to Claude-compatible settings, which can install hooks or change permission mode without a separate execution approval.",
+            ),
+            Self::CursorHooks => Some(
+                "Note: This edit contains changes to Cursor hooks, which can run automatically in later sessions without a separate execution approval.",
+            ),
+            Self::Sensitive => None,
+        }
+    }
+}
+
+/// ACP `_meta` payload for protected-edit prompts (pager reads this for description).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtectedEditPermission {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+impl ProtectedEditPermission {
+    pub fn from_reason(reason: ProtectedEditReason) -> Self {
+        Self {
+            kind: reason.kind().to_owned(),
+            description: reason.description().map(str::to_owned),
+        }
+    }
+}
+
+/// Whether an already-resolved direct edit target needs confirmation, and why.
 ///
 /// The caller uses the edit tools' shared model-path resolver first. This helper
 /// preserves its uncollapsed components for physical symlink + `..` resolution,
 /// while checking a separate lexical normalization for traversal aliases.
-pub(crate) fn edit_target_requires_prompt(path: &Path) -> bool {
+pub(crate) fn edit_target_protection(path: &Path) -> Option<ProtectedEditReason> {
     if !path.is_absolute() {
-        return true;
+        return Some(ProtectedEditReason::Sensitive);
     }
     let lexical = xai_grok_paths::normalize_lexically(path);
-    if protected_edit_path(&lexical) {
-        return true;
+    if let Some(reason) = protected_edit_reason(&lexical) {
+        return Some(reason);
     }
     let Some(resolved) = resolve_following_symlinks(path, 0) else {
-        return true;
+        return Some(ProtectedEditReason::Sensitive);
     };
-    protected_edit_path(&resolved) || resolved_path_is_within_root(&resolved, Path::new("/etc"))
+    if let Some(reason) = protected_edit_reason(&resolved) {
+        return Some(reason);
+    }
+    resolved_path_is_within_root(&resolved, Path::new("/etc"))
+        .then_some(ProtectedEditReason::Sensitive)
 }
 
-fn protected_edit_path(path: &Path) -> bool {
+fn protected_edit_reason(path: &Path) -> Option<ProtectedEditReason> {
     let components: Vec<String> = path
         .components()
         .filter_map(|component| match component {
@@ -279,12 +486,91 @@ fn protected_edit_path(path: &Path) -> bool {
         ".xprofile",
     ];
 
-    STARTUP_FILES.contains(&file)
-        || protected_git_hooks_path(&string_components)
-        || string_components.contains(&".ssh")
-        || string_components.ends_with(&[".grok", "config.toml"])
-        || path == Path::new("/etc")
-        || path.starts_with(Path::new("/etc"))
+    if protected_grok_hook_root(path, &string_components) {
+        return Some(ProtectedEditReason::HookRoot);
+    }
+    if string_components.ends_with(&[".claude", "settings.json"])
+        || string_components.ends_with(&[".claude", "settings.local.json"])
+    {
+        return Some(ProtectedEditReason::ClaudeSettings);
+    }
+    if string_components.ends_with(&[".cursor", "hooks.json"]) {
+        return Some(ProtectedEditReason::CursorHooks);
+    }
+    if protected_git_hooks_path(&string_components) {
+        return Some(ProtectedEditReason::GitHooks);
+    }
+    if string_components.contains(&".ssh") {
+        return Some(ProtectedEditReason::Ssh);
+    }
+    if STARTUP_FILES.contains(&file) {
+        return Some(ProtectedEditReason::StartupFile);
+    }
+    if let Some(reason) = protected_grok_config_file(path, &string_components) {
+        return Some(reason);
+    }
+    if path == Path::new("/etc") || path.starts_with(Path::new("/etc")) {
+        return Some(ProtectedEditReason::Etc);
+    }
+    None
+}
+
+/// Grok config files that alter permissions (`config.toml`, the
+/// `managed_config.toml` defaults tier, the user `requirements.toml` layer) or
+/// sandbox restrictions (`sandbox.toml`) in the running and later sessions; a
+/// silent edit would let the agent loosen its own guardrails. Matched directly
+/// inside any `.grok` dir (user-global default and workspace overlays) and
+/// directly under a custom `$GROK_HOME`, which the component match cannot see.
+fn protected_grok_config_file(path: &Path, components: &[&str]) -> Option<ProtectedEditReason> {
+    protected_grok_config_file_with_home(
+        path,
+        components,
+        xai_grok_config::user_grok_home().as_deref(),
+    )
+}
+
+fn protected_grok_config_file_with_home(
+    path: &Path,
+    components: &[&str],
+    user_grok_home: Option<&Path>,
+) -> Option<ProtectedEditReason> {
+    let reason = match components.last().copied() {
+        Some(
+            xai_grok_config::USER_CONFIG_FILENAME
+            | xai_grok_config::MANAGED_CONFIG_FILENAME
+            | xai_grok_config::REQUIREMENTS_FILENAME,
+        ) => ProtectedEditReason::GrokConfig,
+        Some("sandbox.toml") => ProtectedEditReason::GrokSandbox,
+        _ => return None,
+    };
+    let in_dot_grok = components.len() >= 2 && components[components.len() - 2] == ".grok";
+    let in_grok_home = || grok_home_matches(user_grok_home, |home| path.parent() == Some(home));
+    (in_dot_grok || in_grok_home()).then_some(reason)
+}
+
+/// True when `pred` holds for the user grok home in either its lexical or
+/// physically-resolved form. Both forms are checked because callers hold a
+/// lexical and a resolved candidate path, and the home itself may sit behind a
+/// symlink. The comparison is byte-exact (no case folding), like every other
+/// resolved-path check in this module.
+fn grok_home_matches(home: Option<&Path>, pred: impl Fn(&Path) -> bool) -> bool {
+    home.is_some_and(|home| {
+        let lexical = xai_grok_paths::normalize_lexically(home);
+        pred(&lexical)
+            || resolve_following_symlinks(&lexical, 0).is_some_and(|resolved| pred(&resolved))
+    })
+}
+
+fn path_is_under_user_grok_hook_root(path: &Path, grok_home: &Path) -> bool {
+    path.starts_with(grok_home.join("hooks")) || path == grok_home.join("hooks-paths")
+}
+
+fn protected_grok_hook_root(path: &Path, components: &[&str]) -> bool {
+    components.windows(2).any(|pair| pair == [".grok", "hooks"])
+        || components.ends_with(&[".grok", "hooks-paths"])
+        || grok_home_matches(xai_grok_config::user_grok_home().as_deref(), |home| {
+            path_is_under_user_grok_hook_root(path, home)
+        })
 }
 
 fn protected_git_hooks_path(components: &[&str]) -> bool {
@@ -335,41 +621,88 @@ fn shell_program_name(word: &str) -> &str {
     word.rsplit(['/', '\\']).next().unwrap_or(word)
 }
 
-/// True if a command runs in the current shell (reaching later commands), not in
-/// a subshell/pipeline/substitution or backgrounded.
-fn runs_in_current_shell(cmd: Node<'_>) -> bool {
-    let mut node = cmd;
-    loop {
-        if node.next_sibling().is_some_and(|s| s.kind() == "&") {
-            return false; // backgrounded subshell
-        }
-        let Some(parent) = node.parent() else {
-            return true;
-        };
-        if matches!(
-            parent.kind(),
-            "subshell" | "pipeline" | "command_substitution" | "process_substitution"
-        ) {
-            return false;
-        }
-        node = parent;
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ExecutionScope {
+    start: usize,
+    end: usize,
+}
+
+impl ExecutionScope {
+    fn contains(self, other: Self) -> bool {
+        self.start <= other.start && self.end >= other.end
     }
 }
 
-/// Source positions of in-shell `cd`/`pushd`/`popd`. We don't resolve the new
-/// directory; a relative operand after one is unpinnable → Ask.
-fn cwd_poison_positions(root: Node<'_>, src: &str) -> Vec<usize> {
+struct ShellRedirectTarget {
+    path: Option<String>,
+    mode: ShellFileMode,
+    ambiguous: bool,
+    start_byte: usize,
+    scope: ExecutionScope,
+}
+
+fn execution_scope(node: Node<'_>) -> ExecutionScope {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if current
+            .next_sibling()
+            .is_some_and(|sibling| sibling.kind() == "&")
+        {
+            let component = if current.kind() == "list" {
+                current
+            } else {
+                parent
+            };
+            return ExecutionScope {
+                start: component.start_byte(),
+                end: component.end_byte(),
+            };
+        }
+        if matches!(
+            parent.kind(),
+            "subshell" | "command_substitution" | "process_substitution"
+        ) {
+            return ExecutionScope {
+                start: parent.start_byte(),
+                end: parent.end_byte(),
+            };
+        }
+        if parent.kind() == "pipeline" {
+            return ExecutionScope {
+                start: current.start_byte(),
+                end: current.end_byte(),
+            };
+        }
+        current = parent;
+    }
+    ExecutionScope {
+        start: 0,
+        end: usize::MAX,
+    }
+}
+
+struct CwdPoison {
+    at: usize,
+    scope: ExecutionScope,
+}
+
+/// In-scope `cd`/`pushd`/`popd` positions; relative later operands must Ask.
+fn cwd_poison_positions(root: Node<'_>, src: &str) -> Vec<CwdPoison> {
     let mut positions = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         if node.kind() == "command"
             && node
                 .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(src.as_bytes()).ok())
-                .is_some_and(|p| matches!(shell_program_name(p), "cd" | "pushd" | "popd"))
-            && runs_in_current_shell(node)
+                .and_then(|name| name.utf8_text(src.as_bytes()).ok())
+                .is_some_and(|program| {
+                    matches!(shell_program_name(program), "cd" | "pushd" | "popd")
+                })
         {
-            positions.push(node.start_byte());
+            positions.push(CwdPoison {
+                at: node.start_byte(),
+                scope: execution_scope(node),
+            });
         }
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -380,12 +713,81 @@ fn cwd_poison_positions(root: Node<'_>, src: &str) -> Vec<usize> {
     positions
 }
 
-/// Whether an operand at `at` runs after a cwd change, so it can't be pinned.
-fn cwd_unpinned_before(positions: &[usize], at: usize) -> bool {
-    positions.iter().any(|&p| p < at)
+/// Whether an operand runs after a cwd change in its nearest execution scope.
+fn cwd_unpinned_before(positions: &[CwdPoison], at: usize, scope: ExecutionScope) -> bool {
+    positions
+        .iter()
+        .any(|poison| poison.at < at && (poison.scope == scope || poison.scope.contains(scope)))
 }
 
-/// A command operand or redirect destination extracted from the AST.
+/// A command operand or redirect destination extracted from the AST, with
+/// escape/quote folding already applied to literals.
+#[derive(Clone)]
+enum InvocationWord {
+    Literal(String),
+    Untrusted,
+}
+
+#[derive(Clone)]
+struct ShellInvocation {
+    start_byte: usize,
+    scope: ExecutionScope,
+    words: Vec<InvocationWord>,
+    wrapper_words: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+struct InvocationSlice<'a> {
+    words: &'a [InvocationWord],
+}
+
+struct CheckedInvocationPeel<'a> {
+    words: InvocationSlice<'a>,
+    has_chdir: bool,
+    has_split_string: bool,
+    env_options_uncertain: bool,
+    exhausted: bool,
+    transparent_ambiguous: bool,
+}
+
+impl InvocationSlice<'_> {
+    fn literal_words(&self) -> Vec<String> {
+        self.words
+            .iter()
+            .filter_map(|word| match word {
+                InvocationWord::Literal(word) => Some(word.clone()),
+                InvocationWord::Untrusted => None,
+            })
+            .collect()
+    }
+
+    fn shell_words(&self) -> Vec<ShellWord<'_>> {
+        self.words
+            .iter()
+            .map(|word| match word {
+                InvocationWord::Literal(word) => ShellWord::Literal(word),
+                InvocationWord::Untrusted => ShellWord::Untrusted,
+            })
+            .collect()
+    }
+}
+
+fn unwrap_invocation_checked(invocation: &ShellInvocation) -> CheckedInvocationPeel<'_> {
+    // Parallel String/`InvocationWord` slices stay index-aligned under normalize.
+    let norm = normalize_command_words(&invocation.wrapper_words);
+    let peeled_count = invocation.wrapper_words.len() - norm.words.len();
+    CheckedInvocationPeel {
+        words: InvocationSlice {
+            words: invocation.words.get(peeled_count..).unwrap_or_default(),
+        },
+        has_chdir: norm.has_chdir,
+        has_split_string: norm.has_split_string,
+        env_options_uncertain: norm.env_options_uncertain,
+        exhausted: norm.exhausted,
+        transparent_ambiguous: norm.ambiguous,
+    }
+}
+
 enum ArgText {
     /// Literal path/word, no runtime expansion.
     Literal(String),
@@ -416,13 +818,68 @@ fn node_has_expansion(node: Node<'_>) -> bool {
     false
 }
 
-/// Literal text of an operand node, or `Ambiguous` if it expands at runtime;
-/// `None` for non-operands (e.g. a leading `VAR=value`).
+/// Drive-letter / UNC-looking text must keep separators for path normalize.
+fn is_windows_path_like(raw: &str) -> bool {
+    raw.starts_with("\\\\")
+        || (raw
+            .as_bytes()
+            .first()
+            .is_some_and(|b| b.is_ascii_alphabetic())
+            && raw.as_bytes().get(1) == Some(&b':'))
+}
+
+/// Fold unquoted shell backslash escapes (`b\ash` → `bash`, `\-c` → `-c`).
+fn decode_unquoted_word(raw: &str) -> Option<String> {
+    if !raw.contains('\\') {
+        return Some(raw.to_owned());
+    }
+    if is_windows_path_like(raw) {
+        return Some(raw.to_owned());
+    }
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            out.push(chars.next()?);
+        } else {
+            out.push(ch);
+        }
+    }
+    Some(out)
+}
+
+/// Double-quote body: only `\$`, `` \` ``, `\"`, `\\`, and `\<newline>` fold.
+fn decode_double_quoted_content(content: &str) -> Option<String> {
+    if !content.contains('\\') {
+        return Some(content.to_owned());
+    }
+    let mut out = String::with_capacity(content.len());
+    let mut chars = content.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some(n @ ('$' | '`' | '"' | '\\' | '\n')) => out.push(n),
+            Some(n) => {
+                out.push('\\');
+                out.push(n);
+            }
+            None => return None,
+        }
+    }
+    Some(out)
+}
+
 fn shell_node_arg(node: Node<'_>, src: &str) -> Option<ArgText> {
     let text = || node.utf8_text(src.as_bytes()).ok().map(str::to_owned);
     match node.kind() {
         "variable_assignment" => None,
-        "word" | "number" => text().map(ArgText::Literal),
+        "word" | "number" => match text().and_then(|raw| decode_unquoted_word(&raw)) {
+            Some(literal) => Some(ArgText::Literal(literal)),
+            None => Some(ArgText::Ambiguous),
+        },
         "raw_string" => {
             let raw = node.utf8_text(src.as_bytes()).ok()?;
             let stripped = raw
@@ -440,28 +897,31 @@ fn shell_node_arg(node: Node<'_>, src: &str) -> Option<ArgText> {
                 .strip_prefix('"')
                 .and_then(|s| s.strip_suffix('"'))
                 .unwrap_or(raw);
-            Some(ArgText::Literal(stripped.to_owned()))
+            match decode_double_quoted_content(stripped) {
+                Some(literal) => Some(ArgText::Literal(literal)),
+                None => Some(ArgText::Ambiguous),
+            }
         }
         "concatenation" => {
             if node_has_expansion(node) {
                 Some(ArgText::Ambiguous)
             } else {
-                text().map(ArgText::Literal)
+                match text().and_then(|raw| decode_shell_literal_spelling(&raw)) {
+                    Some(literal) => Some(ArgText::Literal(literal)),
+                    None => Some(ArgText::Ambiguous),
+                }
             }
         }
         _ => Some(ArgText::Ambiguous),
     }
 }
 
-/// Every `command` node (incl. nested) as `(start_byte, words, ambiguous)`, in
-/// source order. `start_byte` orders invocations against cwd-change positions.
-fn shell_command_invocations(root: Node<'_>, src: &str) -> Vec<(usize, Vec<String>, bool)> {
-    let mut found: Vec<(usize, Vec<String>, bool)> = Vec::new();
+fn shell_command_invocations(root: Node<'_>, src: &str) -> Vec<ShellInvocation> {
+    let mut found = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         if node.kind() == "command" {
             let mut words = Vec::new();
-            let mut ambiguous = false;
             for i in 0..node.named_child_count() {
                 let Some(child) = node.named_child(i) else {
                     continue;
@@ -474,12 +934,25 @@ fn shell_command_invocations(root: Node<'_>, src: &str) -> Vec<(usize, Vec<Strin
                     shell_node_arg(child, src)
                 };
                 match operand {
-                    Some(ArgText::Literal(w)) => words.push(w),
-                    Some(ArgText::Ambiguous) => ambiguous = true,
+                    Some(ArgText::Literal(word)) => words.push(InvocationWord::Literal(word)),
+                    Some(ArgText::Ambiguous) => words.push(InvocationWord::Untrusted),
                     None => {}
                 }
             }
-            found.push((node.start_byte(), words, ambiguous));
+            // WHY: the placeholder preserves operand indexes while preventing wrapper matches.
+            let wrapper_words = words
+                .iter()
+                .map(|word| match word {
+                    InvocationWord::Literal(word) => word.clone(),
+                    InvocationWord::Untrusted => "\0".to_owned(),
+                })
+                .collect();
+            found.push(ShellInvocation {
+                start_byte: node.start_byte(),
+                scope: execution_scope(node),
+                words,
+                wrapper_words,
+            });
         }
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -487,23 +960,47 @@ fn shell_command_invocations(root: Node<'_>, src: &str) -> Vec<(usize, Vec<Strin
             }
         }
     }
-    found.sort_by_key(|(start, _, _)| *start);
+    found.sort_by_key(|invocation| invocation.start_byte);
     found
 }
 
-/// Every `file_redirect` target as `(start_byte, path, mode, ambiguous)`; skips
-/// heredocs/fd-dups that touch no named file.
-pub(crate) fn shell_redirect_targets(
-    root: Node<'_>,
-    src: &str,
-) -> Vec<(usize, Option<String>, ShellFileMode, bool)> {
+/// Auto-mode opaque-shell floor: a (potential) `-c` string reinterpretation
+/// (`bash|sh|dash|zsh|ksh -c …`) or a literal `eval` head. The one classifier
+/// shared by the decomposable segment loop and the undecomposable tree walk so
+/// the two can't drift.
+pub(crate) fn words_are_opaque_shell(words: &[ShellWord<'_>]) -> bool {
+    shell_dash_c_script(words).is_potential_inline()
+        || matches!(
+            words.first(),
+            Some(ShellWord::Literal(program)) if shell_program_name(program) == "eval"
+        )
+}
+
+/// Undecomposable-path opaque-shell floor: word-only decomposition failed, so
+/// apply the canonical word predicate to each parsed invocation directly.
+pub(crate) fn tree_has_opaque_shell(root: Node<'_>, src: &str) -> bool {
+    shell_command_invocations(root, src)
+        .iter()
+        .any(|invocation| {
+            let peeled = unwrap_invocation_checked(invocation);
+            words_are_opaque_shell(&peeled.words.shell_words())
+        })
+}
+
+fn shell_redirect_targets(root: Node<'_>, src: &str) -> Vec<ShellRedirectTarget> {
     let mut out = Vec::new();
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         if node.kind() == "file_redirect"
             && let Some((path, mode, ambiguous)) = shell_redirect_one(node, src)
         {
-            out.push((node.start_byte(), path, mode, ambiguous));
+            out.push(ShellRedirectTarget {
+                start_byte: node.start_byte(),
+                scope: execution_scope(node),
+                path,
+                mode,
+                ambiguous,
+            });
         }
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -875,6 +1372,9 @@ pub(crate) fn combine_decisions(a: Option<Decision>, b: Option<Decision>) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permission::bash_command_splitting::{
+        MAX_INLINE_SHELL_DEPTH, MAX_TRANSPARENT_PREFIX_DEPTH, MAX_WRAPPER_DEPTH,
+    };
     use crate::permission::types::{
         PatternMode, PermissionConfig, PermissionRule, RuleAction, ToolFilter,
     };
@@ -901,24 +1401,94 @@ mod tests {
     }
 
     #[test]
+    fn shell_file_gate_distinguishes_ask_provenance() {
+        let ask = compiled(vec![file_rule(
+            RuleAction::Ask,
+            ToolFilter::Read,
+            "**/secrets/**",
+        )]);
+        // Rule match: an identified operand hits the ask rule.
+        assert_eq!(
+            ask.evaluate_shell_file_access_gate("cat secrets/token.txt", cwd()),
+            Some(GateDecision::AskRuleMatch)
+        );
+        // Fail-closed: a recursive reader has no pinnable operands.
+        assert_eq!(
+            ask.evaluate_shell_file_access_gate("rg TODO", cwd()),
+            Some(GateDecision::AskFailClosed)
+        );
+        // Fail-closed: a dynamic operand on a known reader is unpinnable.
+        assert_eq!(
+            ask.evaluate_shell_file_access_gate("cat \"$F\"", cwd()),
+            Some(GateDecision::AskFailClosed)
+        );
+        // A rule match anywhere outranks a fail-closed floor in the same script.
+        assert_eq!(
+            ask.evaluate_shell_file_access_gate("rg TODO && cat secrets/token.txt", cwd()),
+            Some(GateDecision::AskRuleMatch)
+        );
+        // Deny rules keep rejecting with provenance preserved.
+        let deny = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        assert!(matches!(
+            deny.evaluate_shell_file_access_gate("cat .env", cwd()),
+            Some(GateDecision::Reject(_))
+        ));
+    }
+
+    #[test]
+    fn shell_gate_matches_cwd_relative_rules_on_absolute_operands() {
+        let deny = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "src/**",
+        )]);
+        // A rooted relative rule keys on the same file spelled absolutely,
+        // matching the direct Read tool gate (which evaluates with the cwd).
+        assert!(matches!(
+            deny.evaluate_shell_file_access_gate("cat /work/src/secret.txt", cwd()),
+            Some(GateDecision::Reject(_))
+        ));
+        // An absolute operand is cwd-independent, so it stays covered even
+        // after a `cd` unpins the working directory.
+        assert!(matches!(
+            deny.evaluate_shell_file_access_gate("cd /tmp && cat /work/src/secret.txt", cwd()),
+            Some(GateDecision::Reject(_))
+        ));
+        // Outside the working directory the rooted rule stays silent.
+        assert_eq!(
+            deny.evaluate_shell_file_access_gate("cat /elsewhere/src/secret.txt", cwd()),
+            None
+        );
+    }
+
+    #[test]
     fn sensitive_edit_targets_and_lexical_aliases_prompt() {
         for path in [
             "/home/user/.zshrc",
             "/etc",
             "/etc/grok-test",
             "/work/subdir/../.git/hooks/pre-commit",
+            "/home/user/.grok/sandbox.toml",
+            "/work/project/.grok/sandbox.toml",
         ] {
             assert!(
-                edit_target_requires_prompt(Path::new(path)),
+                edit_target_protection(Path::new(path)).is_some(),
                 "protected edit target must prompt: {path}"
             );
         }
         for path in [
             "/work/src/main.rs",
             "/work/project/.grok/config.toml/backup",
+            "/work/project/sandbox.toml",
+            "/work/project/requirements.toml",
+            "/work/project/managed_config.toml",
         ] {
             assert!(
-                !edit_target_requires_prompt(Path::new(path)),
+                edit_target_protection(Path::new(path)).is_none(),
                 "ordinary edit target should not prompt: {path}"
             );
         }
@@ -933,7 +1503,7 @@ mod tests {
             "/work/subdir/../.git/modules/foo/hooks/pre-commit",
         ] {
             assert!(
-                edit_target_requires_prompt(Path::new(path)),
+                edit_target_protection(Path::new(path)).is_some(),
                 "submodule hook target must prompt: {path}"
             );
         }
@@ -945,8 +1515,122 @@ mod tests {
             "/work/src/modules/foo/hooks/pre-commit",
         ] {
             assert!(
-                !edit_target_requires_prompt(Path::new(path)),
+                edit_target_protection(Path::new(path)).is_none(),
                 "non-hook control must not prompt: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn edit_target_protection_classifies_reasons() {
+        let cases = [
+            (
+                "/home/user/.grok/hooks/evil.json",
+                ProtectedEditReason::HookRoot,
+            ),
+            ("/work/.git/hooks/pre-commit", ProtectedEditReason::GitHooks),
+            ("/home/user/.ssh/id_rsa", ProtectedEditReason::Ssh),
+            ("/home/user/.zshrc", ProtectedEditReason::StartupFile),
+            ("/etc/hosts", ProtectedEditReason::Etc),
+            (
+                "/home/user/.grok/config.toml",
+                ProtectedEditReason::GrokConfig,
+            ),
+            (
+                "/home/user/.grok/sandbox.toml",
+                ProtectedEditReason::GrokSandbox,
+            ),
+            (
+                "/work/project/.grok/sandbox.toml",
+                ProtectedEditReason::GrokSandbox,
+            ),
+            (
+                "/home/user/.grok/managed_config.toml",
+                ProtectedEditReason::GrokConfig,
+            ),
+            (
+                "/home/user/.grok/requirements.toml",
+                ProtectedEditReason::GrokConfig,
+            ),
+            (
+                "/home/user/.claude/settings.json",
+                ProtectedEditReason::ClaudeSettings,
+            ),
+            (
+                "/home/user/.cursor/hooks.json",
+                ProtectedEditReason::CursorHooks,
+            ),
+        ];
+        for (path, reason) in cases {
+            assert_eq!(
+                edit_target_protection(Path::new(path)),
+                Some(reason),
+                "{path}"
+            );
+            assert!(reason.description().is_some(), "{path}");
+        }
+        assert_eq!(
+            edit_target_protection(Path::new("/home/user/project/src/main.rs")),
+            None
+        );
+        assert!(ProtectedEditReason::Sensitive.description().is_none());
+    }
+
+    #[test]
+    fn sensitive_edit_targets_include_hook_roots() {
+        for path in [
+            "/home/user/.grok/hooks/evil.json",
+            "/home/user/.grok/hooks/nested/deep.json",
+            "/home/user/.grok/hooks-paths",
+            "/home/user/.claude/settings.json",
+            "/home/user/.claude/settings.local.json",
+            "/home/user/.cursor/hooks.json",
+            "/work/project/.grok/hooks/local.json",
+            "/work/project/.grok/hooks-paths",
+        ] {
+            assert!(
+                edit_target_protection(Path::new(path)).is_some(),
+                "hook root edit target must prompt: {path}"
+            );
+        }
+        for path in [
+            "/home/user/.grok/hooks-disabled/note.json",
+            "/home/user/.grok/hooks-evil/note.json",
+            "/home/user/project/src/hooks.json",
+            "/home/user/.claude/other.json",
+            "/home/user/.cursor/settings.json",
+        ] {
+            assert!(
+                edit_target_protection(Path::new(path)).is_none(),
+                "ordinary edit target should not prompt: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn path_is_under_user_grok_hook_root_matches_relocated_home() {
+        let home = Path::new("/custom/grok-home");
+        for path in [
+            "/custom/grok-home/hooks/x.json",
+            "/custom/grok-home/hooks/nested/deep.json",
+            "/custom/grok-home/hooks",
+            "/custom/grok-home/hooks-paths",
+        ] {
+            assert!(
+                path_is_under_user_grok_hook_root(Path::new(path), home),
+                "must match under custom grok home: {path}"
+            );
+        }
+        for path in [
+            "/custom/grok-home/hooks-disabled/note.json",
+            "/custom/grok-home/hooks-evil/note.json",
+            "/custom/grok-home/config.toml",
+            "/custom/other/hooks/x.json",
+            "/custom/grok-home-extra/hooks/x.json",
+        ] {
+            assert!(
+                !path_is_under_user_grok_hook_root(Path::new(path), home),
+                "must not match outside hook roots: {path}"
             );
         }
     }
@@ -972,17 +1656,101 @@ mod tests {
             ws.path().join("module-hooks-link"),
         )
         .unwrap();
+        let grok_hook = outside.path().join(".grok/hooks/evil.json");
+        std::fs::create_dir_all(grok_hook.parent().unwrap()).unwrap();
+        std::fs::write(&grok_hook, b"{}").unwrap();
+        symlink(&grok_hook, ws.path().join("grok-hook-link")).unwrap();
 
         for path in [
             ws.path().join("file-link"),
             ws.path().join("hooks-link/new-hook"),
             ws.path().join("module-hooks-link/new-hook"),
+            ws.path().join("grok-hook-link"),
         ] {
             assert!(
-                edit_target_requires_prompt(&path),
+                edit_target_protection(&path).is_some(),
                 "symlinked protected edit target must prompt: {}",
                 path.display()
             );
+        }
+    }
+
+    /// A custom `$GROK_HOME` has no `.grok` path component, so the live
+    /// `config.toml` / `sandbox.toml` must be caught by the home-prefix branch.
+    #[test]
+    fn grok_config_files_under_custom_grok_home_are_protected() {
+        let home = tempfile::tempdir().unwrap();
+        let home_path = home.path();
+        for (file, reason) in [
+            ("config.toml", ProtectedEditReason::GrokConfig),
+            ("managed_config.toml", ProtectedEditReason::GrokConfig),
+            ("requirements.toml", ProtectedEditReason::GrokConfig),
+            ("sandbox.toml", ProtectedEditReason::GrokSandbox),
+        ] {
+            let path = home_path.join(file);
+            let components = [file];
+            assert_eq!(
+                protected_grok_config_file_with_home(&path, &components, Some(home_path)),
+                Some(reason),
+                "{file} directly under $GROK_HOME must be protected"
+            );
+        }
+        // Same file names elsewhere (or with no resolvable home) stay ordinary.
+        let elsewhere = home_path.join("sub").join("sandbox.toml");
+        assert_eq!(
+            protected_grok_config_file_with_home(
+                &elsewhere,
+                &["sub", "sandbox.toml"],
+                Some(home_path)
+            ),
+            None
+        );
+        assert_eq!(
+            protected_grok_config_file_with_home(
+                &home_path.join("sandbox.toml"),
+                &["sandbox.toml"],
+                None
+            ),
+            None
+        );
+    }
+
+    /// The resolved-symlink arm of the grok-home match must decide: `$GROK_HOME`
+    /// points at a symlink while the edit targets the physical home directory,
+    /// so the lexical parent-equality arm cannot fire.
+    #[test]
+    #[cfg(unix)]
+    fn grok_config_under_symlinked_grok_home_is_protected() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let real_home = tmp.path().join("real-home");
+        std::fs::create_dir(&real_home).unwrap();
+        let link = tmp.path().join("home-link");
+        symlink(&real_home, &link).unwrap();
+        // tempdir paths can themselves contain symlinks (macOS /var -> /private/var);
+        // compare against the physical home the production resolver will produce.
+        let physical_home = resolve_following_symlinks(&real_home, 0).unwrap();
+        assert_eq!(
+            protected_grok_config_file_with_home(
+                &physical_home.join("sandbox.toml"),
+                &["sandbox.toml"],
+                Some(&link)
+            ),
+            Some(ProtectedEditReason::GrokSandbox)
+        );
+    }
+
+    /// `protected_edit_reason` lowercases path components before matching, so
+    /// the canonical filename constants must stay lowercase or the const
+    /// patterns silently stop firing.
+    #[test]
+    fn protected_config_filename_constants_are_lowercase() {
+        for name in [
+            xai_grok_config::USER_CONFIG_FILENAME,
+            xai_grok_config::MANAGED_CONFIG_FILENAME,
+            xai_grok_config::REQUIREMENTS_FILENAME,
+        ] {
+            assert_eq!(name, name.to_ascii_lowercase(), "{name}");
         }
     }
 
@@ -1002,7 +1770,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn private_etc_alias_requires_prompt() {
-        assert!(edit_target_requires_prompt(Path::new("/private/etc/hosts")));
+        assert!(edit_target_protection(Path::new("/private/etc/hosts")).is_some());
     }
 
     #[test]
@@ -1216,6 +1984,305 @@ mod tests {
     }
 
     #[test]
+    fn inline_shells_hit_read_and_edit_denies() {
+        let read = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        let mut commands: Vec<String> = ["bash", "sh", "dash", "zsh", "ksh"]
+            .into_iter()
+            .map(|shell| format!("{shell} -c 'cat .env'"))
+            .collect();
+        commands.extend([
+            r#"/bin/bash -c 'cat .env'"#.to_owned(),
+            r#"bash -lc 'cat .env'"#.to_owned(),
+            r#"bash -c -x 'cat .env'"#.to_owned(),
+            r#"bash -c -- 'cat .env'"#.to_owned(),
+            r#"bash -c -o pipefail 'cat .env'"#.to_owned(),
+            r#"bash -c -O extglob 'cat .env'"#.to_owned(),
+            r#"bash -c -Oextglob 'cat .env'"#.to_owned(),
+            r#"bash -c +O extglob 'cat .env'"#.to_owned(),
+            r#"bash -c +Oextglob 'cat .env'"#.to_owned(),
+            r#"bash -c +o pipefail 'cat .env'"#.to_owned(),
+            r#"timeout 5 bash -c 'cat .env'"#.to_owned(),
+            r#"bash -c "sh -c 'cat .env'""#.to_owned(),
+            r#"bash -c 'cat .env' "$IGNORED""#.to_owned(),
+        ]);
+        for cmd in commands {
+            assert!(
+                matches!(
+                    read.evaluate_shell_file_access(&cmd, cwd()),
+                    Some(Decision::Reject(_))
+                ),
+                "inline read must be denied: {cmd}"
+            );
+        }
+        for cmd in [
+            r#"bash -- -c 'cat .env'"#,
+            r#"bash script.sh -c 'cat .env'"#,
+        ] {
+            assert!(
+                read.evaluate_shell_file_access(cmd, cwd()).is_none(),
+                "non-inline shell form must stay unchanged: {cmd}"
+            );
+        }
+        let edit = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Edit,
+            "**/.env",
+        )]);
+        assert!(matches!(
+            edit.evaluate_shell_file_access(r#"bash -c 'echo secret > .env'"#, cwd()),
+            Some(Decision::Reject(_))
+        ));
+    }
+
+    #[test]
+    fn untrusted_inline_shells_ask() {
+        let policy = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        for cmd in [
+            r#"bash -c "$SCRIPT" 'cat .env'"#,
+            r#"env FOO=1 bash -c "$SCRIPT""#,
+            "bash -c",
+            "bash -c 'cat",
+        ] {
+            assert!(
+                matches!(
+                    policy.evaluate_shell_file_access(cmd, cwd()),
+                    Some(Decision::Ask)
+                ),
+                "untrusted inline script must ask: {cmd}"
+            );
+        }
+
+        assert!(
+            policy
+                .evaluate_shell_file_access(r#"bash -c 'bash -c '\''cat README.md'\'''"#, cwd(),)
+                .is_none(),
+            "concatenated literal script operands remain recursively analyzable"
+        );
+
+        let malformed_control = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "/unrelated/secret",
+        )]);
+        assert!(
+            malformed_control
+                .evaluate_shell_file_access("echo 'unterminated", cwd())
+                .is_none(),
+            "top-level malformed non-inline command keeps legacy behavior"
+        );
+
+        let mut nested = "cat README.md".to_owned();
+        for _ in 0..MAX_INLINE_SHELL_DEPTH {
+            nested = format!("bash -c {}", shell_quote(&nested));
+        }
+        assert!(
+            policy.evaluate_shell_file_access(&nested, cwd()).is_none(),
+            "the maximum supported nesting remains analyzable"
+        );
+        nested = format!("bash -c {}", shell_quote(&nested));
+        assert!(matches!(
+            policy.evaluate_shell_file_access(&nested, cwd()),
+            Some(Decision::Ask)
+        ));
+
+        let deny = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        let mut nested = "cat .env".to_owned();
+        for _ in 0..=MAX_INLINE_SHELL_DEPTH {
+            nested = format!("bash -c {}", shell_quote(&nested));
+        }
+        let cmd = format!("{nested}; cat .env");
+        assert!(matches!(
+            deny.evaluate_shell_file_access(&cmd, cwd()),
+            Some(Decision::Reject(_))
+        ));
+    }
+
+    fn shell_quote(script: &str) -> String {
+        format!("'{}'", script.replace('\'', r#"'\''"#))
+    }
+
+    #[test]
+    fn wrapper_depth_exhaustion_asks() {
+        let policy = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        let wrapped = |depth: usize| format!("{}bash -c 'cat README.md'", "env ".repeat(depth));
+        assert!(
+            policy
+                .evaluate_shell_file_access(&wrapped(MAX_WRAPPER_DEPTH), cwd())
+                .is_none(),
+            "maximum canonical wrapper depth remains analyzable"
+        );
+        assert!(matches!(
+            policy.evaluate_shell_file_access(&wrapped(MAX_WRAPPER_DEPTH + 1), cwd()),
+            Some(Decision::Ask)
+        ));
+    }
+
+    /// Opaque `env -S`, dynamic program `-c`, transparent prefixes, escape folding.
+    #[test]
+    fn inline_shell_opaque_and_transparent_forms_escalate() {
+        let read = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        let must_escalate = |cmd: &str| {
+            assert!(
+                matches!(
+                    read.evaluate_shell_file_access(cmd, cwd()),
+                    Some(Decision::Reject(_)) | Some(Decision::Ask)
+                ),
+                "must not fail open: {cmd}"
+            );
+        };
+
+        // env -S / --split-string is opaque (no packed reparse).
+        for cmd in [
+            "env -S 'cat .env'",
+            r#"env -S 'bash -c "cat .env"'"#,
+            "env --split-string 'cat .env'",
+            "env --split-string=cat",
+            "env -Scat",
+            "/usr/bin/env -S 'cat .env'",
+            "timeout 5 env -S 'cat .env'",
+            "env -S",
+        ] {
+            must_escalate(cmd);
+        }
+        // Ordinary env assignment / peel still Rejects the reader.
+        assert!(matches!(
+            read.evaluate_shell_file_access("env FOO=1 cat .env", cwd()),
+            Some(Decision::Reject(_))
+        ));
+        assert!(matches!(
+            read.evaluate_shell_file_access("env cat .env", cwd()),
+            Some(Decision::Reject(_))
+        ));
+        // Reject still wins over an opaque Ask floor.
+        assert!(matches!(
+            read.evaluate_shell_file_access("env -S 'cat README.md'; cat .env", cwd()),
+            Some(Decision::Reject(_))
+        ));
+
+        // Untrusted program head with a supported `-c` shape escalates.
+        for cmd in [
+            r#"$SHELL -c 'cat .env'"#,
+            r#"$(echo bash) -c 'cat .env'"#,
+            r#"$SHELL -lc 'cat .env'"#,
+            r#"timeout 5 $SHELL -c 'cat .env'"#,
+        ] {
+            must_escalate(cmd);
+        }
+        // Dynamic head without an inline `-c` shape is not a global Ask.
+        assert!(
+            read.evaluate_shell_file_access(r#"$CMD README.md"#, cwd())
+                .is_none(),
+            "dynamic non-inline program must stay inert"
+        );
+
+        // Transparent exec/command/builtin prefixes (outer + in-script).
+        for cmd in [
+            "bash -c 'exec cat .env'",
+            "bash -c 'command cat .env'",
+            "bash -c 'builtin cat .env'",
+            "exec bash -c 'cat .env'",
+            "command bash -c 'cat .env'",
+            "command cat .env",
+            "exec cat .env",
+            "command -p cat .env",
+            "exec -a name cat .env",
+            "bash -c 'command -p cat .env'",
+            "bash -c 'exec bash -c \"cat .env\"'",
+        ] {
+            must_escalate(cmd);
+        }
+        // Display forms of `command` are not peeled into readers.
+        assert!(
+            read.evaluate_shell_file_access("command -v cat", cwd())
+                .is_none(),
+            "command -v display form must not invent a read"
+        );
+        // Unknown prefix options fail closed.
+        must_escalate("exec -u cat .env");
+        must_escalate("command -Z cat .env");
+
+        // Eight peels reach the reader; a ninth Asks.
+        let nested_exec = |depth: usize| format!("{}cat .env", "exec ".repeat(depth));
+        assert!(
+            matches!(
+                read.evaluate_shell_file_access(&nested_exec(MAX_TRANSPARENT_PREFIX_DEPTH), cwd()),
+                Some(Decision::Reject(_))
+            ),
+            "maximum transparent prefix depth must still reach the denied reader"
+        );
+        assert!(
+            matches!(
+                read.evaluate_shell_file_access(
+                    &nested_exec(MAX_TRANSPARENT_PREFIX_DEPTH + 1),
+                    cwd()
+                ),
+                Some(Decision::Ask)
+            ),
+            "one extra transparent prefix must fail closed"
+        );
+        // Mixed / path-qualified prefixes at the supported budget still Reject.
+        let mixed = format!(
+            "{}cat .env",
+            "exec command builtin /usr/bin/exec ".repeat(MAX_TRANSPARENT_PREFIX_DEPTH / 4)
+        );
+        assert!(
+            matches!(
+                read.evaluate_shell_file_access(&mixed, cwd()),
+                Some(Decision::Reject(_))
+            ),
+            "mixed path-qualified transparent prefixes within budget must Reject"
+        );
+        // Reject still beats transparent-depth exhaustion Ask.
+        let exhausted_then_deny = format!(
+            "{}; cat .env",
+            nested_exec(MAX_TRANSPARENT_PREFIX_DEPTH + 1).replace("cat .env", "cat README.md")
+        );
+        assert!(
+            matches!(
+                read.evaluate_shell_file_access(&exhausted_then_deny, cwd()),
+                Some(Decision::Reject(_))
+            ),
+            "a later denied reader must beat transparent exhaustion Ask"
+        );
+
+        // Shell escapes fold before program/flag/path matching.
+        for cmd in [
+            r#"b\ash -c 'cat .env'"#,
+            r#"bash \-c 'cat .env'"#,
+            r#"bash -c "cat .en\\v""#,
+            r#"bash -c "b\\ash -c 'cat .env'""#,
+        ] {
+            must_escalate(cmd);
+        }
+        // Single quotes stay literal (no escape fold).
+        assert!(
+            read.evaluate_shell_file_access(r#"cat '.en\v'"#, cwd())
+                .is_none(),
+            "single-quoted backslash must remain literal"
+        );
+    }
+
+    #[test]
     fn shell_gate_merges_decisions_so_deny_beats_earlier_ask() {
         // The whole command runs once approved, so a later deny must beat an earlier ask.
         let policy = compiled(vec![
@@ -1228,6 +2295,8 @@ mod tests {
             "cat .env > dump.txt",
             // First operand asks; the second denies.
             "cat notes.txt .env",
+            // Outer read asks; recursively discovered inner read denies.
+            "cat notes.txt; bash -c 'cat .env'",
         ] {
             assert!(
                 matches!(
@@ -1311,6 +2380,60 @@ mod tests {
                 "an unpinnable cwd change must escalate: {cmd}"
             );
         }
+    }
+
+    #[test]
+    fn inline_shell_cwd_uncertainty_preserves_rejects() {
+        let exact = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "/repo-a/.env",
+        )]);
+        for cmd in [
+            r#"cd /repo-b && bash -c 'cat .env'"#,
+            r#"env -C /repo-b bash -c 'cat .env'"#,
+            r#"(cd /repo-b; bash -c 'cat .env')"#,
+            r#"bash -c 'cd /repo-b && cat .env'"#,
+            r#"bash -c '(cd /repo-b; cat .env)'"#,
+        ] {
+            assert!(
+                matches!(
+                    exact.evaluate_shell_file_access(cmd, std::path::Path::new("/repo-a")),
+                    Some(Decision::Ask)
+                ),
+                "relative inline path under an unpinned cwd must ask: {cmd}"
+            );
+        }
+
+        let basename = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "**/.env",
+        )]);
+        for cmd in [
+            r#"cd /repo-b && bash -c 'cat .env'"#,
+            r#"(cd /repo-b; bash -c 'cat .env')"#,
+            r#"bash -c 'cd /repo-b && cat .env'"#,
+            r#"bash -c '(cd /repo-b; cat .env)'"#,
+        ] {
+            assert!(matches!(
+                basename.evaluate_shell_file_access(cmd, std::path::Path::new("/repo-a")),
+                Some(Decision::Reject(_))
+            ));
+        }
+
+        let absolute = compiled(vec![file_rule(
+            RuleAction::Deny,
+            ToolFilter::Read,
+            "/repo-b/.env",
+        )]);
+        assert!(matches!(
+            absolute.evaluate_shell_file_access(
+                r#"env -C /elsewhere bash -c 'cat /repo-b/.env'"#,
+                std::path::Path::new("/repo-a"),
+            ),
+            Some(Decision::Reject(_))
+        ));
     }
 
     /// A `**/` basename deny matches regardless of cwd, so a `cd`/`env -C` can't

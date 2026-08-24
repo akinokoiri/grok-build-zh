@@ -5,22 +5,16 @@ use super::common::*;
 /// Mid-turn: queue a follow-up with Enter, then bare Enter on the empty
 /// composer sends that top row now — cancel-and-send: the running turn is
 /// cancelled silently and the row runs as its own next turn, arriving on the
-/// wire as a standard `<user_query>` prompt with no interjection preamble.
+/// wire as a standard `<user_query>` prompt with the interjection preamble.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]
 async fn empty_enter_force_sends_top_queued() {
     let content = ContentController::start().await.expect("start content");
-    let mut turn_one = content.expect_response_blocked(
-        "running turn before send-now",
-        InferenceRequestMatcher::foreground(InferenceEndpoint::ChatCompletions),
-        ScriptedResponse::sse(chat_completions_message_events(&slow_turn_text("TURNONE"))),
-    );
-    let mut turn_two = content.expect_response(
+    let mut turn_one = content
+        .expect_agent_turn_blocked("running turn before send-now", slow_turn_text("TURNONE"));
+    let mut turn_two = content.expect_agent_turn(
         "promoted queued follow-up",
-        InferenceRequestMatcher::foreground(InferenceEndpoint::ChatCompletions),
-        ScriptedResponse::sse(chat_completions_message_events(
-            "TURNTWO reply to the promoted follow-up.",
-        )),
+        "TURNTWO reply to the promoted follow-up.",
     );
 
     let binary = pager_binary().expect("resolve pager binary");
@@ -84,12 +78,16 @@ async fn empty_enter_force_sends_top_queued() {
         .find(|u| u.contains("please also check the logs"))
         .unwrap_or_else(|| panic!("queued follow-up never reached the wire: {users:#?}"));
     assert!(
-        !promoted.contains(INTERJECTION_WIRE_PREFIX),
-        "send-now must not use the interjection preamble: {promoted}"
+        promoted.contains(INTERJECTION_WIRE_PREFIX),
+        "send-now must use the interjection preamble: {promoted}"
     );
     assert!(
         promoted.contains("<user_query>"),
-        "send-now must arrive as a standard user_query prompt: {promoted}"
+        "send-now must wrap the steered text in user_query: {promoted}"
+    );
+    assert!(
+        promoted.contains("Make sure to complete any unfinished tasks from previous turns."),
+        "send-now must keep the unfinished-task trailer: {promoted}"
     );
 
     assert!(

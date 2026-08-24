@@ -110,9 +110,11 @@ fn pending_notification_cap_keeps_newest_entries() {
     let mut state = State {
         running_task: None,
         pending_inputs: std::collections::VecDeque::new(),
+        edit_holds: HashMap::new(),
         pending_notifications: Vec::new(),
         notifications_suppressed: true,
         rewindable: false,
+        front_message_committed: false,
         nudges_used_this_session: 0,
     };
     for index in 0..(MAX_PENDING_NOTIFICATIONS + 3) {
@@ -144,24 +146,27 @@ async fn drain_batches_monitor_notifications_into_formatted_block() {
                 .await;
             let monitor_notif = |task: &str, line: &str| PendingNotification {
                 prompt_id: format!("monitor-{task}"),
-                prompt_blocks: vec![
-                    agent_client_protocol::ContentBlock::Text(agent_client_protocol::TextContent::new(format!("<monitor-event description=\"watch\" task_id=\"{task}\">\n{line}\n</monitor-event>")),)
-                ],
+                prompt_blocks: vec![agent_client_protocol::ContentBlock::Text(
+                    agent_client_protocol::TextContent::new(format!(
+                            "<monitor-event description=\"watch\" task_id=\"{task}\">\n{line}\n</monitor-event>"
+                        )),
+                )],
                 priority: NotificationPriority::Next,
                 source: NotificationSource::MonitorEvent {
                     task_id: task.to_string(),
                 },
             };
             let mut bash = bash_completed_notification("bg-1");
-            bash.prompt_blocks = vec![
-                agent_client_protocol::ContentBlock::Text(agent_client_protocol::TextContent::new("Background task \"bg-1\" completed."),)
-            ];
+            bash.prompt_blocks = vec![agent_client_protocol::ContentBlock::Text(
+                agent_client_protocol::TextContent::new("Background task \"bg-1\" completed."),
+            )];
             let mut state = actor.state.lock().await;
             let drained = SessionActor::drain_notifications_into_turn(
                 &mut state,
                 vec![
-                    monitor_notif("mon-1", "tick 1"), bash, monitor_notif("mon-1",
-                    "tick 2"),
+                    monitor_notif("mon-1", "tick 1"),
+                    bash,
+                    monitor_notif("mon-1", "tick 2"),
                 ],
                 "get_task_output",
             );
@@ -181,12 +186,14 @@ async fn drain_batches_monitor_notifications_into_formatted_block() {
                 "monitor entries must collapse into one formatted batch: {text}"
             );
             assert!(
-                text
-                .contains("<monitor description=\"watch\" task_id=\"mon-1\">\n[1] tick 1\n[2] tick 2"),
+                text.contains(
+                    "<monitor description=\"watch\" task_id=\"mon-1\">\n[1] tick 1\n[2] tick 2"
+                ),
                 "batch must group + label the ticks: {text}"
             );
             assert_eq!(
-                text.matches("<monitor-event").count(), 0,
+                text.matches("<monitor-event").count(),
+                0,
                 "raw per-event wrappers must not survive the drain: {text}"
             );
             assert!(
@@ -194,7 +201,8 @@ async fn drain_batches_monitor_notifications_into_formatted_block() {
                 "non-monitor notification keeps its raw block: {text}"
             );
             assert_eq!(
-                text.matches("---").count(), 1,
+                text.matches("---").count(),
+                1,
                 "one separator between the batch and the bash block: {text}"
             );
         })
@@ -254,11 +262,13 @@ async fn cancel_barrier_rejects_task_completion_wake_without_reporting_it() {
             let state = actor.state.lock().await;
             assert!(state.running_task.is_none());
             assert!(state.pending_inputs.is_empty());
-            assert!(
-                matches!(state.pending_notifications.as_slice(), [PendingNotification {
-                source : NotificationSource::BashTaskCompleted { task_id }, .. }] if
-                task_id == "bg-suppressed")
-            );
+            assert!(matches!(
+                state.pending_notifications.as_slice(),
+                [PendingNotification {
+                    source: NotificationSource::BashTaskCompleted { task_id },
+                    ..
+                }] if task_id == "bg-suppressed"
+            ));
             drop(state);
             assert!(reservations.contains("bg-suppressed"));
             let res = resources.lock().await;
@@ -309,11 +319,13 @@ async fn closed_admission_ack_stores_fallback_before_prompt_rejection() {
                     .is_none()
             );
             let state = actor.state.lock().await;
-            assert!(
-                matches!(state.pending_notifications.as_slice(), [PendingNotification {
-                source : NotificationSource::MonitorCompleted { task_id }, .. }] if
-                task_id == "mon-timeout")
-            );
+            assert!(matches!(
+                state.pending_notifications.as_slice(),
+                [PendingNotification {
+                    source: NotificationSource::MonitorCompleted { task_id },
+                    ..
+                }] if task_id == "mon-timeout"
+            ));
         })
         .await;
 }
@@ -381,31 +393,23 @@ async fn task_completion_wake_is_admitted_without_cancel_barrier() {
                 .expect("normal task wake should be admitted");
             assert_eq!(response_rx.await, Ok(true));
             let (respond_to, _rx) = oneshot::channel();
-            actor
-                .queue_input(
-                    vec![],
-                    "task-completed-bg-normal".to_string(),
-                    PromptMode::Agent,
-                    None,
-                    None,
-                    None,
-                    None,
-                    true,
-                    None,
-                    false,
-                    Some(fallback),
-                    respond_to,
-                    None,
-                    None,
-                )
+            let _ = actor
+                .queue_input(QueueInputRequest {
+                    verbatim: true,
+                    task_wake_fallback: Some(fallback),
+                    ..queue_input_request(vec![], "task-completed-bg-normal", respond_to)
+                })
                 .await;
             let state = actor.state.lock().await;
             assert_eq!(state.pending_inputs.len(), 1);
-            assert!(
-                matches!(state.pending_inputs.front().map(| item | & item.origin),
-                Some(crate ::session::PromptOrigin::TaskCompleted { task_id }) if task_id
-                == "bg-normal")
-            );
+            assert!(matches!(
+                state
+                    .pending_inputs
+                    .front()
+                    .map(|item| item.input_origin.as_prompt_origin()),
+                Some(crate::session::PromptOrigin::TaskCompleted { task_id })
+                    if task_id == "bg-normal"
+            ));
             drop(state);
             let resources = actor
                 .agent
@@ -436,6 +440,7 @@ async fn task_completion_wake_is_admitted_without_cancel_barrier() {
                         None,
                         None,
                         true,
+                        false,
                         None,
                         None,
                         None,
@@ -468,6 +473,65 @@ async fn task_completion_wake_is_admitted_without_cancel_barrier() {
         .await;
 }
 #[tokio::test(flavor = "current_thread")]
+async fn disk_full_refusal_still_clears_task_completion_reservation() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let (gateway_tx, _gateway_rx) =
+                tokio::sync::mpsc::unbounded_channel::<xai_acp_lib::AcpClientMessage>();
+            let (persistence_tx, mut persistence_rx) =
+                tokio::sync::mpsc::unbounded_channel::<PersistenceMsg>();
+            tokio::task::spawn_local(async move {
+                while let Some(msg) = persistence_rx.recv().await {
+                    if let PersistenceMsg::ProbeWritable { respond_to } = msg {
+                        let _ = respond_to
+                            .send(Err(std::io::Error::from(std::io::ErrorKind::StorageFull)));
+                    }
+                }
+            });
+            let mut actor = create_test_actor(0, 256_000, 85, gateway_tx, persistence_tx).await;
+            actor.notifications.disk_full = tokio::sync::watch::channel(true).1;
+            actor
+                .tool_context
+                .task_completion_reservations
+                .as_ref()
+                .expect("completion reservations")
+                .reserve("bg-disk".to_string());
+            let actor = std::sync::Arc::new(actor);
+            let error = actor
+                .handle_prompt(
+                    "task-completed-bg-disk",
+                    vec![acp::ContentBlock::Text(acp::TextContent::new("done"))],
+                    PromptMode::Agent,
+                    None,
+                    None,
+                    None,
+                    None,
+                    true,
+                    false,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .expect_err("latched disk-full must refuse the wake");
+            assert_eq!(error.message, "No space left on device");
+            assert!(
+                already_reported(&actor, "bg-disk").await,
+                "disk-full refusal must mark the completion reported"
+            );
+            assert!(
+                actor
+                    .tool_context
+                    .task_completion_reservations
+                    .as_ref()
+                    .is_none_or(|ids| !ids.contains("bg-disk")),
+                "disk-full refusal must release the completion reservation"
+            );
+        })
+        .await;
+}
+#[tokio::test(flavor = "current_thread")]
 async fn genuine_user_start_consumes_deferred_completions_without_notification_turn() {
     let local = tokio::task::LocalSet::new();
     local
@@ -495,7 +559,11 @@ async fn genuine_user_start_consumes_deferred_completions_without_notification_t
                     kind: xai_grok_tools::computer::types::TaskKind::Monitor,
                     block_waited: false,
                     explicitly_killed: false,
+                    kill_result_delivered: false,
                     owner_session_id: None,
+                    description: None,
+                    is_backgrounded: false,
+                    output_total_bytes: 0,
                 },
                 Some("get_command_or_subagent_output"),
             );
@@ -540,6 +608,7 @@ async fn genuine_user_start_consumes_deferred_completions_without_notification_t
                         None,
                         None,
                         false,
+                        false,
                         None,
                         None,
                         None,
@@ -562,7 +631,7 @@ async fn genuine_user_start_consumes_deferred_completions_without_notification_t
             assert!(state.notifications_suppressed);
             assert!(state.pending_notifications.is_empty());
             assert!(state.pending_inputs.iter().all(|input| !matches!(
-                input.origin,
+                input.input_origin.as_prompt_origin(),
                 crate::session::PromptOrigin::NotificationDrain
             )));
             drop(state);
@@ -570,7 +639,7 @@ async fn genuine_user_start_consumes_deferred_completions_without_notification_t
             SessionActor::maybe_drain_notifications(actor.clone(), completion_tx).await;
             let state = actor.state.lock().await;
             assert!(state.pending_inputs.iter().all(|input| !matches!(
-                input.origin,
+                input.input_origin.as_prompt_origin(),
                 crate::session::PromptOrigin::NotificationDrain
             )));
             drop(state);
@@ -631,6 +700,7 @@ async fn accepted_reservation_survives_user_start() {
                         None,
                         None,
                         false,
+                        false,
                         None,
                         None,
                         None,
@@ -673,18 +743,18 @@ async fn same_id_bash_completion_does_not_suppress_monitor_event() {
                 .await;
             let monitor = PendingNotification {
                 prompt_id: "monitor-shared".to_string(),
-                prompt_blocks: vec![
-                    acp::ContentBlock::Text(acp::TextContent::new("<monitor-event description=\"watch\" task_id=\"shared\">\nstdout\n</monitor-event>",))
-                ],
+                prompt_blocks: vec![acp::ContentBlock::Text(acp::TextContent::new(
+                    "<monitor-event description=\"watch\" task_id=\"shared\">\nstdout\n</monitor-event>",
+                ))],
                 priority: NotificationPriority::Next,
                 source: NotificationSource::MonitorEvent {
                     task_id: "shared".to_string(),
                 },
             };
             let mut bash = bash_completed_notification("shared");
-            bash.prompt_blocks = vec![
-                acp::ContentBlock::Text(acp::TextContent::new("Background task shared completed.",))
-            ];
+            bash.prompt_blocks = vec![acp::ContentBlock::Text(acp::TextContent::new(
+                "Background task shared completed.",
+            ))];
             let mut state = actor.state.lock().await;
             SessionActor::drain_notifications_into_turn(
                 &mut state,
@@ -829,23 +899,8 @@ async fn user_prompt_preempt_keeps_running_synthetic_slot() {
                     .push_back(task_completed_input("bg-other"));
             }
             let (respond_to, _rx) = oneshot::channel();
-            actor
-                .queue_input(
-                    vec![],
-                    "user-clarify".to_string(),
-                    PromptMode::Agent,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                    None,
-                    false,
-                    None,
-                    respond_to,
-                    None,
-                    None,
-                )
+            let _ = actor
+                .queue_input(queue_input_request(vec![], "user-clarify", respond_to))
                 .await;
             let state = actor.state.lock().await;
             let remaining_ids: Vec<&str> = state
@@ -1273,7 +1328,7 @@ async fn handle_bridge_tool_success_runs_consumed_completion_sweep() {
                     "tc-1",
                     "get_task_output",
                     "get_task_output",
-                    result,
+                    DrainedToolSuccess::new(result),
                     0,
                     "test-model",
                     &parsed_args,
@@ -1646,7 +1701,11 @@ fn completed_bash_task(id: &str) -> xai_grok_tools::computer::types::TaskSnapsho
         kind: Default::default(),
         block_waited: false,
         explicitly_killed: false,
+        kill_result_delivered: false,
         owner_session_id: None,
+        description: None,
+        is_backgrounded: false,
+        output_total_bytes: 0,
     }
 }
 /// Real-actor coverage for the `SessionCommand::IsBusy` predicate

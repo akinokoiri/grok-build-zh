@@ -357,6 +357,51 @@ fn source_from_agent_def(def: &AgentDefinition) -> ConfigSource {
 
 // ── Plugin-aware variants ─────────────────────────────────────────────
 
+/// One plugin-provided agent, addressable by its qualified `plugin:agent` name.
+#[derive(Debug)]
+pub struct PluginAgent {
+    /// Qualified `plugin-name:agent-name` used to spawn (and toggle) the agent.
+    pub qualified_name: String,
+    /// Owning plugin's scope mapped to the agent scope model (project or user).
+    pub scope: AgentScope,
+    /// Parsed definition (`plugin_name` is set; `name` stays unqualified).
+    pub definition: AgentDefinition,
+}
+
+/// Enumerate all agents provided by enabled plugins.
+///
+/// Loads every `*.md` in each enabled plugin's agent dirs. Untrusted plugins
+/// are parsed frontmatter-only (see [`load_plugin_agent_definition`]).
+pub fn plugin_agents(registry: &crate::plugins::PluginRegistry) -> Vec<PluginAgent> {
+    let mut agents = Vec::new();
+    for plugin in registry.enabled_plugins() {
+        for agent_dir in &plugin.agent_dirs {
+            let Ok(entries) = std::fs::read_dir(agent_dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                    continue;
+                }
+                let Some(def) = load_plugin_agent_definition(plugin, &path) else {
+                    continue;
+                };
+                let scope = match plugin.scope {
+                    crate::plugins::PluginScope::Project => AgentScope::Project,
+                    _ => AgentScope::User,
+                };
+                agents.push(PluginAgent {
+                    qualified_name: format!("{}:{}", plugin.name, def.name),
+                    scope,
+                    definition: def,
+                });
+            }
+        }
+    }
+    agents
+}
+
 /// Build the complete list of enabled subagents, including plugin agents.
 pub fn all_subagents_with_plugins(
     cwd: &Path,
@@ -385,56 +430,28 @@ fn all_subagents_with_plugins_and_home(
 
     // Append plugin agents under qualified names
     if let Some(registry) = plugins {
-        for plugin in registry.enabled_plugins() {
-            for agent_dir in &plugin.agent_dirs {
-                if !agent_dir.is_dir() {
-                    continue;
-                }
-                let agent_entries = match std::fs::read_dir(agent_dir) {
-                    Ok(entries) => entries,
-                    Err(_) => continue,
-                };
-                for entry in agent_entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                        continue;
-                    }
-                    // Use frontmatter-only parsing for untrusted plugins
-                    let def = if plugin.trusted {
-                        AgentDefinition::from_file(&path).ok()
-                    } else {
-                        AgentDefinition::from_file_frontmatter_only(&path).ok()
-                    };
-                    let Some(mut def) = def else { continue };
-                    def.plugin_name = Some(plugin.name.clone());
-
-                    let qualified_name = format!("{}:{}", plugin.name, def.name);
-
-                    // Skip if a native entry already has this qualified name
-                    if entries.iter().any(|e| e.name == qualified_name) {
-                        continue;
-                    }
-
-                    // Map plugin scope to agent scope
-                    let agent_scope = match plugin.scope {
-                        crate::plugins::PluginScope::Project => AgentScope::Project,
-                        crate::plugins::PluginScope::User => AgentScope::User,
-                        _ => AgentScope::User,
-                    };
-
-                    let config_source = ConfigSource::Plugin {
-                        plugin_name: plugin.name.clone(),
-                        path: path.clone(),
-                    };
-                    entries.push(SubagentEntry {
-                        name: qualified_name,
-                        description: def.description,
-                        source: SubagentSource::UserDefined { scope: agent_scope },
-                        shadows_builtin: None,
-                        config_source,
-                    });
-                }
+        for agent in plugin_agents(registry) {
+            // Skip if a native entry already has this qualified name
+            if entries.iter().any(|e| e.name == agent.qualified_name) {
+                continue;
             }
+
+            // Toggles key on the qualified name (same name the list shows).
+            if !toggle.get(&agent.qualified_name).copied().unwrap_or(true) {
+                continue;
+            }
+
+            let config_source = ConfigSource::Plugin {
+                plugin_name: agent.definition.plugin_name.clone().unwrap_or_default(),
+                path: agent.definition.source_path.clone().unwrap_or_default(),
+            };
+            entries.push(SubagentEntry {
+                name: agent.qualified_name,
+                description: agent.definition.description,
+                source: SubagentSource::UserDefined { scope: agent.scope },
+                shadows_builtin: None,
+                config_source,
+            });
         }
     }
 
@@ -481,17 +498,11 @@ fn by_name_in_cwd_with_plugins_and_home(
         {
             for agent_dir in &plugin.agent_dirs {
                 let agent_file = agent_dir.join(format!("{agent_name}.md"));
-                if agent_file.is_file() {
-                    let load_fn = if plugin.trusted {
-                        AgentDefinition::from_file
-                    } else {
-                        AgentDefinition::from_file_frontmatter_only
-                    };
-                    if let Ok(mut def) = load_fn(&agent_file) {
-                        def.plugin_name = Some(plugin_name.to_string());
-                        substitute_plugin_vars(&mut def, plugin);
-                        return Some(def);
-                    }
+                if agent_file.is_file()
+                    && let Some(mut def) = load_plugin_agent_definition(plugin, &agent_file)
+                {
+                    substitute_plugin_vars(&mut def, plugin);
+                    return Some(def);
                 }
             }
         }
@@ -510,13 +521,7 @@ fn by_name_in_cwd_with_plugins_and_home(
         }
         if matches.len() == 1 {
             let (plugin, agent_file) = &matches[0];
-            let load_fn = if plugin.trusted {
-                AgentDefinition::from_file
-            } else {
-                AgentDefinition::from_file_frontmatter_only
-            };
-            if let Ok(mut def) = load_fn(agent_file) {
-                def.plugin_name = Some(plugin.name.clone());
+            if let Some(mut def) = load_plugin_agent_definition(plugin, agent_file) {
                 substitute_plugin_vars(&mut def, plugin);
                 return Some(def);
             }
@@ -531,6 +536,37 @@ fn by_name_in_cwd_with_plugins_and_home(
     }
 
     None
+}
+
+/// Load one plugin-provided agent file, tagged with its owning plugin.
+///
+/// Untrusted plugins are parsed frontmatter-only so their prompt body never
+/// reaches the model before the plugin is trusted. A parse failure drops the
+/// agent from discovery entirely, so it is logged rather than swallowed.
+fn load_plugin_agent_definition(
+    plugin: &crate::plugins::LoadedPlugin,
+    path: &Path,
+) -> Option<AgentDefinition> {
+    let loaded = if plugin.trusted {
+        AgentDefinition::from_file(path)
+    } else {
+        AgentDefinition::from_file_frontmatter_only(path)
+    };
+    match loaded {
+        Ok(mut def) => {
+            def.plugin_name = Some(plugin.name.clone());
+            Some(def)
+        }
+        Err(e) => {
+            tracing::warn!(
+                plugin = %plugin.name,
+                path = %path.display(),
+                error = %e,
+                "Failed to parse plugin agent definition, skipping"
+            );
+            None
+        }
+    }
 }
 
 /// Expand `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` (and the Grok
@@ -733,17 +769,7 @@ mod tests {
                 name: plugin_name.to_string(),
                 version: Some("1.0.0".to_string()),
                 description: Some(format!("Plugin {plugin_name}")),
-                author: None,
-                homepage: None,
-                repository: None,
-                license: None,
-                keywords: vec![],
-                skills: None,
-                commands: None,
-                agents: None,
-                hooks: None,
-                mcp_servers: None,
-                lsp_servers: None,
+                ..Default::default()
             },
             id: PluginId::new(scope, &root, plugin_name),
             root: root.clone(),
@@ -1366,6 +1392,82 @@ mod tests {
             }
         );
         assert!(entries.iter().any(|e| e.name == "plugin-one:reviewer"));
+    }
+
+    #[test]
+    fn test_plugin_agents_filtered_by_qualified_toggle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path().join("workspace");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&cwd).unwrap();
+        fs::create_dir_all(&home).unwrap();
+
+        let plugin_root = tempfile::tempdir().unwrap();
+        let plugin_agents = plugin_root.path().join("agents");
+        fs::create_dir_all(&plugin_agents).unwrap();
+        write_agent_file(&plugin_agents, "reviewer.md", "reviewer", "Plugin reviewer");
+
+        let registry = make_plugin_registry("plugin-one", PluginScope::User, vec![plugin_agents]);
+
+        let toggle = HashMap::from([("plugin-one:reviewer".to_string(), false)]);
+        let entries = all_subagents_with_plugins_and_home(
+            &cwd,
+            &toggle,
+            Some(&registry),
+            Some(&home),
+            Some(&home.join(".grok")),
+        );
+        assert!(
+            !entries.iter().any(|e| e.name == "plugin-one:reviewer"),
+            "toggled-off plugin agent must not be callable"
+        );
+
+        let entries = all_subagents_with_plugins_and_home(
+            &cwd,
+            &HashMap::new(),
+            Some(&registry),
+            Some(&home),
+            Some(&home.join(".grok")),
+        );
+        assert!(entries.iter().any(|e| e.name == "plugin-one:reviewer"));
+    }
+
+    #[test]
+    fn plugin_agent_with_unrecognized_color_is_still_discovered() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = tmp.path().join("workspace");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&cwd).unwrap();
+        fs::create_dir_all(&home).unwrap();
+
+        let plugin_root = tempfile::tempdir().unwrap();
+        let plugin_agents = plugin_root.path().join("agents");
+        fs::create_dir_all(&plugin_agents).unwrap();
+        fs::write(
+            plugin_agents.join("painter.md"),
+            "---\nname: painter\ndescription: Plugin painter\ncolor: chartreuse\n---\nBody.\n",
+        )
+        .unwrap();
+
+        let registry = make_plugin_registry("plugin-one", PluginScope::User, vec![plugin_agents]);
+        let entries = all_subagents_with_plugins_and_home(
+            &cwd,
+            &HashMap::new(),
+            Some(&registry),
+            Some(&home),
+            Some(&home.join(".grok")),
+        );
+        assert!(entries.iter().any(|e| e.name == "plugin-one:painter"));
+
+        let def = by_name_in_cwd_with_plugins_and_home(
+            "plugin-one:painter",
+            &cwd,
+            Some(&registry),
+            Some(&home),
+            Some(&home.join(".grok")),
+        )
+        .expect("agent must resolve despite the unrecognized color");
+        assert_eq!(def.color, None, "unrecognized color must be dropped");
     }
 
     #[test]

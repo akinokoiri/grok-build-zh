@@ -65,6 +65,22 @@
     }
 
     #[test]
+    fn clone_for_live_prefill_restores_without_stealing_session_images() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("inspect ");
+        pw.insert_image(test_image()).unwrap();
+        let session = pw.stash();
+        assert!(pw.images.is_empty());
+
+        pw.restore(session.clone_for_live_prefill());
+        assert!(pw.text().contains("[Image #1]"));
+        assert_eq!(pw.images.len(), 1);
+        assert_eq!(session.images.len(), 1);
+        drop(pw);
+        assert_eq!(session.images.len(), 1);
+    }
+
+    #[test]
     fn stash_clear_restore_preserves_image_for_send() {
         let mut pw = PromptWidget::new();
         pw.textarea.insert_str("inspect ");
@@ -527,12 +543,12 @@
             chrome: false,
             ..Default::default()
         };
-        pw.history_search.activate_browse(
+        assert!(pw.history_search.activate_browse(
             &[crate::views::history_search::HistoryEntry {
                 text: "line1\nline2\nline3".into(),
             }],
             "",
-        );
+        ));
         pw.set_text("line1\nline2\nline3"); // populated multi-line entry
         assert_eq!(
             pw.desired_height(80, &style, true, 20),
@@ -1557,6 +1573,21 @@
             "should insert alias command, got: {:?}",
             pw.textarea.text()
         );
+    }
+
+    /// Accepting a completion rewrites the token; an unrelated highlight
+    /// (Shift+arrows while the dropdown is open) must not survive the accept.
+    #[test]
+    fn accept_completion_drops_active_highlight() {
+        let mut pw = PromptWidget::new();
+        let models = crate::acp::model_state::ModelState::default();
+        pw.textarea.insert_str("/mod");
+        pw.refresh_slash(&models);
+        pw.textarea.set_selection(1, 3);
+
+        assert!(pw.accept_slash_completion(&models));
+        assert_eq!(pw.textarea.text(), "/model ");
+        assert!(pw.textarea.selection_range().is_none());
     }
 
     #[test]
@@ -4572,4 +4603,148 @@
         // Too narrow for the min label width (max_w < 6): plain border, no panic.
         let buf = draw_bordered(11, &title_test_style(Some("my session")));
         assert_eq!(buf_text_at(&buf, 1, 10, 0), "\u{2500}".repeat(9));
+    }
+
+    // ── PromptBg::Panel chip remap (inline surfaces) ────────────────
+
+    fn any_cell_with_bg(buf: &Buffer, bg: ratatui::style::Color) -> bool {
+        let area = *buf.area();
+        (area.top()..area.bottom())
+            .any(|y| (area.left()..area.right()).any(|x| buf.cell((x, y)).is_some_and(|c| c.bg == bg)))
+    }
+
+    /// Inline surfaces repaint the chip's baked-in `paste_bg` to the panel
+    /// background; without the flag the chip keeps its own background. Uses
+    /// a sentinel panel color so the test holds under terminal-default,
+    /// where every palette entry quantizes to `Color::Reset`.
+    #[test]
+    fn panel_bg_repaints_paste_chip_to_panel_bg() {
+        let theme = Theme::current();
+        let panel = ratatui::style::Color::Rgb(12, 34, 56);
+        assert_ne!(theme.paste_bg, panel, "fixture: sentinel must differ");
+
+        let mut pw = PromptWidget::new();
+        pw.handle_paste("a\nb\nc\nd\ne"); // 5 lines >= chip threshold (4)
+        let area = Rect::new(0, 0, 40, 2);
+
+        let inline = PromptStyle::inline(panel);
+        assert!(
+            matches!(inline.bg, PromptBg::Panel(_)),
+            "inline surfaces are panels"
+        );
+        let mut buf = Buffer::empty(area);
+        pw.draw(&mut buf, area, None, &inline, None, None);
+        assert!(
+            !any_cell_with_bg(&buf, theme.paste_bg),
+            "chip cells must be repainted to the panel background"
+        );
+        assert!(
+            any_cell_with_bg(&buf, panel),
+            "the chip row renders on the panel background"
+        );
+
+        let no_remap = PromptStyle {
+            bg: PromptBg::Canvas(panel),
+            ..PromptStyle::inline(panel)
+        };
+        let mut buf = Buffer::empty(area);
+        pw.draw(&mut buf, area, None, &no_remap, None, None);
+        assert!(
+            any_cell_with_bg(&buf, theme.paste_bg),
+            "without the remap the chip keeps its own background"
+        );
+    }
+
+    /// The shift-selection chords must reach the textarea through the widget.
+    #[test]
+    fn shift_movement_chords_extend_selection_through_widget() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("alpha beta");
+        pw.textarea.set_cursor(0);
+
+        pw.handle_key(&KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::ALT | KeyModifiers::SHIFT,
+        ));
+        assert_eq!(pw.textarea.selection_range(), Some(0..5), "word extend");
+
+        pw.handle_key(&KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::SUPER | KeyModifiers::SHIFT,
+        ));
+        assert_eq!(
+            pw.textarea.selection_range(),
+            Some(0..10),
+            "line-end extend keeps the anchor"
+        );
+
+        pw.handle_key(&KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT));
+        assert_eq!(pw.textarea.selection_range(), Some(0..9), "grapheme shrink");
+    }
+
+    /// A selection-only change must report Edited or the highlight goes stale on screen.
+    #[test]
+    fn selection_only_change_reports_edited() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("alpha beta");
+        pw.textarea.set_cursor(0);
+        pw.handle_key(&KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::ALT | KeyModifiers::SHIFT,
+        ));
+        assert_eq!(pw.textarea.selection_range(), Some(0..5));
+
+        // Cursor (head) is at 5; plain Right collapses to 5 — same text,
+        // same cursor, selection cleared.
+        let event = pw.handle_key(&KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(event, PromptEvent::Edited);
+        assert_eq!(pw.textarea.selection_range(), None);
+        assert_eq!(pw.textarea.cursor(), 5);
+    }
+
+    /// Esc drops the highlight but is never consumed — the same press still cancels.
+    #[test]
+    fn esc_with_selection_clears_highlight_and_declines() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("alpha beta");
+        pw.textarea.set_selection(0, 5);
+        let event = pw.handle_key(&key!(Esc).to_key_event());
+        assert_eq!(event, PromptEvent::Ignored);
+        assert_eq!(pw.textarea.selection_range(), None);
+    }
+
+    /// Modified Esc has no structural consumer: the widget consumes it via
+    /// the textarea catch-all so the cleared highlight repaints (Edited).
+    #[test]
+    fn modified_esc_with_selection_clears_and_repaints() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("alpha beta");
+        pw.textarea.set_selection(0, 5);
+        let event = pw.handle_key(&KeyEvent::new(KeyCode::Esc, KeyModifiers::ALT));
+        assert_eq!(event, PromptEvent::Edited);
+        assert_eq!(pw.textarea.selection_range(), None);
+    }
+
+    /// Same contract for Tab: highlight drops and focus switches on one press.
+    #[test]
+    fn tab_with_selection_clears_highlight_and_declines() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("alpha beta");
+        pw.textarea.set_selection(0, 5);
+        let event = pw.handle_key(&key!(Tab).to_key_event());
+        assert_eq!(event, PromptEvent::Ignored);
+        assert_eq!(pw.textarea.selection_range(), None);
+    }
+
+    /// Shift/Alt+Enter replaces the selection like typing does.
+    #[test]
+    fn mod_enter_replaces_selection_with_newline() {
+        let mut pw = PromptWidget::new();
+        pw.textarea.insert_str("alpha beta");
+        pw.textarea.set_selection(0, 5);
+        pw.textarea.set_cursor(5);
+        let event = pw.handle_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+        assert_eq!(event, PromptEvent::Edited);
+        assert_eq!(pw.textarea.text(), "\n beta");
+        assert_eq!(pw.textarea.selection_range(), None);
     }

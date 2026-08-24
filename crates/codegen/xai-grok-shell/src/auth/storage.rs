@@ -1,46 +1,39 @@
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::model::{API_KEY_SCOPE, AuthMode, AuthStore, GrokAuth, lookup_auth};
+use super::model::{API_KEY_SCOPE, AuthMode, AuthStore, GrokAuth};
 
-/// RAII guard for an exclusive advisory lock on `auth.json.lock`.
-/// The lock is released when the inner `File` is dropped (closing the FD).
+#[must_use]
 pub(crate) struct AuthFileLock {
-    pub(super) _file: File,
+    pub(super) heartbeat: Option<super::manager::lock::LockHeartbeat>,
+    pub(super) file: File,
+}
+
+impl Drop for AuthFileLock {
+    fn drop(&mut self) {
+        // Join the heartbeat while the flock is held; a late rewrite would stamp a sibling's lock.
+        self.heartbeat.take();
+    }
 }
 
 impl AuthFileLock {
-    /// Returns `true` while this guard still refers to the **live**
-    /// `auth.json.lock` inode.
-    ///
-    /// A waiter that finds a holder stuck past the stale-lock timeout breaks
-    /// the lock by `unlink`ing the file and recreating it on a fresh inode
-    /// (see [`crate::auth::manager::lock`]). The usual cause of a "stuck"
-    /// holder is a process **suspended across system sleep** while holding the
-    /// lock: it stays alive (so the kernel never releases its flock) yet makes
-    /// no progress, so siblings break it. When such a holder resumes, its
-    /// flock lives on the now-deleted inode — it no longer holds the live lock
-    /// even though this `AuthFileLock` still exists.
-    ///
-    /// Callers about to perform an irreversible, lock-protected action
-    /// (sending a refresh token to the IdP, writing `auth.json`) MUST
-    /// re-validate first; otherwise two processes can spend the same refresh
-    /// token and trip token-family revocation.
-    ///
-    /// Non-Unix has no inode concept, so this conservatively returns `true`.
+    // TODO: delete once the token endpoint tolerates racing refreshes; guards the
+    // one-shot refresh-token contract.
+    /// False if the lock file was replaced out from under us.
     #[cfg(unix)]
     pub(crate) fn still_live(&self, auth_json_path: &Path) -> bool {
         use std::os::unix::fs::MetadataExt;
-        let lock_path = auth_json_path.with_file_name("auth.json.lock");
-        let (Ok(fd_meta), Ok(path_meta)) = (self._file.metadata(), std::fs::metadata(&lock_path))
+        let lock_path = auth_json_path.with_file_name(super::manager::lock::LOCK_FILE_NAME);
+        let (Ok(fd_meta), Ok(path_meta)) = (self.file.metadata(), std::fs::metadata(&lock_path))
         else {
-            // Lock file gone or unreadable → we no longer hold the live lock.
             return false;
         };
         fd_meta.ino() == path_meta.ino() && fd_meta.dev() == path_meta.dev()
     }
 
+    /// Non-Unix has no inode identity, so revalidation is deliberately a no-op.
     #[cfg(not(unix))]
     pub(crate) fn still_live(&self, _auth_json_path: &Path) -> bool {
         true
@@ -273,16 +266,55 @@ fn write_store_to(path: &Path, auth_store: &AuthStore) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Test-only, path-scoped write fault: `write_auth_json_atomic` fails with
+/// `Unsupported` for exactly this `auth.json` path. Path-scoped so parallel
+/// tests in the same process do not sabotage each other.
+#[cfg(test)]
+pub(super) static WRITE_FAULT_PATH: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
 /// Atomic write: tmp + rename. Unix `rename(2)` replaces atomically;
 /// Windows `rename` requires removing the target first.
 fn write_auth_json_atomic(auth_file: &Path, auth_store: &AuthStore) -> std::io::Result<()> {
-    let tmp = auth_file.with_extension(format!("json.{}.tmp", std::process::id()));
+    #[cfg(test)]
+    if WRITE_FAULT_PATH
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_deref()
+        == Some(auth_file)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "injected write fault (WRITE_FAULT_PATH)",
+        ));
+    }
+    // Unique per write (pid + monotonic seq): two concurrent in-process writers
+    // (e.g. background mint + proactive refresher) must not share one tmp path.
+    static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+    let tmp = auth_file.with_extension(format!(
+        "json.{}.{}.tmp",
+        std::process::id(),
+        TMP_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    // Reclaim the temp file on any early return (write/sync/rename failure); the
+    // unique name otherwise accumulates one orphan per failed write.
+    struct TmpReclaim<'a>(Option<&'a Path>);
+    impl Drop for TmpReclaim<'_> {
+        fn drop(&mut self) {
+            if let Some(p) = self.0 {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+    let mut tmp_reclaim = TmpReclaim(Some(&tmp));
+
     write_store_to(&tmp, auth_store)?;
     #[cfg(windows)]
     {
         let _ = std::fs::remove_file(auth_file);
     }
     std::fs::rename(&tmp, auth_file)?;
+    tmp_reclaim.0 = None; // renamed into place; nothing to reclaim
     // Re-assert on the final path (covers rename edge cases / FS quirks).
     // Best-effort: rename already published the new tokens.
     if let Err(e) = crate::util::secure_file::ensure_owner_only_permissions(auth_file) {
@@ -348,18 +380,6 @@ fn restore_prior_bytes(auth_file: &Path, bytes: &[u8]) -> std::io::Result<()> {
     file.sync_all()?;
     crate::util::secure_file::ensure_owner_only_permissions(auth_file)?;
     Ok(())
-}
-
-/// Read a single auth token from `auth.json` by scope key.
-/// Falls back to the legacy `https://accounts.x.ai/sign-in` scope key
-/// when the requested scope is not found (devbox auth.json migration).
-pub fn read_token_by_scope(grok_home: &Path, scope: &str) -> anyhow::Result<String> {
-    let path = grok_home.join("auth.json");
-    let store =
-        read_auth_json(&path).map_err(|_| anyhow::anyhow!("Not logged in. Run `grok login`."))?;
-    lookup_auth(&store, scope).map(|a| a.key).ok_or_else(|| {
-        anyhow::anyhow!("Your auth token is invalid. Run `grok login` to re-authenticate.")
-    })
 }
 
 /// Read the API key from the `xai::api_key` scope in auth.json.
@@ -531,6 +551,31 @@ mod write_fallback_tests {
         let path = dir.path().join("auth.json");
         write_auth_json(&path, &sample_store()).unwrap();
         assert_eq!(read_key(&path).as_deref(), Some("secret-key"));
+    }
+
+    /// On a failed atomic write, the `TmpReclaim` guard must remove the temp
+    /// file so no orphan accumulates. Here `auth.json` is a directory, so the
+    /// `rename` fails after the temp file is written.
+    #[test]
+    fn atomic_write_reclaims_tmp_on_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        std::fs::create_dir(&path).unwrap();
+
+        assert!(
+            write_auth_json_atomic(&path, &sample_store()).is_err(),
+            "rename onto a directory must fail"
+        );
+
+        let orphans: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().contains(".tmp"))
+            .collect();
+        assert!(
+            orphans.is_empty(),
+            "TmpReclaim must remove the temp file on failure: {orphans:?}"
+        );
     }
 
     /// A fallback write that truncates then fails must roll back to the prior

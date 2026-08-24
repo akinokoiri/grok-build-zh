@@ -162,7 +162,7 @@ async fn test_headless_session_in_git_repo() {
         .await
         .expect("start mock server");
     let workdir = git_workdir();
-    let result = run_headless(&server, &["-p", "say hello", "--yolo"], workdir.path()).await;
+    let result = run_headless(&server, &["-p", "say hello", "--yolo"], workdir.workspace()).await;
 
     assert_headless_success(&result, "grok -p in git repo", Some(&server));
     assert_no_crashes(&result.stderr);
@@ -211,7 +211,7 @@ async fn test_headless_tools_allowlist_keeps_enabled_web_tools() {
             "--tools",
             "read_file,grep,list_dir,web_search,web_fetch",
         ],
-        workdir.path(),
+        workdir.workspace(),
         &[("GROK_WEB_FETCH", "1")],
     )
     .await;
@@ -272,7 +272,7 @@ async fn test_headless_tools_allowlist_does_not_fail_open_for_disabled_web_fetch
             "--tools",
             "read_file,web_fetch",
         ],
-        workdir.path(),
+        workdir.workspace(),
         &[("GROK_WEB_FETCH", "0")],
     )
     .await;
@@ -302,7 +302,7 @@ async fn test_headless_terminal_only_allowlist_is_foreground_only() {
     let result = run_headless(
         &server,
         &["-p", "say hello", "--yolo", "--tools", "run_terminal_cmd"],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -357,7 +357,7 @@ async fn test_headless_free_usage_exhausted_prints_paywall_message() {
     }
     let workdir = git_workdir();
 
-    let result = run_headless(&server, &["-p", "say hello", "--yolo"], workdir.path()).await;
+    let result = run_headless(&server, &["-p", "say hello", "--yolo"], workdir.workspace()).await;
 
     assert!(
         !result.timed_out && !result.status.success(),
@@ -396,7 +396,7 @@ async fn test_headless_streaming_json_output() {
             "--output-format",
             "streaming-json",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -444,6 +444,257 @@ async fn test_headless_streaming_json_output() {
     );
 }
 
+/// `streaming-messages-json` emits `system`/`init`, message wrapped assistant
+/// messages, and a terminal `result`.
+#[tokio::test]
+#[ignore] // requires pre-built binary; run with --ignored
+async fn test_headless_streaming_messages_json_output() {
+    let server = MockInferenceServer::start()
+        .await
+        .expect("start mock server");
+    let workdir = git_workdir();
+    let result = run_headless(
+        &server,
+        &[
+            "-p",
+            "say hello",
+            "--yolo",
+            "--output-format",
+            "streaming-messages-json",
+        ],
+        workdir.workspace(),
+    )
+    .await;
+
+    assert_headless_success(
+        &result,
+        "grok -p --output-format streaming-messages-json",
+        Some(&server),
+    );
+    assert_no_crashes(&result.stderr);
+
+    let messages: Vec<serde_json::Value> = result
+        .stdout
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .unwrap_or_else(|e| panic!("invalid streaming-messages-json line `{line}`: {e}"))
+        })
+        .collect();
+    fn type_of(m: &serde_json::Value) -> Option<&str> {
+        m.get("type").and_then(serde_json::Value::as_str)
+    }
+
+    let first = &messages[0];
+    assert_eq!(type_of(first), Some("system"), "{messages:?}");
+    assert_eq!(first["subtype"], "init", "{messages:?}");
+
+    let assistant = messages
+        .iter()
+        .find(|m| type_of(m) == Some("assistant"))
+        .unwrap_or_else(|| panic!("expected an assistant message: {messages:?}"));
+    assert!(assistant["message"]["content"].is_array(), "{assistant:?}");
+
+    let last = messages.last().expect("a result message");
+    assert_eq!(type_of(last), Some("result"), "{messages:?}");
+    assert_eq!(last["subtype"], "success", "{last:?}");
+    assert_eq!(last["is_error"], false, "{last:?}");
+}
+
+/// The Messages backend reports message id, thinking signature, verbatim stop
+/// reason, and per-response usage; all four must land on the assistant frame.
+#[tokio::test]
+#[ignore] // requires pre-built binary; run with --ignored
+async fn test_headless_streaming_messages_json_carries_per_response_metadata() {
+    use serde_json::json;
+    use xai_grok_test_support::scripted::{ScriptedResponse, SseEvent};
+
+    let model = "messages-compatible-model";
+    let server = single_model_server(model, "messages").await;
+    server.enqueue_response(
+        "/v1/messages",
+        ScriptedResponse::sse(vec![
+            SseEvent::data(
+                json!({"type":"message_start","message":{"id":"msg_e2e_9","type":"message","role":"assistant","content":[],"model":model,"stop_reason":null,"usage":{"input_tokens":12,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}).to_string(),
+            ),
+            SseEvent::data(
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}).to_string(),
+            ),
+            SseEvent::data(
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"weighing it"}}).to_string(),
+            ),
+            SseEvent::data(
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-e2e-abc"}}).to_string(),
+            ),
+            SseEvent::data(json!({"type":"content_block_stop","index":0}).to_string()),
+            SseEvent::data(
+                json!({"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}).to_string(),
+            ),
+            SseEvent::data(
+                json!({"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Hello there"}}).to_string(),
+            ),
+            SseEvent::data(json!({"type":"content_block_stop","index":1}).to_string()),
+            SseEvent::data(
+                json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7,"input_tokens":12}}).to_string(),
+            ),
+            SseEvent::data(json!({"type":"message_stop"}).to_string()),
+        ]),
+    );
+
+    let workdir = git_workdir();
+    let result = run_headless(
+        &server,
+        &[
+            "-p",
+            "say hi",
+            "--yolo",
+            "--model",
+            model,
+            "--max-turns",
+            "1",
+            "--output-format",
+            "streaming-messages-json",
+        ],
+        workdir.workspace(),
+    )
+    .await;
+
+    assert_headless_success(
+        &result,
+        "streaming-messages-json per-response metadata",
+        Some(&server),
+    );
+    assert_no_crashes(&result.stderr);
+
+    let messages: Vec<serde_json::Value> = result
+        .stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .unwrap_or_else(|e| panic!("invalid streaming-messages-json line `{line}`: {e}"))
+        })
+        .collect();
+
+    let assistant = messages
+        .iter()
+        .find(|m| m.get("type").and_then(serde_json::Value::as_str) == Some("assistant"))
+        .unwrap_or_else(|| panic!("expected an assistant message: {messages:?}"));
+    let message = &assistant["message"];
+    assert_eq!(
+        message["id"], "msg_e2e_9",
+        "real provider message id: {assistant:?}"
+    );
+    assert_eq!(
+        message["stop_reason"], "end_turn",
+        "verbatim wire stop reason: {assistant:?}"
+    );
+    assert_eq!(
+        message["usage"]["input_tokens"], 12,
+        "per-response usage: {assistant:?}"
+    );
+    assert_eq!(
+        message["usage"]["output_tokens"], 7,
+        "per-response usage: {assistant:?}"
+    );
+
+    let thinking = message["content"]
+        .as_array()
+        .unwrap_or_else(|| panic!("assistant content must be an array: {assistant:?}"))
+        .iter()
+        .find(|b| b["type"] == "thinking")
+        .unwrap_or_else(|| panic!("expected a thinking block: {assistant:?}"));
+    assert_eq!(
+        thinking["signature"], "sig-e2e-abc",
+        "thinking block must carry the reasoning signature: {assistant:?}"
+    );
+}
+
+/// End-to-end pipeline: a Messages-backend turn that stops on a configured stop
+/// sequence must carry the provider's matched sequence all the way through the
+/// sampler → shell `response_completed` → `streaming-messages-json` reducer, so
+/// the flushed `assistant` frame reads `stop_reason: "stop_sequence"` with the
+/// real `message.stop_sequence`. Drives the actual wire (a scripted
+/// `message_delta`), not a hand-built reducer event.
+#[tokio::test]
+#[ignore] // requires pre-built binary; run with --ignored
+async fn test_headless_streaming_messages_json_carries_stop_sequence() {
+    use serde_json::json;
+    use xai_grok_test_support::scripted::{ScriptedResponse, SseEvent};
+
+    let model = "messages-compatible-model";
+    let server = single_model_server(model, "messages").await;
+    server.enqueue_response(
+        "/v1/messages",
+        ScriptedResponse::sse(vec![
+            SseEvent::data(
+                json!({"type":"message_start","message":{"id":"msg_stop_seq","type":"message","role":"assistant","content":[],"model":model,"stop_reason":null,"usage":{"input_tokens":8,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}).to_string(),
+            ),
+            SseEvent::data(
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}).to_string(),
+            ),
+            SseEvent::data(
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"stopping here"}}).to_string(),
+            ),
+            SseEvent::data(json!({"type":"content_block_stop","index":0}).to_string()),
+            // The matched stop sequence rides the terminal `message_delta`.
+            SseEvent::data(
+                json!({"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"<END>"},"usage":{"output_tokens":3,"input_tokens":8}}).to_string(),
+            ),
+            SseEvent::data(json!({"type":"message_stop"}).to_string()),
+        ]),
+    );
+
+    let workdir = git_workdir();
+    let result = run_headless(
+        &server,
+        &[
+            "-p",
+            "emit the stop token",
+            "--yolo",
+            "--model",
+            model,
+            "--max-turns",
+            "1",
+            "--output-format",
+            "streaming-messages-json",
+        ],
+        workdir.workspace(),
+    )
+    .await;
+
+    assert_headless_success(
+        &result,
+        "streaming-messages-json stop_sequence",
+        Some(&server),
+    );
+    assert_no_crashes(&result.stderr);
+
+    let messages: Vec<serde_json::Value> = result
+        .stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .unwrap_or_else(|e| panic!("invalid streaming-messages-json line `{line}`: {e}"))
+        })
+        .collect();
+
+    let assistant = messages
+        .iter()
+        .find(|m| m.get("type").and_then(serde_json::Value::as_str) == Some("assistant"))
+        .unwrap_or_else(|| panic!("expected an assistant message: {messages:?}"));
+    let message = &assistant["message"];
+    assert_eq!(
+        message["stop_reason"], "stop_sequence",
+        "verbatim stop reason: {assistant:?}"
+    );
+    assert_eq!(
+        message["stop_sequence"], "<END>",
+        "matched stop sequence carried end-to-end: {assistant:?}"
+    );
+}
+
 #[tokio::test]
 #[ignore] // requires pre-built binary; run with --ignored
 async fn test_headless_json_reports_server_cost() {
@@ -485,7 +736,7 @@ async fn test_headless_json_reports_server_cost() {
             "--output-format",
             "json",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -537,7 +788,7 @@ async fn test_headless_json_reports_usage_on_max_turns() {
             "--output-format",
             "json",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -563,7 +814,7 @@ async fn test_headless_streaming_json_usage() {
             "--output-format",
             "streaming-json",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -602,7 +853,7 @@ async fn headless_json_schema_chat_completions_uses_response_format() {
             "--max-turns",
             "1",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -661,7 +912,7 @@ async fn headless_json_schema_responses_uses_text_format() {
             "--max-turns",
             "1",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -717,7 +968,7 @@ async fn headless_json_schema_messages_backend_uses_structured_output_tool() {
             "--max-turns",
             "2",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -799,7 +1050,7 @@ async fn headless_json_schema_messages_validates_text_when_tool_not_called() {
             "--max-turns",
             "1",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -846,7 +1097,7 @@ async fn headless_json_schema_messages_retries_on_schema_violation() {
             "--max-turns",
             "3",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -887,7 +1138,7 @@ async fn invalid_json_schema_disables_structured_output_and_surfaces_error() {
             "--max-turns",
             "1",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -946,7 +1197,7 @@ async fn test_stdio_full_session_lifecycle() {
     with_local_set(|| async {
         let server = MockInferenceServer::start().await.expect("start mock server");
         let workdir = git_workdir();
-        let client = GrokStdioClient::spawn(&server, workdir.path()).await;
+        let client = GrokStdioClient::spawn(&server, workdir.workspace()).await;
 
         // Initialize and authenticate
         let init_resp = client.initialize_with_timeout().await;
@@ -956,7 +1207,7 @@ async fn test_stdio_full_session_lifecycle() {
         );
 
         // Create session (triggers libgit2 init)
-        let session_id = client.create_session_with_timeout(workdir.path()).await;
+        let session_id = client.create_session_with_timeout(workdir.workspace()).await;
         assert!(!session_id.0.is_empty(), "session ID should be non-empty");
 
         // Send prompt — triggers inference to mock server
@@ -993,10 +1244,12 @@ async fn test_stdio_session_close() {
             .await
             .expect("start mock server");
         let workdir = git_workdir();
-        let client = GrokStdioClient::spawn(&server, workdir.path()).await;
+        let client = GrokStdioClient::spawn(&server, workdir.workspace()).await;
 
         client.initialize_with_timeout().await;
-        let session_id = client.create_session_with_timeout(workdir.path()).await;
+        let session_id = client
+            .create_session_with_timeout(workdir.workspace())
+            .await;
 
         // Session should be alive — session/info returns data with sessionId
         let info_resp = client
@@ -1055,7 +1308,7 @@ async fn test_stdio_prompt_then_immediate_load_session() {
     with_local_set(|| async {
         let server = MockInferenceServer::start().await.expect("start mock server");
         let workdir = git_workdir();
-        let mut writer = GrokStdioClient::spawn(&server, workdir.path()).await;
+        let mut writer = GrokStdioClient::spawn(&server, workdir.workspace()).await;
 
         let init_resp = writer.initialize_with_timeout().await;
         assert!(
@@ -1063,7 +1316,7 @@ async fn test_stdio_prompt_then_immediate_load_session() {
             "agent should return at least one auth method"
         );
 
-        let session_id = writer.create_session_with_timeout(workdir.path()).await;
+        let session_id = writer.create_session_with_timeout(workdir.workspace()).await;
         let result = writer.prompt_with_timeout(&session_id, "say hello").await;
         assert!(
             result.is_ok(),
@@ -1073,13 +1326,18 @@ async fn test_stdio_prompt_then_immediate_load_session() {
             stderr_tail(&writer.stderr(), 1200)
         );
 
-        let shared_home = writer.take_home();
+        let shared_sandbox = writer.take_sandbox();
         drop(writer);
 
-        let reader = GrokStdioClient::spawn_with_home(&server, workdir.path(), shared_home).await;
+        let reader = GrokStdioClient::spawn_with_sandbox(
+            &server,
+            workdir.workspace(),
+            shared_sandbox,
+        )
+        .await;
         reader.initialize_with_timeout().await;
         let _ = reader
-            .load_session_with_timeout(&session_id, workdir.path())
+            .load_session_with_timeout(&session_id, workdir.workspace())
             .await;
         assert!(
             reader.notification_count() > 0,
@@ -1133,7 +1391,7 @@ async fn test_stdio_xcode_escaped_slash_methods_get_responses() {
         .await
         .expect("start mock server");
     let workdir = git_workdir();
-    let mut agent = RawStdioClient::spawn(&server, workdir.path()).await;
+    let mut agent = RawStdioClient::spawn(&server, workdir.workspace()).await;
 
     // initialize/authenticate carry no slash (they work from Xcode too), but
     // ride string UUID ids and minimal capabilities like Xcode's client.
@@ -1173,7 +1431,7 @@ async fn test_stdio_xcode_escaped_slash_methods_get_responses() {
             "jsonrpc": "2.0",
             "id": new_id,
             "method": "session/new",
-            "params": { "cwd": workdir.path(), "mcpServers": [] },
+            "params": { "cwd": workdir.workspace(), "mcpServers": [] },
         }),
         "session/new",
     );
@@ -1230,62 +1488,126 @@ async fn test_stdio_xcode_escaped_slash_methods_get_responses() {
     );
 }
 
+/// `grok agent stdio` must initiate shutdown and exit when its client closes
+/// stdin (EOF) — a dead parent means closed pipes, so this is the primary
+/// orphan guard on every platform (the Linux `PR_SET_PDEATHSIG` binding in
+/// `run_stdio_agent` additionally covers an agent wedged mid-turn that never
+/// reads stdin again). Guards the `spawn_stdin_line_reader` → stdin_closed →
+/// simplex-shutdown → `handle_io` completion chain end to end.
+#[tokio::test]
+#[ignore] // requires pre-built binary; run with --ignored
+async fn test_stdio_agent_exits_on_stdin_eof() {
+    use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
+
+    let server = MockInferenceServer::start()
+        .await
+        .expect("start mock server");
+    let mut sandbox = TestSandbox::builder().git().build();
+    sandbox.set_mock_url(server.url());
+
+    let mut cmd = tokio::process::Command::new(grok_binary());
+    cmd.args(["agent", "stdio"])
+        .current_dir(sandbox.workspace());
+    let mut process = TestProcess::spawn(
+        cmd,
+        &sandbox,
+        TestProcessConfig::new()
+            .label("grok agent stdio (eof)")
+            .stdin(TestStdin::Piped)
+            .stdout(TestOutput::Piped),
+    )
+    .expect("spawn grok agent stdio");
+
+    // Prove the agent is up and serving before the EOF (an exit during
+    // startup would trivially pass the wait below).
+    let mut stdin = process.take_stdin().expect("child stdin missing");
+    let stdout = process.take_stdout().expect("child stdout missing");
+    let mut reader = tokio::io::BufReader::new(stdout);
+    stdin
+        .write_all(
+            concat!(
+                r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"#,
+                r#""clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false},"#,
+                r#""_meta":{"startupHints":{"nonInteractive":true,"skipGitStatus":true,"skipProjectLayout":true},"#,
+                r#""clientType":"eof-test","clientVersion":"0.0.0"}}}"#,
+                "\n"
+            )
+            .as_bytes(),
+        )
+        .await
+        .expect("write initialize");
+    stdin.flush().await.expect("flush initialize");
+    let mut line = String::new();
+    tokio::time::timeout(scaled(Duration::from_secs(20)), reader.read_line(&mut line))
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "no initialize response before EOF\nstderr:\n{}",
+                stderr_tail(&process.stderr_tail().text, 1200)
+            )
+        })
+        .expect("read initialize response");
+    assert!(
+        line.contains("\"result\""),
+        "initialize must respond with a result, got: {line}"
+    );
+
+    // Close the write end: the agent sees stdin EOF, exactly as when its
+    // parent dies and the inherited pipe closes.
+    drop(stdin);
+
+    // Exit path includes a bounded teardown (100ms simplex flush + 2s upload
+    // queue grace), so allow comfortably more than that.
+    let status = process
+        .wait_with_deadline(scaled(Duration::from_secs(30)))
+        .await
+        .expect("wait for agent exit")
+        .unwrap_or_else(|| {
+            panic!(
+                "grok agent stdio did not exit after stdin EOF\n{}",
+                process.diagnostic_summary()
+            )
+        });
+    assert!(
+        status.success(),
+        "agent should exit cleanly on stdin EOF, got {status:?}\nstderr:\n{}",
+        stderr_tail(&process.stderr_tail().text, 1200)
+    );
+}
+
 // ── Config test harness ─────────────────────────────────────────────────────
 
 /// Isolated headless run with a custom `~/.grok/`. Clean env (no leaked
 /// host credentials). Write config files into `grok_dir()` before `run()`.
 struct ConfigTestHarness {
-    home: tempfile::TempDir,
-    workdir: tempfile::TempDir,
-    env: Vec<(String, String)>,
+    sandbox: TestSandbox,
 }
 
 impl ConfigTestHarness {
     fn new(server: &MockInferenceServer) -> Self {
-        let home = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(home.path().join(".grok")).unwrap();
         Self {
-            home,
-            workdir: git_workdir(),
-            env: vec![
-                ("GROK_CLI_CHAT_PROXY_BASE_URL".into(), server.url()),
-                ("GROK_TELEMETRY_ENABLED".into(), "false".into()),
-                ("GROK_FEEDBACK_ENABLED".into(), "false".into()),
-                ("GROK_TRACE_UPLOAD".into(), "false".into()),
-                ("GROK_INSTRUMENTATION".into(), "disabled".into()),
-                ("GROK_DISABLE_AUTOUPDATER".into(), "1".into()),
-            ],
+            sandbox: TestSandbox::builder().mock_url(server.url()).git().build(),
         }
     }
 
     fn grok_dir(&self) -> std::path::PathBuf {
-        self.home.path().join(".grok")
+        self.sandbox.grok_home().to_path_buf()
     }
 
     fn env(&mut self, key: &str, value: &str) -> &mut Self {
-        self.env.push((key.into(), value.into()));
+        self.sandbox.set_env(key, value);
         self
     }
 
-    async fn run(&self) -> HeadlessResult {
+    async fn run(self) -> HeadlessResult {
         let mut cmd = tokio::process::Command::new(grok_binary());
         cmd.args(["-p", "say hello", "--yolo"])
-            .current_dir(self.workdir.path())
+            .current_dir(self.sandbox.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .env_clear()
-            .env("HOME", self.home.path())
-            // Windows resolves `~` via USERPROFILE, not HOME — pin the grok
-            // home explicitly so the sandbox holds on all platforms (see
-            // `test_env_cmd_tokio`).
-            .env("GROK_HOME", self.grok_dir())
-            .env("PATH", std::env::var("PATH").unwrap_or_default());
-        for (k, v) in &self.env {
-            cmd.env(k, v);
-        }
-        run_headless_with_cmd(cmd).await
+            .kill_on_drop(true);
+        run_headless_in_sandbox(cmd, self.sandbox).await
     }
 }
 
@@ -1375,7 +1697,7 @@ async fn headless_reasoning_efforts_payload_parses_and_legacy_effort_rides_wire(
             "--max-turns",
             "1",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -1493,7 +1815,7 @@ async fn test_headless_timeout_exit_kills_pending_background_task() {
         .await
         .expect("start mock server");
     let workdir = git_workdir();
-    let pid_file = workdir.path().join("task_pid.txt");
+    let pid_file = workdir.workspace().join("task_pid.txt");
     enqueue_background_task_turn(&server, &pid_file);
 
     let result = run_headless(
@@ -1505,7 +1827,7 @@ async fn test_headless_timeout_exit_kills_pending_background_task() {
             "--background-wait-timeout",
             "1",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -1534,7 +1856,7 @@ async fn test_headless_no_wait_exit_kills_background_task() {
         .await
         .expect("start mock server");
     let workdir = git_workdir();
-    let pid_file = workdir.path().join("task_pid.txt");
+    let pid_file = workdir.workspace().join("task_pid.txt");
     enqueue_background_task_turn(&server, &pid_file);
 
     let result = run_headless(
@@ -1545,7 +1867,7 @@ async fn test_headless_no_wait_exit_kills_background_task() {
             "--yolo",
             "--no-wait-for-background",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 
@@ -1571,7 +1893,7 @@ async fn test_headless_waits_for_short_background_task_and_exits_clean() {
         .await
         .expect("start mock server");
     let workdir = git_workdir();
-    let marker = workdir.path().join("finished.txt");
+    let marker = workdir.workspace().join("finished.txt");
     let command = format!("/bin/sleep 1 && echo ok > {}", marker.display());
     let args = serde_json::json!({
         "command": command,
@@ -1610,7 +1932,7 @@ async fn test_headless_waits_for_short_background_task_and_exits_clean() {
             "--background-wait-timeout",
             "30",
         ],
-        workdir.path(),
+        workdir.workspace(),
     )
     .await;
 

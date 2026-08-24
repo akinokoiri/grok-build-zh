@@ -51,16 +51,19 @@ fn info_override_json() -> String {
 
 fn spawn_with_announcements(content: &ContentController, override_json: &str) -> PtyHarness {
     let binary = pager_binary().expect("resolve pager binary");
-    let mut env = content.env_for_pager();
-    env.push((
+    let overrides: Vec<(String, String)> = vec![(
         "GROK_ANNOUNCEMENTS_OVERRIDE".into(),
         override_json.to_owned(),
-    ));
-    let env_refs: Vec<(&str, &str)> = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    PtyHarness::new_in_dir(
+    )];
+    let env_refs: Vec<(&str, &str)> = overrides
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    PtyHarness::spawn_with_content_env_in_dir(
         &binary,
         DEFAULT_ROWS,
         DEFAULT_COLS,
+        content,
         &[],
         &env_refs,
         Some(content.home()),
@@ -617,8 +620,21 @@ async fn promo_announcement_banner_slash_gate_and_critical_preemption() {
                 harness.screen_contents()
             )
         });
+    // Crossterm may hold a lone ESC briefly to disambiguate CSI sequences; a
+    // fixed 200ms pump races the dismiss paint under remote CI (same class as
+    // minimal_slash_dropdown_dismisses_with_esc). Wait for the sentinel to
+    // leave, clear the residual `/announ` draft, then re-sync the promo row so
+    // the preemption wait starts from a known banner state.
     harness.inject_keys(keys::ESC).expect("esc dropdown");
-    harness.update(Duration::from_millis(200));
+    harness
+        .wait_for_text_absent(SLASH_DESC, Duration::from_secs(10))
+        .expect("slash dropdown dismissed after Esc");
+    harness
+        .inject_keys(b"\x15")
+        .expect("Ctrl+U clear residual slash draft");
+    harness
+        .wait_for_text(PROMO_BUTTON, Duration::from_secs(10))
+        .expect("promo banner still up after slash dismiss");
 
     // Critical published mid-promo, with the promo STILL in the list: the
     // single slot flips to the critical banner (precedence, not replacement).
@@ -883,18 +899,14 @@ fn spawn_with_announcements_and_env(
     extra_env: &[(&str, &str)],
 ) -> PtyHarness {
     let binary = pager_binary().expect("resolve pager binary");
-    let mut env = content.env_for_pager();
-    env.push((
-        "GROK_ANNOUNCEMENTS_OVERRIDE".into(),
-        override_json.to_owned(),
-    ));
-    let mut env_refs: Vec<(&str, &str)> =
-        env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let announcement = ("GROK_ANNOUNCEMENTS_OVERRIDE", override_json);
+    let mut env_refs = vec![announcement];
     env_refs.extend_from_slice(extra_env);
-    PtyHarness::new_in_dir(
+    PtyHarness::spawn_with_content_env_in_dir(
         &binary,
         DEFAULT_ROWS,
         DEFAULT_COLS,
+        content,
         &[],
         &env_refs,
         Some(content.home()),

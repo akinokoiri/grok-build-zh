@@ -33,6 +33,9 @@ const ALL_SETTINGS_EXERCISED: &[&str] = &[
     "show_timestamps",
     "show_timeline",
     "page_flip_on_send",
+    "confirm_before_rewind",
+    "combine_queued_prompts",
+    "follow_up_behavior",
     "simple_mode",
     "vim_mode",
     "remember_tool_approvals",
@@ -63,6 +66,7 @@ const ALL_SETTINGS_EXERCISED: &[&str] = &[
     "collapsed_edit_blocks",
     "respect_manual_folds",
     "hunk_tracker_mode",
+    "voice_keybind_enabled",
     "voice_capture_mode",
     "voice_stt_language",
     // Contextual-hints group + its per-tip child toggles (exercised via the
@@ -148,10 +152,7 @@ fn row_idx_for(state: &SettingsModalState, target: &str) -> usize {
     state
         .rows
         .iter()
-        .position(|r| {
-            matches!(r, RowEntry::Setting { key, .. }
-if *key == target)
-        })
+        .position(|r| matches!(r, RowEntry::Setting { key, .. } if *key == target))
         .unwrap_or_else(|| panic!("setting `{target}` not present in modal rows"))
 }
 
@@ -216,6 +217,19 @@ fn assert_set_bool_action(outcome: SettingsKeyOutcome, key: &str, expected: bool
         ("page_flip_on_send", Action::SetPageFlipOnSend(b)) => {
             assert_eq!(b, expected, "SetPageFlipOnSend value differs from expected")
         }
+        ("confirm_before_rewind", Action::SetConfirmBeforeRewind(b)) => {
+            assert_eq!(
+                b, expected,
+                "SetConfirmBeforeRewind value differs from expected"
+            )
+        }
+        ("combine_queued_prompts", Action::SetCombineQueuedPrompts(b)) => {
+            assert_eq!(
+                b, expected,
+                "SetCombineQueuedPrompts value differs from expected"
+            )
+        }
+
         ("simple_mode", Action::SetSimpleMode(b)) => {
             assert_eq!(b, expected, "SetSimpleMode value differs from expected")
         }
@@ -229,6 +243,12 @@ fn assert_set_bool_action(outcome: SettingsKeyOutcome, key: &str, expected: bool
             assert_eq!(
                 b, expected,
                 "SetRememberToolApprovals value differs from expected"
+            )
+        }
+        ("voice_keybind_enabled", Action::SetVoiceKeybindEnabled(b)) => {
+            assert_eq!(
+                b, expected,
+                "SetVoiceKeybindEnabled value differs from expected"
             )
         }
         (
@@ -387,6 +407,66 @@ fn space_on_page_flip_on_send_dispatches_typed_setter() {
 }
 
 #[test]
+fn space_on_confirm_before_rewind_dispatches_typed_setter() {
+    let mut s = make_state();
+    navigate_to(&mut s, "confirm_before_rewind");
+    let outcome = handle_settings_key(&mut s, &press(KeyCode::Char(' ')));
+    let default_on = UiConfig::default().confirm_before_rewind_enabled();
+    assert_set_bool_action(outcome, "confirm_before_rewind", !default_on);
+}
+
+#[test]
+fn space_on_combine_queued_prompts_dispatches_typed_setter() {
+    let mut s = make_state();
+    navigate_to(&mut s, "combine_queued_prompts");
+    let outcome = handle_settings_key(&mut s, &press(KeyCode::Char(' ')));
+    let default_on = UiConfig::default().combine_queued_prompts.unwrap_or(false);
+    assert_set_bool_action(outcome, "combine_queued_prompts", !default_on);
+}
+
+#[test]
+fn enter_on_follow_up_behavior_row_enters_picking_enum() {
+    let mut s = make_state();
+    navigate_to(&mut s, "follow_up_behavior");
+    let outcome = handle_settings_key(&mut s, &press(KeyCode::Enter));
+    assert!(
+        matches!(outcome, SettingsKeyOutcome::Changed),
+        "Enter on follow_up_behavior row must transition to PickingEnum, got {outcome:?}"
+    );
+    match &s.mode() {
+        SettingsModalMode::PickingEnum {
+            key,
+            original_value,
+            ..
+        } => {
+            assert_eq!(*key, "follow_up_behavior");
+            assert_eq!(
+                original_value,
+                &SettingValue::Enum("queue"),
+                "default follow_up_behavior is queue"
+            );
+        }
+        other => panic!("expected PickingEnum mode, got {other:?}"),
+    }
+}
+
+#[test]
+fn follow_up_behavior_picker_enter_dispatches_set_commit() {
+    let mut s = make_state();
+    navigate_to(&mut s, "follow_up_behavior");
+    let _ = handle_settings_key(&mut s, &press(KeyCode::Enter));
+    // Default is queue (index 0); Down → steer.
+    let _ = handle_settings_key(&mut s, &press(KeyCode::Down));
+    let outcome = handle_settings_key(&mut s, &press(KeyCode::Enter));
+    match outcome {
+        SettingsKeyOutcome::Action(Action::SetFollowUpBehavior(mode)) => {
+            assert_eq!(mode, xai_grok_pager::appearance::FollowUpBehavior::Steer);
+        }
+        other => panic!("expected SetFollowUpBehavior(Steer), got {other:?}"),
+    }
+}
+
+#[test]
 fn space_on_simple_mode_dispatches_typed_setter() {
     let mut s = make_state();
     navigate_to(&mut s, "simple_mode");
@@ -399,8 +479,8 @@ fn space_on_remember_tool_approvals_dispatches_typed_setter() {
     let mut s = make_state();
     navigate_to(&mut s, "remember_tool_approvals");
     let outcome = handle_settings_key(&mut s, &press(KeyCode::Char(' ')));
-    // Default is false, so toggling flips it on.
-    assert_set_bool_action(outcome, "remember_tool_approvals", true);
+    // Default is true, so toggling flips it off.
+    assert_set_bool_action(outcome, "remember_tool_approvals", false);
 }
 
 /// The Ask-Question timeout row renders in Agent & Approval directly above
@@ -635,6 +715,58 @@ fn mouse_click_on_page_flip_on_send_indicator_toggles_in_one_click() {
     assert_set_bool_action(outcome, "page_flip_on_send", !default_on);
 }
 
+#[test]
+fn mouse_click_on_combine_queued_prompts_indicator_toggles_in_one_click() {
+    let mut s = make_state();
+    synth_rects(&mut s);
+    let row_y = row_idx_for(&s, "combine_queued_prompts") as u16;
+    let outcome = handle_settings_mouse(
+        &mut s,
+        MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        72,
+        row_y,
+    );
+    let default_on = UiConfig::default().combine_queued_prompts.unwrap_or(false);
+    assert_set_bool_action(outcome, "combine_queued_prompts", !default_on);
+}
+
+#[test]
+fn mouse_click_on_follow_up_behavior_indicator_opens_picker() {
+    let mut s = make_state();
+    synth_rects(&mut s);
+    let row_y = row_idx_for(&s, "follow_up_behavior") as u16;
+    let outcome = handle_settings_mouse(
+        &mut s,
+        MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        72,
+        row_y,
+    );
+    assert!(
+        matches!(outcome, SettingsKeyOutcome::Changed),
+        "click on follow_up_behavior indicator should open picker, got {outcome:?}"
+    );
+    assert!(
+        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. } if key == "follow_up_behavior"),
+        "expected PickingEnum(follow_up_behavior), got {:?}",
+        s.mode()
+    );
+}
+
+#[test]
+fn mouse_click_on_confirm_before_rewind_indicator_toggles_in_one_click() {
+    let mut s = make_state();
+    synth_rects(&mut s);
+    let row_y = row_idx_for(&s, "confirm_before_rewind") as u16;
+    let outcome = handle_settings_mouse(
+        &mut s,
+        MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        72,
+        row_y,
+    );
+    let default_on = UiConfig::default().confirm_before_rewind_enabled();
+    assert_set_bool_action(outcome, "confirm_before_rewind", !default_on);
+}
+
 /// Value-column click toggles `remember_tool_approvals` in one click.
 #[test]
 fn mouse_click_on_remember_tool_approvals_indicator_toggles_in_one_click() {
@@ -647,7 +779,7 @@ fn mouse_click_on_remember_tool_approvals_indicator_toggles_in_one_click() {
         72,
         row_y,
     );
-    assert_set_bool_action(outcome, "remember_tool_approvals", true);
+    assert_set_bool_action(outcome, "remember_tool_approvals", false);
 }
 
 /// Value-column click toggles the Ask-Question timeout in one click.
@@ -812,6 +944,9 @@ fn slash_enters_filter_mode_and_chars_go_to_query_no_action_leak() {
             }
             SettingsKeyOutcome::ActionPair(a, b) => {
                 panic!("filter mode leaked ActionPair({a:?}, {b:?}) for char {c:?}");
+            }
+            SettingsKeyOutcome::ActionThenClose(a) => {
+                panic!("filter mode leaked ActionThenClose({a:?}) for char {c:?}");
             }
             SettingsKeyOutcome::Close => {
                 panic!("filter mode unexpectedly closed on char {c:?}");
@@ -1762,12 +1897,15 @@ fn registry_kind_membership_through_pr_14() {
             "show_timeline",
             "show_timestamps",
             "page_flip_on_send",
+            "confirm_before_rewind",
+            "combine_queued_prompts",
             "simple_mode",
             "vim_mode",
             "remember_tool_approvals",
             "toolset.ask_user_question.timeout_enabled",
             "auto_update",
             "show_tips",
+            "voice_keybind_enabled",
             // Per-tip contextual-hint children (hidden from the top-level list,
             // toggled inside the group sub-sheet) are still Bool settings.
             "contextual_hints.undo",
@@ -1793,6 +1931,7 @@ fn registry_kind_membership_through_pr_14() {
             "auto_light_theme",
             "coding_data_sharing",
             "default_selected_permission",
+            "follow_up_behavior",
             "hunk_tracker_mode",
             "keep_text_selection",
             "permission_mode",
@@ -1862,6 +2001,7 @@ fn enum_settings_membership_through_pr_14() {
             "auto_light_theme",
             "coding_data_sharing",
             "default_selected_permission",
+            "follow_up_behavior",
             "hunk_tracker_mode",
             "keep_text_selection",
             "permission_mode",
@@ -1894,6 +2034,10 @@ fn defaults_round_trip_through_registry() {
     xai_grok_pager::appearance::cache::set_prompt_suggestions(true);
     xai_grok_pager::appearance::cache::set_group_tool_verbs(true);
     xai_grok_pager::appearance::cache::set_page_flip_on_send(true);
+    xai_grok_pager::appearance::cache::set_combine_queued_prompts(false);
+    xai_grok_pager::appearance::cache::set_follow_up_behavior(
+        xai_grok_pager::appearance::FollowUpBehavior::Queue,
+    );
     xai_grok_pager::appearance::cache::set_scroll_mode(
         xai_grok_pager::appearance::ScrollMode::Auto,
     );
@@ -1909,9 +2053,12 @@ fn defaults_round_trip_through_registry() {
             "show_timestamps" => SettingValue::Bool(true),
             "show_timeline" => SettingValue::Bool(false),
             "page_flip_on_send" => SettingValue::Bool(true),
+            "confirm_before_rewind" => SettingValue::Bool(true),
+            "combine_queued_prompts" => SettingValue::Bool(false),
+            "follow_up_behavior" => SettingValue::Enum("queue"),
             "simple_mode" => SettingValue::Bool(true),
             "vim_mode" => SettingValue::Bool(false),
-            "remember_tool_approvals" => SettingValue::Bool(false),
+            "remember_tool_approvals" => SettingValue::Bool(true),
             "toolset.ask_user_question.timeout_enabled" => SettingValue::Bool(true),
             "keep_text_selection" => SettingValue::Enum("flash"),
             "theme" => SettingValue::Enum("groknight"),
@@ -1926,10 +2073,11 @@ fn defaults_round_trip_through_registry() {
             "scroll_mode" => SettingValue::Enum("auto"),
             "scroll_lines" => SettingValue::Int(3),
             "invert_scroll" => SettingValue::Bool(false),
-            "display_refresh_auto_cadence" => SettingValue::Bool(false),
+            "display_refresh_auto_cadence" => SettingValue::Bool(true),
             "coding_data_sharing" => SettingValue::Enum("opt-out"),
             "default_selected_permission" => SettingValue::Enum("always_allow_all_sessions"),
-            "hunk_tracker_mode" => SettingValue::Enum("agent_only"),
+            "hunk_tracker_mode" => SettingValue::Enum("off"),
+            "voice_keybind_enabled" => SettingValue::Bool(true),
             "voice_capture_mode" => SettingValue::Enum("hold"),
             "voice_stt_language" => SettingValue::Enum("en"),
             "plan_mode" => SettingValue::Enum("off"),
@@ -2007,6 +2155,8 @@ fn settings_value_payload_matches_kind() {
             | SettingsKeyOutcome::Action(Action::SetTimestamps(_))
             | SettingsKeyOutcome::Action(Action::SetTimeline(_))
             | SettingsKeyOutcome::Action(Action::SetPageFlipOnSend(_))
+            | SettingsKeyOutcome::Action(Action::SetConfirmBeforeRewind(_))
+            | SettingsKeyOutcome::Action(Action::SetCombineQueuedPrompts(_))
             | SettingsKeyOutcome::Action(Action::SetSimpleMode(_))
             | SettingsKeyOutcome::Action(Action::SetMultilineMode(_))
             | SettingsKeyOutcome::Action(Action::SetVimMode(_))
@@ -2020,7 +2170,8 @@ fn settings_value_payload_matches_kind() {
             | SettingsKeyOutcome::Action(Action::SetGroupToolVerbs(_))
             | SettingsKeyOutcome::Action(Action::SetCollapsedEditBlocks(_))
             | SettingsKeyOutcome::Action(Action::SetInvertScroll(_))
-            | SettingsKeyOutcome::Action(Action::SetDisplayRefreshAutoCadence(_)) => {}
+            | SettingsKeyOutcome::Action(Action::SetDisplayRefreshAutoCadence(_))
+            | SettingsKeyOutcome::Action(Action::SetVoiceKeybindEnabled(_)) => {}
             other => panic!(
                 "expected a typed bool setter for `{}`, got {:?}",
                 meta.key, other
@@ -2149,10 +2300,10 @@ fn d_key_emits_open_reset_confirm_for_every_setting() {
         // without key-release reporting, which tests run without). Skip settings
         // with no visible row; their reset path is covered by the dispatch
         // round-trip tests.
-        let has_row = s.rows.iter().any(|r| {
-            matches!(r, RowEntry::Setting { key, .. }
-if *key == meta.key)
-        });
+        let has_row = s
+            .rows
+            .iter()
+            .any(|r| matches!(r, RowEntry::Setting { key, .. } if *key == meta.key));
         if !has_row {
             continue;
         }
@@ -3034,8 +3185,7 @@ fn pr6_permission_mode_picker_enter_dispatches_set_permission_mode_commit() {
     let _ = handle_settings_key(&mut s, &press(KeyCode::Enter));
 
     assert!(
-        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. }
-if key == "permission_mode"),
+        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. } if key == "permission_mode"),
         "Enter on permission_mode row must open the picker, got {:?}",
         s.mode(),
     );
@@ -3316,8 +3466,7 @@ fn pr11_picker_commit_for_default_dispatches_set_permission_mode_default() {
     navigate_to(&mut s, "permission_mode");
     let _ = handle_settings_key(&mut s, &press(KeyCode::Enter));
     assert!(
-        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. }
-if key == "permission_mode"),
+        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. } if key == "permission_mode"),
         "Enter on permission_mode row must open the picker, got {:?}",
         s.mode(),
     );
@@ -3362,8 +3511,7 @@ fn pr11_picker_commit_for_ask_dispatches_set_permission_mode_ask() {
     navigate_to(&mut s, "permission_mode");
     let _ = handle_settings_key(&mut s, &press(KeyCode::Enter));
     assert!(
-        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. }
-if key == "permission_mode"),
+        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. } if key == "permission_mode"),
         "Enter on permission_mode row must open the picker, got {:?}",
         s.mode(),
     );
@@ -4227,8 +4375,7 @@ fn pr14_default_model_picker_commits_resolved_model_id() {
         "Enter on DynamicEnum row must transition to PickingEnum, got {outcome:?}"
     );
     assert!(
-        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. }
-if key == "default_model"),
+        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. } if key == "default_model"),
         "Enter must transition to PickingEnum for default_model"
     );
 
@@ -4343,8 +4490,7 @@ fn pr14_mouse_click_on_dynamic_enum_row_opens_picker() {
         "second click on DynamicEnum row must open picker, got {outcome:?}",
     );
     assert!(
-        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. }
-if key == "default_model"),
+        matches!(s.mode(), SettingsModalMode::PickingEnum { key, .. } if key == "default_model"),
         "second click on DynamicEnum row must transition to PickingEnum, got {:?}",
         s.mode(),
     );
@@ -4388,8 +4534,7 @@ fn pr8_mouse_click_on_int_row_opens_editor() {
         "second click on Int row must be Changed, got {outcome:?}",
     );
     assert!(
-        matches!(s.mode(), SettingsModalMode::EditingValue { key, .. }
-if key == "max_thoughts_width"),
+        matches!(s.mode(), SettingsModalMode::EditingValue { key, .. } if key == "max_thoughts_width"),
         "second click on Int row must transition to EditingValue, got {:?}",
         s.mode(),
     );
@@ -5234,51 +5379,23 @@ fn default_selected_permission_mouse_click_on_indicator_opens_picker_in_one_clic
     }
 }
 
-/// The `/privacy` slash command's argument parser
-/// is case-insensitive and supports a deliberately-pared-down list of
-/// unambiguous-semantic aliases. The unit-level coverage lives in the
-/// slash command module; this e2e test pins the integration contract
-/// (the parser is reachable from the slash command and produces the
-/// expected `Action`).
-///
-/// Ambiguous aliases
-/// (`on/off/true/false/enable/disable`) were DROPPED because they
-/// could be read either as "turn on privacy" (=opt-out) or "turn on
-/// sharing" (=opt-in). For a privacy-critical setting we err on the
-/// side of explicit, unambiguous arguments. The test below verifies
-/// both the accept list AND the reject list.
+/// `/privacy` takes no arguments: it opens the settings page and nothing
+/// else. The alias parser it used to carry (`opt-in`, `share`, `out`, …) is
+/// gone — a one-word prompt alias could flip a privacy preference with none
+/// of the disclosure copy in front of the user, and the ambiguous forms
+/// (`on`/`off`) risked landing on the opposite of the intent.
 #[test]
-fn pr9_privacy_slash_command_parses_aliases() {
-    use xai_grok_pager::slash::commands::privacy::parse_privacy_arg;
+fn pr9_privacy_slash_command_takes_no_arguments() {
+    use xai_grok_pager::slash::commands::builtin_commands;
+    use xai_grok_pager::slash::registry::CommandRegistry;
 
-    // Canonical names.
-    assert_eq!(parse_privacy_arg("opt-in"), Some(true));
-    assert_eq!(parse_privacy_arg("opt-out"), Some(false));
-
-    // Case-insensitive (sample).
-    assert_eq!(parse_privacy_arg("Opt-In"), Some(true));
-    assert_eq!(parse_privacy_arg("OPT-OUT"), Some(false));
-
-    // Unambiguous-semantic aliases (pruned list).
-    assert_eq!(parse_privacy_arg("in"), Some(true));
-    assert_eq!(parse_privacy_arg("out"), Some(false));
-    assert_eq!(parse_privacy_arg("share"), Some(true));
-    assert_eq!(parse_privacy_arg("private"), Some(false));
-
-    // Ambiguous aliases MUST be rejected. `/privacy on`
-    // could be read as "turn on privacy" (=opt-out, the OPPOSITE of
-    // what an earlier mapping returned). For a privacy
-    // setting, ambiguity = silent data-exfiltration risk.
-    for ambiguous in &["on", "off", "true", "false", "enable", "disable"] {
-        assert_eq!(
-            parse_privacy_arg(ambiguous),
-            None,
-            "ambiguous alias `{ambiguous}` MUST be rejected (PR 9 R1, Security Issue 10)",
-        );
-    }
-
-    // Unknown.
-    assert_eq!(parse_privacy_arg("maybe"), None);
+    let reg = CommandRegistry::new(builtin_commands());
+    let cmd = reg.get("privacy").expect("/privacy must be registered");
+    assert!(
+        !cmd.takes_args(),
+        "/privacy must not advertise an argument slot"
+    );
+    assert_eq!(cmd.usage(), "/privacy");
 }
 
 // ---------------------------------------------------------------------------
@@ -6070,7 +6187,7 @@ fn mouse_click_on_screen_mode_indicator_opens_picker_in_one_click() {
 // ---------------------------------------------------------------------------
 
 /// Enter on the `hunk_tracker_mode` row opens the picker seeded at the
-/// default `agent_only`.
+/// default `off`.
 #[test]
 fn enter_on_hunk_tracker_mode_row_enters_picking_enum() {
     let mut s = make_state();
@@ -6089,8 +6206,8 @@ fn enter_on_hunk_tracker_mode_row_enters_picking_enum() {
             assert_eq!(*key, "hunk_tracker_mode");
             assert_eq!(
                 original_value,
-                &SettingValue::Enum("agent_only"),
-                "default UiConfig hunk_tracker_mode → original 'agent_only'"
+                &SettingValue::Enum("off"),
+                "default UiConfig hunk_tracker_mode → original 'off'"
             );
         }
         other => panic!("expected PickingEnum mode, got {other:?}"),
@@ -6113,8 +6230,9 @@ fn hunk_tracker_mode_picker_nav_does_not_dispatch_preview() {
         let _ = handle_settings_key(&mut s, &press(KeyCode::Enter));
         assert!(matches!(s.mode(), SettingsModalMode::PickingEnum { .. }));
 
-        if matches!(nav_key, KeyCode::Up | KeyCode::Char('k')) {
-            let _ = handle_settings_key(&mut s, &press(KeyCode::Down));
+        // Seed is `off` (last choice), so step off the bottom before a Down/j.
+        if matches!(nav_key, KeyCode::Down | KeyCode::Char('j')) {
+            let _ = handle_settings_key(&mut s, &press(KeyCode::Up));
         }
 
         let outcome = handle_settings_key(&mut s, &press(*nav_key));
@@ -6129,15 +6247,15 @@ fn hunk_tracker_mode_picker_nav_does_not_dispatch_preview() {
 
 /// Enter on the focused picker choice commits via
 /// `Action::SetHunkTrackerMode(String)` carrying the registry canonical. Seed
-/// is `agent_only` (index 0); one Down moves to `all_dirty` (index 1). Pins
-/// the canonical-string payload that `action_for_enum_commit` forwards.
+/// is `off` (index 2); one Up moves to `all_dirty` (index 1). Pins the
+/// canonical-string payload that `action_for_enum_commit` forwards.
 #[test]
 fn hunk_tracker_mode_picker_enter_dispatches_set_commit() {
     let mut s = make_state();
     navigate_to(&mut s, "hunk_tracker_mode");
     let _ = handle_settings_key(&mut s, &press(KeyCode::Enter));
-    // Fresh state seeds the picker at "agent_only"; Down moves to "all_dirty".
-    let _ = handle_settings_key(&mut s, &press(KeyCode::Down));
+    // Fresh state seeds the picker at "off"; Up moves to "all_dirty".
+    let _ = handle_settings_key(&mut s, &press(KeyCode::Up));
     let outcome = handle_settings_key(&mut s, &press(KeyCode::Enter));
     match outcome {
         SettingsKeyOutcome::Action(Action::SetHunkTrackerMode(mode)) => {
@@ -6249,6 +6367,31 @@ fn voice_stt_language_picker_enter_dispatches_set_commit() {
         matches!(s.mode(), SettingsModalMode::Browse),
         "Enter commit must return to Browse"
     );
+}
+
+/// Space-toggle on `voice_keybind_enabled` dispatches the typed setter.
+/// Default is ON (the chord works out of the box), so toggling flips it off.
+#[test]
+fn space_on_voice_keybind_enabled_dispatches_typed_setter() {
+    let mut s = make_state();
+    navigate_to(&mut s, "voice_keybind_enabled");
+    let outcome = handle_settings_key(&mut s, &press(KeyCode::Char(' ')));
+    assert_set_bool_action(outcome, "voice_keybind_enabled", false);
+}
+
+/// Value-column click toggles `voice_keybind_enabled` in one click.
+#[test]
+fn mouse_click_on_voice_keybind_enabled_indicator_toggles_in_one_click() {
+    let mut s = make_state();
+    synth_rects(&mut s);
+    let row_y = row_idx_for(&s, "voice_keybind_enabled") as u16;
+    let outcome = handle_settings_mouse(
+        &mut s,
+        MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        72,
+        row_y,
+    );
+    assert_set_bool_action(outcome, "voice_keybind_enabled", false);
 }
 
 /// Value-column click on the voice_stt_language row opens the picker in ONE
@@ -6667,6 +6810,12 @@ fn enter_on_keep_text_selection_row_enters_picking_enum() {
 
 #[test]
 fn keep_text_selection_picker_nav_does_not_dispatch_preview() {
+    // Pin the cache-backed live value so the picker seeds at flash (idx 0)
+    // regardless of a sibling test that set hold/word_select on this thread.
+    // (word_select is the last choice, so Down would clamp; flash gives room.)
+    xai_grok_pager::appearance::cache::set_keep_text_selection(
+        xai_grok_pager::appearance::TextSelection::Flash,
+    );
     for nav_key in &[
         KeyCode::Down,
         KeyCode::Up,
@@ -6889,8 +7038,7 @@ fn scroll_speed_mouse_click_opens_editor() {
         "second click on focused Int row must enter the editor, got {outcome:?}"
     );
     assert!(
-        matches!(s.mode(), SettingsModalMode::EditingValue { key, .. }
-if key == "scroll_speed"),
+        matches!(s.mode(), SettingsModalMode::EditingValue { key, .. } if key == "scroll_speed"),
         "mode must be EditingValue(scroll_speed) after Enter-equivalent click, got {:?}",
         s.mode(),
     );
@@ -7080,8 +7228,7 @@ fn scroll_lines_mouse_click_opens_editor() {
         "second click on focused Int row must enter the editor, got {outcome:?}"
     );
     assert!(
-        matches!(s.mode(), SettingsModalMode::EditingValue { key, .. }
-if key == "scroll_lines"),
+        matches!(s.mode(), SettingsModalMode::EditingValue { key, .. } if key == "scroll_lines"),
         "mode must be EditingValue(scroll_lines), got {:?}",
         s.mode(),
     );
@@ -7152,22 +7299,23 @@ fn invert_scroll_renders_under_mouse_shell_owned_default_false() {
 }
 
 // ---------------------------------------------------------------------------
-// display_refresh_auto_cadence — SHELL-owned Bool (Appearance, default false)
+// display_refresh_auto_cadence — SHELL-owned Bool (Appearance, default ON)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn display_refresh_auto_cadence_space_dispatches_typed_setter() {
+    // Default is on; space toggles off.
     let mut s = make_state();
     navigate_to(&mut s, "display_refresh_auto_cadence");
     let outcome = handle_settings_key(&mut s, &press(KeyCode::Char(' ')));
-    assert_set_bool_action(outcome, "display_refresh_auto_cadence", true);
+    assert_set_bool_action(outcome, "display_refresh_auto_cadence", false);
 }
 
 #[test]
 fn display_refresh_auto_cadence_enter_dispatches_typed_setter() {
-    // Seed on so Enter toggles off.
+    // Seed off so Enter toggles on.
     let mut ui = UiConfig::default();
-    ui.display_refresh.auto_cadence_enabled = Some(true);
+    ui.display_refresh.auto_cadence_enabled = Some(false);
     let mut s = SettingsModalState::new(
         Arc::new(SettingsRegistry::defaults()),
         ui,
@@ -7178,11 +7326,12 @@ fn display_refresh_auto_cadence_enter_dispatches_typed_setter() {
     );
     navigate_to(&mut s, "display_refresh_auto_cadence");
     let outcome = handle_settings_key(&mut s, &press(KeyCode::Enter));
-    assert_set_bool_action(outcome, "display_refresh_auto_cadence", false);
+    assert_set_bool_action(outcome, "display_refresh_auto_cadence", true);
 }
 
 #[test]
 fn display_refresh_auto_cadence_mouse_click_two_stage_toggles() {
+    // Default is on; second body-click toggles off.
     let mut s = make_state();
     synth_rects(&mut s);
     let row_y = row_idx_for(&s, "display_refresh_auto_cadence") as u16;
@@ -7202,7 +7351,7 @@ fn display_refresh_auto_cadence_mouse_click_two_stage_toggles() {
         10,
         row_y,
     );
-    assert_set_bool_action(outcome, "display_refresh_auto_cadence", true);
+    assert_set_bool_action(outcome, "display_refresh_auto_cadence", false);
 }
 
 #[test]
@@ -7218,7 +7367,7 @@ fn display_refresh_auto_cadence_meta_appearance_shell_restart_hidden_minimal() {
     assert_eq!(meta.label, "Match display refresh rate");
     match &meta.kind {
         SettingKind::Bool { default } => {
-            assert!(!default, "display_refresh_auto_cadence must default OFF")
+            assert!(*default, "display_refresh_auto_cadence must default ON")
         }
         other => panic!("expected Bool kind for display_refresh_auto_cadence, got {other:?}"),
     }
@@ -7231,13 +7380,13 @@ fn display_refresh_auto_cadence_defaults_roundtrip_via_current_value_for() {
     let pager = PagerLocalSnapshot::default();
     let value = current_value_for("display_refresh_auto_cadence", &ui, &pager)
         .expect("current_value_for(display_refresh_auto_cadence) must resolve");
-    assert_eq!(value, SettingValue::Bool(false));
-
-    let mut ui_on = UiConfig::default();
-    ui_on.display_refresh.auto_cadence_enabled = Some(true);
-    let value = current_value_for("display_refresh_auto_cadence", &ui_on, &pager)
-        .expect("current_value_for(display_refresh_auto_cadence) must resolve");
     assert_eq!(value, SettingValue::Bool(true));
+
+    let mut ui_off = UiConfig::default();
+    ui_off.display_refresh.auto_cadence_enabled = Some(false);
+    let value = current_value_for("display_refresh_auto_cadence", &ui_off, &pager)
+        .expect("current_value_for(display_refresh_auto_cadence) must resolve");
+    assert_eq!(value, SettingValue::Bool(false));
 }
 
 // ---------------------------------------------------------------------------

@@ -22,7 +22,7 @@ impl SlashCommand for TranscriptCommand {
     }
 
     fn description(&self) -> &str {
-        "在分页器（$PAGER）中查看完整对话记录"
+"在分页器（$PAGER）中查看完整对话记录"
     }
 
     fn session_scoped(&self) -> bool {
@@ -67,6 +67,8 @@ mod tests {
             session_id: None,
             bundle_state: &DEFAULT_BUNDLE_STATE,
             screen_mode: crate::app::ScreenMode::Minimal,
+            billing_surface_visible: true,
+            usage_command_visible: true,
             pager_state: PagerLocalSnapshot::default(),
         };
         match TranscriptCommand.run(&mut ctx, "") {
@@ -84,6 +86,8 @@ mod tests {
             session_id: Some(&sid),
             bundle_state: &DEFAULT_BUNDLE_STATE,
             screen_mode: crate::app::ScreenMode::Minimal,
+            billing_surface_visible: true,
+            usage_command_visible: true,
             pager_state: PagerLocalSnapshot::default(),
         };
         assert!(matches!(

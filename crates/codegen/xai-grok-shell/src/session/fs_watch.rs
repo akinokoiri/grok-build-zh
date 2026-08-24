@@ -72,18 +72,22 @@ pub(crate) fn forward_to_hunk_tracker(
 
 /// Dedup key for `x.ai/git_head_changed`, shared by the watcher's `GitHead`
 /// consumer and the post-edit `maybe_notify_git_branch` path so both compute
-/// the same identity (branch | is_worktree | main_repo).
+/// the same identity (branch | is_worktree | main_repo | commit). The commit
+/// SHA is included so a same-branch commit (agent runs `git commit`) still
+/// notifies clients — the changes panel must drop the now-committed files.
 pub(crate) fn git_head_dedup_key(
     branch: Option<&str>,
     is_worktree: bool,
     main_repo: Option<&str>,
+    commit: Option<&str>,
 ) -> String {
     // NUL separator: illegal in git refs and paths, so fields can't collide.
     format!(
-        "{}\0{}\0{}",
+        "{}\0{}\0{}\0{}",
         branch.unwrap_or(""),
         is_worktree,
-        main_repo.unwrap_or("")
+        main_repo.unwrap_or(""),
+        commit.unwrap_or("")
     )
 }
 
@@ -276,6 +280,9 @@ pub(crate) struct FsWatchDeps {
     pub client_fs_config: Option<ClientFsConfig>,
     pub persistence_tx: mpsc::UnboundedSender<PersistenceMsg>,
     pub last_reported_branch: Arc<parking_lot::Mutex<Option<String>>>,
+    /// A signal, not an entry point: `run_status_emitter` is the only consumer
+    /// and decides whether the row is worth building.
+    pub status_wake: Arc<tokio::sync::Notify>,
 }
 
 impl FsWatchDeps {
@@ -296,6 +303,7 @@ impl FsWatchDeps {
             client_fs_config,
             persistence_tx: session.notifications.persistence_tx.clone(),
             last_reported_branch: session.last_reported_branch.clone(),
+            status_wake: session.status_wake.handle(),
         }
     }
 }
@@ -492,6 +500,7 @@ struct GitHead {
     /// Dedup slot shared with `SessionActor::maybe_notify_git_branch` (see
     /// `git_head_dedup_key`).
     last: Arc<parking_lot::Mutex<Option<String>>>,
+    status_wake: Arc<tokio::sync::Notify>,
 }
 
 impl GitHead {
@@ -502,7 +511,12 @@ impl GitHead {
         let worktree = xai_grok_workspace::session::git::get_worktree_info(&self.cwd).await;
         let (is_worktree, main_repo) = worktree.unwrap_or((false, None));
 
-        let dedup_key = git_head_dedup_key(branch.as_deref(), is_worktree, main_repo.as_deref());
+        let dedup_key = git_head_dedup_key(
+            branch.as_deref(),
+            is_worktree,
+            main_repo.as_deref(),
+            commit.as_deref(),
+        );
         let changed = {
             let mut last = self.last.lock();
             if last.as_deref() == Some(&dedup_key) {
@@ -526,6 +540,10 @@ impl GitHead {
                         raw.into(),
                     ));
             }
+            // The snapshot carries `workspace.branch`, so a checkout between
+            // turns has to repush it or the row names the old branch until the
+            // next turn ends.
+            self.status_wake.notify_one();
         }
 
         let _ = self
@@ -585,6 +603,7 @@ impl FsWatchPlan {
             cwd: deps.cwd.clone(),
             persistence_tx: deps.persistence_tx,
             last: deps.last_reported_branch,
+            status_wake: deps.status_wake,
         });
 
         Self {
@@ -1132,24 +1151,39 @@ mod tests {
 
     #[test]
     fn git_head_dedup_key_identity() {
-        let base = git_head_dedup_key(Some("main"), false, Some("/repo"));
+        let base = git_head_dedup_key(Some("main"), false, Some("/repo"), Some("abc123"));
         // Every dimension is part of the identity.
-        assert_ne!(base, git_head_dedup_key(Some("dev"), false, Some("/repo")));
-        assert_ne!(base, git_head_dedup_key(Some("main"), true, Some("/repo")));
         assert_ne!(
             base,
-            git_head_dedup_key(Some("main"), false, Some("/other"))
+            git_head_dedup_key(Some("dev"), false, Some("/repo"), Some("abc123"))
+        );
+        assert_ne!(
+            base,
+            git_head_dedup_key(Some("main"), true, Some("/repo"), Some("abc123"))
+        );
+        assert_ne!(
+            base,
+            git_head_dedup_key(Some("main"), false, Some("/other"), Some("abc123"))
+        );
+        // A same-branch commit moves HEAD and must not dedup away — the
+        // changes panel relies on this to drop the now-committed files.
+        assert_ne!(
+            base,
+            git_head_dedup_key(Some("main"), false, Some("/repo"), Some("def456"))
         );
         // Detached HEAD (None branch) is stable and distinct from a real branch.
         assert_eq!(
-            git_head_dedup_key(None, false, None),
-            git_head_dedup_key(None, false, None)
+            git_head_dedup_key(None, false, None, None),
+            git_head_dedup_key(None, false, None, None)
         );
-        assert_ne!(base, git_head_dedup_key(None, false, Some("/repo")));
+        assert_ne!(
+            base,
+            git_head_dedup_key(None, false, Some("/repo"), Some("abc123"))
+        );
         // Swapping branch and main_repo must not collide (the NUL separator).
         assert_ne!(
-            git_head_dedup_key(Some("a"), false, Some("b")),
-            git_head_dedup_key(Some("b"), false, Some("a")),
+            git_head_dedup_key(Some("a"), false, Some("b"), None),
+            git_head_dedup_key(Some("b"), false, Some("a"), None),
         );
     }
 
@@ -1167,6 +1201,7 @@ mod tests {
             client_fs_config: None,
             persistence_tx: tx,
             last_reported_branch: Arc::new(parking_lot::Mutex::new(None)),
+            status_wake: Arc::default(),
         };
         let plan = FsWatchPlan::build(
             FsWatchCapabilities {

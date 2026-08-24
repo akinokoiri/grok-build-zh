@@ -258,41 +258,40 @@ pub fn minimal_committed_plan_id(app: &AppView) -> Option<&str> {
 
 /// Whether minimal's Ctrl+O remap opens the full-transcript pager *right now*.
 ///
-/// Minimal remaps Ctrl+O to `Action::OpenTranscriptPager` — **except** when
-/// Ctrl+O is bound to interject (Apple Terminal: the kitty keyboard protocol is
-/// unavailable, so Ctrl+Enter doesn't arrive and Ctrl+I aliases to Tab —
-/// Ctrl+O is the only interject chord left) AND an interject would actually
-/// consume the press:
+/// Minimal remaps Ctrl+O to `Action::OpenTranscriptPager` except when:
 ///
-/// - editing a queued row (the interject key saves / interjects the edit), or
-/// - a turn is running with a non-empty composer, or
-/// - a turn is running with an empty composer **and** a visible queued
-///   follow-up (prompt-path force-send of the top queue row — same as full TUI)
+/// - Ctrl+O is bound to interject (Apple Terminal: the kitty keyboard protocol is
+///   unavailable, so Ctrl+Enter doesn't arrive and Ctrl+I aliases to Tab, leaving
+///   Ctrl+O as the only interject chord) AND an interject would actually consume
+///   the press:
+///   - editing a queued row (the interject key saves / interjects the edit), or
+///   - a turn is running with a non-empty composer, or
+///   - a turn is running with an empty composer **and** a visible queued
+///     follow-up (prompt-path force-send of the top queue row; same as full TUI)
+/// - a free-tier pinned upgrade CTA is live (`pinned_upgrade_cta_live`), so
+///   Ctrl+O reaches ToggleYolo (open CTA) instead of the transcript
 ///
-/// Outside those states the interject path is a documented silent no-op
-/// (idle / empty composer with no queue → `InputOutcome::Changed`), which made
-/// Ctrl+O appear dead on Apple Terminal — so the remap takes the key and opens
-/// the transcript instead. `AppView::minimal_key_intercept` gates on this same
-/// predicate, and minimal's info-row hint re-evaluates it every frame, so the
-/// advertised key ("ctrl+o transcript" vs the `/transcript` fallback) always
-/// matches what the press would do.
+/// Otherwise the remap keeps the key for the transcript. When the remap yields,
+/// `minimal_key_intercept` routes to the prompt path (interject, or ToggleYolo
+/// on Apple Terminal when interject has nothing to send). The info-row hint
+/// re-evaluates this every frame so the advertised key ("ctrl+o transcript" vs
+/// `/transcript`) always matches what the press would do.
 pub fn minimal_ctrl_o_opens_transcript(app: &AppView) -> bool {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let ctrl_o = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
-    if !app
-        .registry
-        .matches_id(crate::actions::ActionId::InterjectPrompt, &ctrl_o)
-    {
-        // Ctrl+O is not the interject chord (everything but Apple Terminal):
-        // the remap always owns the key.
-        return true;
-    }
     let ActiveView::Agent(id) = &app.active_view else {
         return true;
     };
     let Some(agent) = app.agents.get(id) else {
         return true;
     };
+    if !app
+        .registry
+        .matches_id(crate::actions::ActionId::InterjectPrompt, &ctrl_o)
+    {
+        // Not the interject chord: transcript unless a pinned upgrade CTA owns it.
+        return !agent.pinned_upgrade_cta_live;
+    }
     // Editing a queued row: the interject key saves (idle) or interjects
     // (running) the edited text — never steal it mid-edit.
     if matches!(
@@ -312,10 +311,13 @@ pub fn minimal_ctrl_o_opens_transcript(app: &AppView) -> bool {
             .iter()
             .any(|e| Some(e.id.as_str()) != running);
     let has_payload = !agent.prompt.text().trim().is_empty() || has_queued_follow_up;
-    !crate::actions::ActionRegistry::interjection_possible(
+    if crate::actions::ActionRegistry::interjection_possible(
         agent.session.state.is_turn_running(),
         has_payload,
-    )
+    ) {
+        return false;
+    }
+    !agent.pinned_upgrade_cta_live
 }
 
 /// `AppView::minimal_state.committed_plan_tool_call_id` (write).
@@ -562,17 +564,14 @@ pub fn resolve_turn_activity(v: &AgentView) -> Option<TurnActivity> {
     v.resolve_turn_activity()
 }
 
-/// [`AgentView::renders_parked`] — while the parked-wait marker's turn is
-/// parked, minimal renders the "watching · …" cue (watchers running) or the
-/// idle hint (none), mirroring the full TUI. The marker itself is pushed by
-/// the shared ACP notification path, so minimal's scrollback carries it too.
+/// [`AgentView::renders_parked`].
 pub fn renders_parked(v: &AgentView) -> bool {
     v.renders_parked()
 }
 
 /// [`AgentView::watchers`] — idle-surviving background work (running
 /// commands / monitors / loops / subagents) for the shared turn-status
-/// widget's "watching · …" cue.
+/// widget's "… still running" cue.
 pub fn watchers(v: &AgentView) -> crate::views::turn_status::Watchers {
     v.watchers()
 }
@@ -590,6 +589,13 @@ pub fn held_queue_top_sendable(v: &AgentView) -> bool {
 /// [`AgentView::sync_pending_user_input_marks`].
 pub fn sync_pending_user_input_marks(v: &mut AgentView) {
     v.sync_pending_user_input_marks();
+}
+
+/// Scrollback entry id of the tool row for `tool_call_id`, while the tracker
+/// still has that tool pending. `None` once it has been reaped, or if it never
+/// reached scrollback.
+pub fn pending_tool_entry_id(v: &AgentView, tool_call_id: &str) -> Option<EntryId> {
+    v.session.tracker.pending_tool_entry_id(tool_call_id)
 }
 
 /// [`AgentView::draw_active_modal`] — minimal reuses the full-TUI modal renderer.
@@ -745,6 +751,14 @@ pub fn build_session_entry_data(
         state,
         content_width,
     )
+}
+
+/// [`crate::views::session_picker::hidden_external_hint`].
+pub fn hidden_external_hint(
+    entries: Option<&[SessionPickerEntry]>,
+    source_filter: SourceFilter,
+) -> Option<String> {
+    crate::views::session_picker::hidden_external_hint(entries, source_filter)
 }
 
 /// [`crate::views::session_picker::build_grouped_picker_entries`].

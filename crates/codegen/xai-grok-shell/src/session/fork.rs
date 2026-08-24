@@ -187,6 +187,7 @@ async fn sync_forked_session_to_backend(
         subagent_role: None,
         fork_context_source: None,
         subagent_depth: None,
+        title_is_manual: None,
     };
 
     client
@@ -216,8 +217,7 @@ mod tests {
         );
         assert!(
             uuid::Uuid::parse_str(&fork_id).is_ok(),
-            "Fork ID should be a valid UUID: {}",
-            fork_id
+            "Fork ID should be a valid UUID"
         );
     }
 

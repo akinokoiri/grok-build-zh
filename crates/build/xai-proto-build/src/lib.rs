@@ -1,3 +1,4 @@
+mod debug_redact;
 pub mod find_protoc;
 
 use anyhow::Context;
@@ -36,6 +37,8 @@ pub struct XaiProtoBuilder {
     gen_pbjson: bool,
     pbjson_ignore_unknown_fields: bool,
     pbjson_preserve_proto_field_names: bool,
+    pbjson_exclude: Vec<String>,
+    honor_debug_redact: bool,
 }
 
 impl XaiProtoBuilder {
@@ -47,6 +50,10 @@ impl XaiProtoBuilder {
             builder: f(self.builder),
             ..self
         }
+    }
+
+    pub fn btree_map<S: AsRef<str>>(self, paths: impl IntoIterator<Item = S>) -> Self {
+        self.map_builder(|b| paths.into_iter().fold(b, |b, path| b.btree_map(path)))
     }
 
     pub fn bytes<S: AsRef<str>>(self, paths: impl IntoIterator<Item = S>) -> Self {
@@ -81,8 +88,30 @@ impl XaiProtoBuilder {
         self
     }
 
+    /// Skip pbjson serde generation for these fully-qualified proto type
+    /// prefixes (e.g. `.model_config.RateLimit`). Use when a type is
+    /// `extern_path`'d into another crate that already provides its pbjson serde
+    /// impls, but the enclosing package's serde is still generated here —
+    /// otherwise pbjson would emit an orphan `impl Serialize for <foreign type>`.
+    /// Matching is segment-based, so `.pkg.Foo` does not match `.pkg.FooBar`.
+    pub fn pbjson_exclude<S: Into<String>>(
+        mut self,
+        prefixes: impl IntoIterator<Item = S>,
+    ) -> Self {
+        self.pbjson_exclude
+            .extend(prefixes.into_iter().map(Into::into));
+        self
+    }
+
     pub fn generate_default_stubs(self, enable: bool) -> Self {
         self.map_builder(|b| b.generate_default_stubs(enable))
+    }
+
+    /// Honor the protobuf `debug_redact` field option: annotated fields
+    /// print as `***` in `Debug`. The crate must also depend on `veil`.
+    pub fn honor_debug_redact(mut self) -> Self {
+        self.honor_debug_redact = true;
+        self
     }
 
     pub fn type_attribute(self, path: impl AsRef<str>, attr: impl AsRef<str>) -> Self {
@@ -205,6 +234,8 @@ impl XaiProtoBuilder {
             file_descriptor_set_path,
             pbjson_ignore_unknown_fields,
             pbjson_preserve_proto_field_names,
+            pbjson_exclude,
+            honor_debug_redact,
         } = self;
         let mut config = prost_build::Config::new();
         config.enable_type_names();
@@ -253,6 +284,29 @@ impl XaiProtoBuilder {
 
         let protos: Vec<&Path> = protos.iter().map(|p| p.as_ref()).collect();
 
+        {
+            let plain_includes: Vec<&Path> = includes.iter().map(|i| i.as_ref()).collect();
+            if honor_debug_redact {
+                debug_redact::apply(
+                    &mut config,
+                    protoc.as_deref(),
+                    protoc_include_dir.as_deref(),
+                    &plain_includes,
+                    &protos,
+                )?;
+            } else if let Some(field) = debug_redact::first_marked_field(
+                protoc.as_deref(),
+                protoc_include_dir.as_deref(),
+                &plain_includes,
+                &protos,
+            )? {
+                anyhow::bail!(
+                    "{field} sets `debug_redact = true` but redaction is not active: \
+                     call `.honor_debug_redact()` on the builder"
+                );
+            }
+        }
+
         builder
             .compile_with_config(config, &protos, &all_includes)
             .context("tonic_build failed")?;
@@ -276,6 +330,9 @@ impl XaiProtoBuilder {
             if pbjson_preserve_proto_field_names {
                 builder.preserve_proto_field_names();
             }
+            if !pbjson_exclude.is_empty() {
+                builder.exclude(pbjson_exclude);
+            }
             builder
                 .build(&["."])
                 .context("Failed to build descriptor set")?;
@@ -296,6 +353,8 @@ pub fn configure() -> XaiProtoBuilder {
         gen_pbjson: false,
         pbjson_ignore_unknown_fields: false,
         pbjson_preserve_proto_field_names: false,
+        pbjson_exclude: Vec::new(),
         file_descriptor_set_path: None,
+        honor_debug_redact: false,
     }
 }

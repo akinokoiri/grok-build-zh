@@ -142,11 +142,24 @@ impl std::fmt::Display for ClipboardRoute {
 /// which forces OSC 52 off everywhere. Tests that cannot control SSH env vars
 /// should skip asserting `osc52` for non-tmux cases.
 pub fn resolve_clipboard_route(ctx: &TerminalContext) -> ClipboardRoute {
-    resolve_clipboard_route_with(ctx, osc52_disabled())
+    resolve_clipboard_route_with(
+        ctx,
+        ClipboardRouteOpts {
+            no_osc52: osc52_disabled(),
+            wrap_sink: osc52_sink_active(),
+        },
+    )
 }
 
-/// Pure clipboard-route resolution (kill-switch injected for tests).
-fn resolve_clipboard_route_with(ctx: &TerminalContext, no_osc52: bool) -> ClipboardRoute {
+/// Test/production overrides for pure clipboard-route resolution.
+#[derive(Clone, Copy)]
+struct ClipboardRouteOpts {
+    no_osc52: bool,
+    wrap_sink: bool,
+}
+
+/// Pure clipboard-route resolution (kill-switch / wrap-sink injected for tests).
+fn resolve_clipboard_route_with(ctx: &TerminalContext, opts: ClipboardRouteOpts) -> ClipboardRoute {
     let is_tmux = ctx.multiplexer == MultiplexerKind::Tmux;
     // Linux: always emit OSC 52 as a safety net. This matches other
     // terminal agent CLIs which emit OSC 52 on every copy.
@@ -154,12 +167,12 @@ fn resolve_clipboard_route_with(ctx: &TerminalContext, no_osc52: bool) -> Clipbo
     // upstream `grok wrap` sink is capturing our output and will forward
     // the sequence to the real clipboard.
     // `GROK_CLIPBOARD_NO_OSC52` wins over every automatic path.
-    let osc52 = !no_osc52
+    let osc52 = !opts.no_osc52
         && (cfg!(target_os = "linux")
             || is_tmux
             || is_remote()
             || is_container_no_display()
-            || osc52_sink_active());
+            || opts.wrap_sink);
     ClipboardRoute {
         native: true,
         tmux_buffer: is_tmux,
@@ -187,6 +200,7 @@ fn write_tmux_buffer(text: &str) -> bool {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         xai_tty_utils::detach_std_command(&mut cmd);
+        #[allow(clippy::disallowed_methods)] // short-lived clipboard helper, waited on below
         let mut child = cmd.spawn()?;
         // Bounded wait: a wedged tmux server must not freeze the UI thread.
         let status = xai_grok_shared::clipboard::wait_with_deadline(
@@ -297,11 +311,10 @@ fn clipboard_write_with_route(text: &str, route: &ClipboardRoute) -> ClipboardWr
 /// Result of a clipboard write with toast info for the caller to display.
 #[derive(Debug)]
 pub struct CopyResult {
-    /// Full user-facing toast message (used when no backup file exists).
+    /// Full user-facing toast message.
     pub message: &'static str,
-    /// Leading phrase of `message` without the trailing guidance sentence.
-    /// [`CopyDelivery::toast_message`] appends the dynamic backup-file path
-    /// to this compact lead instead of the full message.
+    /// Compact lead of `message` (no trailing guidance). Used when the toast
+    /// names a backup path so lead + path fits a narrow terminal.
     pub message_lead: &'static str,
     /// Toast duration in ticks (30fps: 30 = ~1s, 120 = ~4s).
     pub ticks: u8,
@@ -367,14 +380,11 @@ impl ClipboardFeedback {
             Self::VsCodeSshNonAscii => {
                 "Copied. VS Code over SSH may garble non-ASCII; use /minimal if needed."
             }
-            Self::FailedRemote | Self::Failed => "复制失败。请尝试 /terminal-setup 或 /minimal。",
+            Self::FailedRemote | Self::Failed => "复制失败。请尝试 /doctor 或 /minimal。",
         }
     }
 
-    /// Leading phrase of [`Self::message`] (no trailing period). When a
-    /// backup file exists, the toast is just this lead plus the path — the
-    /// guidance tail is dropped because the file already is the recovery
-    /// path and the full sentence overflows narrow terminals.
+    /// Compact lead of [`Self::message`] (no trailing guidance sentence).
     fn message_lead(self) -> &'static str {
         match self {
             Self::Copied => "Copied!",
@@ -473,23 +483,24 @@ impl CopyDelivery {
         !matches!(self, Self::Failed { .. })
     }
 
-    /// User-facing toast line for this delivery. Every clipboard success with
-    /// a backup file names its path. The guidance tail is dropped in that
-    /// case — the file already is the recovery path, and lead + path + tail
-    /// overflows narrow terminals (the toast renderer would truncate it).
+    /// User-facing toast line for this delivery.
+    ///
+    /// Confirmed clipboard writes use the static message only (the backup
+    /// file is still written). Unverified OSC 52 and file-only fallbacks
+    /// name the backup path for recovery.
     pub fn toast_message(&self) -> std::borrow::Cow<'static, str> {
         use std::borrow::Cow;
         match self {
-            Self::Clipboard { result, file } => match file {
-                Some(path) => Cow::Owned(format!(
-                    "{} — saved to {}",
+            Self::Clipboard { result, file } => match (result.delivery, file) {
+                (ClipboardDelivery::Unverified, Some(path)) => Cow::Owned(format!(
+                    "{}, saved to {}",
                     result.message_lead,
                     display_copy_path(path)
                 )),
-                None => Cow::Borrowed(result.message),
+                _ => Cow::Borrowed(result.message),
             },
             Self::File { path } => Cow::Owned(format!(
-                "Clipboard unreachable — wrote {}",
+                "Clipboard unreachable: wrote {}",
                 display_copy_path(path)
             )),
             Self::Failed { clipboard, .. } => Cow::Borrowed(clipboard.message),
@@ -1793,7 +1804,13 @@ mod tests {
         for case in cases {
             // Pure helper with kill switch off so ambient GROK_CLIPBOARD_NO_OSC52
             // cannot flake CI (route() itself still reads the real env).
-            let route = resolve_clipboard_route_with(&case.ctx, false);
+            let route = resolve_clipboard_route_with(
+                &case.ctx,
+                ClipboardRouteOpts {
+                    no_osc52: false,
+                    wrap_sink: false,
+                },
+            );
             assert_eq!(
                 route.native, case.native,
                 "native mismatch on case '{}'",
@@ -1869,11 +1886,43 @@ mod tests {
     }
 
     #[test]
+    fn clipboard_route_osc52_when_wrap_sink_active() {
+        let on = resolve_clipboard_route_with(
+            &plain_terminal_ctx(),
+            ClipboardRouteOpts {
+                no_osc52: false,
+                wrap_sink: true,
+            },
+        );
+        assert!(
+            on.osc52,
+            "grok wrap sink must emit OSC 52 so the local PTY can intercept it"
+        );
+        let killed = resolve_clipboard_route_with(
+            &plain_terminal_ctx(),
+            ClipboardRouteOpts {
+                no_osc52: true,
+                wrap_sink: true,
+            },
+        );
+        assert!(
+            !killed.osc52,
+            "GROK_CLIPBOARD_NO_OSC52 still wins over the wrap sink"
+        );
+    }
+
+    #[test]
     fn clipboard_route_osc52_always_for_tmux_backed() {
         // In tmux-backed environments, OSC 52 is always emitted regardless of
         // remote session status (unless the kill switch is on — tested below).
         for ctx in [plain_tmux_ctx(), byobu_tmux_ctx()] {
-            let route = resolve_clipboard_route_with(&ctx, false);
+            let route = resolve_clipboard_route_with(
+                &ctx,
+                ClipboardRouteOpts {
+                    no_osc52: false,
+                    wrap_sink: false,
+                },
+            );
             assert!(
                 route.osc52,
                 "OSC 52 should always be emitted in tmux-backed env: {:?}",
@@ -1893,7 +1942,13 @@ mod tests {
             zellij_ctx(),
             plain_screen_ctx(),
         ] {
-            let route = resolve_clipboard_route_with(&ctx, true);
+            let route = resolve_clipboard_route_with(
+                &ctx,
+                ClipboardRouteOpts {
+                    no_osc52: true,
+                    wrap_sink: false,
+                },
+            );
             assert!(
                 !route.osc52,
                 "OSC 52 must be off under kill switch for {:?}",
@@ -1908,7 +1963,13 @@ mod tests {
             assert!(route.native);
         }
         // tmux buffer still active when in tmux — only OSC 52 is killed.
-        let tmux = resolve_clipboard_route_with(&plain_tmux_ctx(), true);
+        let tmux = resolve_clipboard_route_with(
+            &plain_tmux_ctx(),
+            ClipboardRouteOpts {
+                no_osc52: true,
+                wrap_sink: false,
+            },
+        );
         assert!(tmux.tmux_buffer);
         assert!(!tmux.osc52);
     }
@@ -1916,15 +1977,51 @@ mod tests {
     #[test]
     fn clipboard_route_osc52_tmux_passthrough_truth_table() {
         // tmux + no editor: wrap (tmux is the immediate terminal).
-        assert!(resolve_clipboard_route_with(&plain_tmux_ctx(), false).osc52_tmux_passthrough);
+        assert!(
+            resolve_clipboard_route_with(
+                &plain_tmux_ctx(),
+                ClipboardRouteOpts {
+                    no_osc52: false,
+                    wrap_sink: false
+                }
+            )
+            .osc52_tmux_passthrough
+        );
         // tmux + embedded editor: don't wrap (libvterm is the immediate terminal).
         let mut tmux_in_editor = plain_tmux_ctx();
         tmux_in_editor.embedded_editor = Some(EmbeddedEditor::Neovim);
-        assert!(!resolve_clipboard_route_with(&tmux_in_editor, false).osc52_tmux_passthrough);
+        assert!(
+            !resolve_clipboard_route_with(
+                &tmux_in_editor,
+                ClipboardRouteOpts {
+                    no_osc52: false,
+                    wrap_sink: false
+                }
+            )
+            .osc52_tmux_passthrough
+        );
         // non-tmux: never wrap.
-        assert!(!resolve_clipboard_route_with(&plain_terminal_ctx(), false).osc52_tmux_passthrough);
+        assert!(
+            !resolve_clipboard_route_with(
+                &plain_terminal_ctx(),
+                ClipboardRouteOpts {
+                    no_osc52: false,
+                    wrap_sink: false
+                }
+            )
+            .osc52_tmux_passthrough
+        );
         // kill switch: never wrap even in plain tmux.
-        assert!(!resolve_clipboard_route_with(&plain_tmux_ctx(), true).osc52_tmux_passthrough);
+        assert!(
+            !resolve_clipboard_route_with(
+                &plain_tmux_ctx(),
+                ClipboardRouteOpts {
+                    no_osc52: true,
+                    wrap_sink: false
+                }
+            )
+            .osc52_tmux_passthrough
+        );
     }
 
     // =====================================================================
@@ -1983,7 +2080,13 @@ mod tests {
     #[test]
     fn clipboard_route_tmux_backed_all_three_legs() {
         for ctx in [plain_tmux_ctx(), byobu_tmux_ctx()] {
-            let route = resolve_clipboard_route_with(&ctx, false);
+            let route = resolve_clipboard_route_with(
+                &ctx,
+                ClipboardRouteOpts {
+                    no_osc52: false,
+                    wrap_sink: false,
+                },
+            );
             assert!(route.native, "native should be true");
             assert!(route.tmux_buffer, "tmux_buffer should be true");
             assert!(route.osc52, "osc52 should be true for tmux-backed");
@@ -2064,14 +2167,14 @@ mod tests {
             (
                 ClipboardFeedback::FailedRemote,
                 ClipboardDelivery::Failed,
-                "复制失败。请尝试 /terminal-setup 或 /minimal。",
+                "复制失败。请尝试 /doctor 或 /minimal。",
                 "failed_remote",
                 120,
             ),
             (
                 ClipboardFeedback::Failed,
                 ClipboardDelivery::Failed,
-                "复制失败。请尝试 /terminal-setup 或 /minimal。",
+                "复制失败。请尝试 /doctor 或 /minimal。",
                 "failed",
                 120,
             ),
@@ -2275,52 +2378,48 @@ mod tests {
     // -- CopyDelivery toast composition ---------------------------------------
 
     #[test]
-    fn toast_message_always_names_backup_file() {
+    fn toast_message_names_backup_only_for_unverified_or_file_fallback() {
         let path = std::path::PathBuf::from("/tmp/grok-1/last-copy.txt");
 
-        // Plain success with a backup: names the path.
-        let plain = CopyDelivery::Clipboard {
+        let confirmed = CopyDelivery::Clipboard {
             result: ClipboardFeedback::Copied.to_result(),
             file: Some(path.clone()),
         };
-        assert_eq!(
-            plain.toast_message(),
-            "Copied! — saved to /tmp/grok-1/last-copy.txt"
-        );
-        assert_eq!(plain.toast_ticks(), 30);
+        assert_eq!(confirmed.toast_message(), "Copied!");
+        assert_eq!(confirmed.toast_ticks(), 30);
 
-        // Unverified OSC 52 with a backup: compact lead + path, guidance tail
-        // dropped (the file is the recovery path; the full sentence overflows
-        // narrow terminals).
+        let confirmed_osc = CopyDelivery::Clipboard {
+            result: ClipboardFeedback::CopiedOscRemote.to_result(),
+            file: Some(path.clone()),
+        };
+        assert_eq!(confirmed_osc.toast_message(), "Copied via OSC 52.");
+
         let unverified = CopyDelivery::Clipboard {
             result: ClipboardFeedback::UnverifiedOscRemote.to_result(),
             file: Some(path.clone()),
         };
         assert_eq!(
             unverified.toast_message(),
-            "Copy sent — saved to /tmp/grok-1/last-copy.txt"
+            "Copy sent, saved to /tmp/grok-1/last-copy.txt"
         );
         assert_eq!(unverified.toast_ticks(), 120);
 
-        // No backup file (write failed): falls back to the static message.
-        let no_file = CopyDelivery::Clipboard {
+        let unverified_no_file = CopyDelivery::Clipboard {
             result: ClipboardFeedback::UnverifiedOscRemote.to_result(),
             file: None,
         };
         assert_eq!(
-            no_file.toast_message(),
+            unverified_no_file.toast_message(),
             ClipboardFeedback::UnverifiedOscRemote.message()
         );
 
-        // File-only delivery keeps the "unreachable" wording.
         let file_only = CopyDelivery::File { path };
         assert_eq!(
             file_only.toast_message(),
-            "Clipboard unreachable — wrote /tmp/grok-1/last-copy.txt"
+            "Clipboard unreachable: wrote /tmp/grok-1/last-copy.txt"
         );
         assert_eq!(file_only.toast_ticks(), 120);
 
-        // Failed delivery surfaces the clipboard failure message.
         let failed = CopyDelivery::Failed {
             clipboard: ClipboardFeedback::Failed.to_result(),
             file_error: std::io::Error::other("nope"),
@@ -2329,8 +2428,7 @@ mod tests {
         assert_eq!(failed.toast_ticks(), 120);
     }
 
-    /// An UNVERIFIED clipboard delivery still counts as a clipboard delivery
-    /// (not a file fallback): the toast hedges but the backup path is named.
+    /// Unverified OSC still composes as clipboard delivery (not file fallback).
     #[test]
     fn unverified_clipboard_delivery_composes_as_clipboard() {
         let path = std::path::PathBuf::from("/tmp/grok-1/last-copy.txt");

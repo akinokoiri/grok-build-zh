@@ -18,6 +18,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::subagent::format_subagent_meta;
+use crate::appearance::AppearanceConfig;
 use crate::render::color::blend_color;
 use crate::render::line_utils::truncate_str;
 use crate::scrollback::block::BlockContent;
@@ -192,7 +193,7 @@ impl BlockContent for SubagentBlock {
                     .activity_label
                     .as_deref()
                     .filter(|s| !s.is_empty())
-                    .map(|a| format!(" \u{2014} {a}"))
+                    .map(|a| format!(" \u{00b7} {a}"))
                     .unwrap_or_default();
                 let meta = format_subagent_meta(
                     self.persona.as_deref(),
@@ -292,7 +293,7 @@ impl BlockContent for SubagentBlock {
         }
     }
 
-    fn has_vpad(&self, _ctx: &BlockContext) -> bool {
+    fn has_vpad_for(&self, _appearance: &AppearanceConfig) -> bool {
         false
     }
 

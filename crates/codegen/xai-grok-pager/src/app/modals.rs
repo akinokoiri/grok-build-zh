@@ -66,7 +66,13 @@ impl AgentView {
             models,
             cwd,
             has_session_announcements: slash_controller.has_session_announcements(),
+            billing_surface_visible: slash_controller.billing_surface_visible(),
+            usage_command_visible: slash_controller.usage_command_visible(),
+            workflows_available: slash_controller.workflows_available(),
+            saved_workflows: slash_controller.registry().saved_workflows(),
+            workflow_runs: slash_controller.workflow_runs(),
             screen_mode: slash_controller.screen_mode(),
+            current_title: slash_controller.current_title(),
         };
         let Some(model_items) = cmd.suggest_args(&ctx, "") else {
             return false;
@@ -95,7 +101,18 @@ impl AgentView {
     ///
     /// Matches the pressed character against the modal's options and resolves
     /// the result. All non-matching keys are consumed (blocked).
+    #[cfg(test)]
     pub(super) fn handle_modal_key(&mut self, key: &KeyEvent) -> InputOutcome {
+        let registry = crate::actions::ActionRegistry::defaults();
+        self.handle_modal_key_with_registry(key, &registry)
+    }
+
+    /// Handle modal input using the live action registry that dispatched it.
+    pub(super) fn handle_modal_key_with_registry(
+        &mut self,
+        key: &KeyEvent,
+        registry: &crate::actions::ActionRegistry,
+    ) -> InputOutcome {
         use crate::views::modal::ActiveModal;
         use crate::views::modal_window::{self as mw, ModalWindowOutcome};
 
@@ -165,7 +182,7 @@ impl AgentView {
                         return self.handle_doc_input(&ev);
                     }
                     let ev = crossterm::event::Event::Key(*key);
-                    return self.handle_palette_or_arg_input(&ev);
+                    return self.handle_palette_or_arg_input_with_registry(&ev, registry);
                 }
                 ModalWindowOutcome::Unhandled => {
                     // Non-Esc key (including Left/Right/h/l):
@@ -175,7 +192,7 @@ impl AgentView {
                         return self.handle_doc_input(&ev);
                     }
                     let ev = crossterm::event::Event::Key(*key);
-                    return self.handle_palette_or_arg_input(&ev);
+                    return self.handle_palette_or_arg_input_with_registry(&ev, registry);
                 }
                 _ => return InputOutcome::Changed,
             }
@@ -420,6 +437,39 @@ impl AgentView {
             }
         }
 
+        // UsageInfo: chrome (Esc/close) first, then tabs / scroll / copy.
+        if let ActiveModal::UsageInfo { state } = modal {
+            let chrome_cfg = mw::ModalWindowConfig {
+                title: "",
+                tabs: None,
+                shortcuts: &[],
+                sizing: mw::ModalSizing::default(),
+                fold_info: None,
+            };
+            match mw::handle_modal_key(&mut state.window, key, &chrome_cfg) {
+                ModalWindowOutcome::CloseRequested => {
+                    self.active_modal = None;
+                    return InputOutcome::Changed;
+                }
+                ModalWindowOutcome::Unhandled => {
+                    use crate::views::usage_modal::{self, UsageModalOutcome};
+                    return match usage_modal::handle_usage_modal_key(state, key) {
+                        UsageModalOutcome::CopySessionId => {
+                            self.copy_usage_modal_session_id();
+                            InputOutcome::Changed
+                        }
+                        UsageModalOutcome::CopyText(text) => {
+                            self.copy_usage_modal_text(&text);
+                            InputOutcome::Changed
+                        }
+                        UsageModalOutcome::Changed => InputOutcome::Changed,
+                        UsageModalOutcome::Unchanged => InputOutcome::Unchanged,
+                    };
+                }
+                _ => return InputOutcome::Changed,
+            }
+        }
+
         // ResetSettingsConfirm: y/n routing. Handled before generic
         // char-match so Esc/F2/Ctrl+, route to Cancel (not modal close).
         if let Some(ActiveModal::ResetSettingsConfirm { modal, .. }) = self.active_modal.as_ref() {
@@ -470,12 +520,17 @@ impl AgentView {
             | ActiveModal::ShortcutsHelp { .. }
             | ActiveModal::MemoryBrowser { .. }
             | ActiveModal::Settings { .. }
+            | ActiveModal::UsageInfo { .. }
             | ActiveModal::ResetSettingsConfirm { .. }
             | ActiveModal::RememberNoteReview { .. } => unreachable!(),
         }
     }
 
-    pub(super) fn handle_modal_paste(&mut self, text: &str) -> InputOutcome {
+    pub(super) fn handle_modal_paste(
+        &mut self,
+        text: &str,
+        registry: &crate::actions::ActionRegistry,
+    ) -> InputOutcome {
         use crate::views::modal::ActiveModal;
 
         let event = crossterm::event::Event::Paste(text.to_owned());
@@ -490,7 +545,7 @@ impl AgentView {
                     | ActiveModal::SessionPicker { .. }
             )
         ) {
-            return self.handle_palette_or_arg_input(&event);
+            return self.handle_palette_or_arg_input_with_registry(&event, registry);
         }
 
         if let Some(ActiveModal::ShortcutsHelp { state, mode, .. }) = self.active_modal.as_mut() {
@@ -556,6 +611,7 @@ impl AgentView {
             filter_label: None,
             filter_key_hint: None,
             filter_active: false,
+            header_note: None,
             action_keys: &[],
             disable_search: false,
             compact_bottom_bar: false,
@@ -662,7 +718,17 @@ impl AgentView {
     }
 
     /// Unified input handler for command palette and arg picker modals.
+    #[cfg(test)]
     fn handle_palette_or_arg_input(&mut self, ev: &crossterm::event::Event) -> InputOutcome {
+        let registry = crate::actions::ActionRegistry::defaults();
+        self.handle_palette_or_arg_input_with_registry(ev, &registry)
+    }
+
+    fn handle_palette_or_arg_input_with_registry(
+        &mut self,
+        ev: &crossterm::event::Event,
+        registry: &crate::actions::ActionRegistry,
+    ) -> InputOutcome {
         use crate::views::modal::{ActiveModal, PaletteCommand};
         use crate::views::picker::{PickerConfig, PickerOutcome, handle_picker_input};
 
@@ -678,9 +744,11 @@ impl AgentView {
             ActiveModal::CommandPalette {
                 entries: _, state, ..
             } => {
+                // Build filtered entries for count and non-selectable indices.
                 let filtered = crate::views::modal::filter_palette_entries(
                     state.query(),
                     self.sharing_enabled,
+                    &self.prompt.slash_controller,
                 );
                 let non_sel: Vec<bool> = filtered
                     .iter()
@@ -703,6 +771,7 @@ impl AgentView {
                     filter_label: None,
                     filter_key_hint: None,
                     filter_active: false,
+                    header_note: None,
                     action_keys: &[],
                     disable_search: false,
                     compact_bottom_bar: false,
@@ -759,7 +828,6 @@ impl AgentView {
                             }
                             PaletteCommand::KeyboardShortcuts => {
                                 use crate::views::shortcuts_help;
-                                let reg = crate::actions::ActionRegistry::defaults();
                                 let mut contexts = active_contexts_for_pane(self.active_pane);
                                 // Same overlay-context push as the Ctrl+.
                                 // path (`handle_agent_action`,
@@ -767,8 +835,11 @@ impl AgentView {
                                 if self.in_dashboard_overlay {
                                     contexts.push(crate::actions::When::DashboardOverlay);
                                 }
-                                let entries =
-                                    shortcuts_help::build_entries(&contexts, &reg, self.vim_mode);
+                                let entries = shortcuts_help::build_entries(
+                                    &contexts,
+                                    registry,
+                                    self.vim_mode,
+                                );
                                 let state = shortcuts_help::build_initial_picker_state(&entries);
                                 self.active_modal = Some(ActiveModal::ShortcutsHelp {
                                     entries,
@@ -800,6 +871,10 @@ impl AgentView {
                             PaletteCommand::OpenAgentsModal => {
                                 self.active_modal = None;
                                 InputOutcome::Action(Action::OpenConfigAgentsModal(None))
+                            }
+                            PaletteCommand::EditPromptExternal => {
+                                self.active_modal = None;
+                                InputOutcome::Action(Action::EditPromptExternal)
                             }
                             PaletteCommand::SlashCommand(text) => {
                                 let trimmed = text
@@ -895,6 +970,7 @@ impl AgentView {
                             *entries = crate::views::modal::filter_palette_entries(
                                 state.query(),
                                 sharing_enabled,
+                                &self.prompt.slash_controller,
                             );
                             state.selected = state.selected.min(entries.len().saturating_sub(1));
                         }
@@ -953,8 +1029,8 @@ impl AgentView {
                     _ => false,
                 };
 
-                // Chat-mode picker lists conversations only: the Local/Remote
-                // source filter and local-disk delete are dead weight there.
+                // Chat-mode picker lists conversations only: the source
+                // filter and local-disk delete are dead weight there.
                 let chat_mode = self.app_chat_mode;
                 let config = PickerConfig {
                     title: Some("恢复会话"),
@@ -971,6 +1047,7 @@ impl AgentView {
                     filter_label: (!chat_mode).then(|| source_filter.label()),
                     filter_key_hint: (!chat_mode).then_some("f"),
                     filter_active: !chat_mode && source_filter.is_active(),
+                    header_note: None,
                     action_keys: if chat_mode || focused_is_foreign {
                         &[]
                     } else {
@@ -982,41 +1059,19 @@ impl AgentView {
                     vim_normal_first: crate::appearance::cache::load_vim_mode(),
                 };
 
-                // Delete-confirmation flow: `d` arms a confirmation on the
-                // focused row, then `y` confirms and `n` (or any other key)
-                // cancels. y/n are intercepted here — before the picker
-                // handler — only while armed, so the rest of the time `y`
-                // keeps its normal meaning (copy the session id).
-                if pending_delete.is_some()
-                    && let crossterm::event::Event::Key(k) = ev
-                    && k.kind == KeyEventKind::Press
-                    && k.modifiers.is_empty()
-                {
-                    match k.code {
-                        crossterm::event::KeyCode::Char('y') => {
-                            // Confirm. The cwd was captured when the row was
-                            // armed, so this can't be foiled by an async
-                            // picker-list update (e.g. a deep-search result)
-                            // landing between `d` and `y`.
-                            if let Some((source, session_id, cwd)) = pending_delete.take() {
-                                return InputOutcome::Action(Action::DeleteSession {
-                                    source,
-                                    session_id,
-                                    cwd,
-                                });
-                            }
-                            return InputOutcome::Changed;
-                        }
-                        crossterm::event::KeyCode::Char('n') => {
-                            *pending_delete = None;
-                            return InputOutcome::Changed;
-                        }
-                        _ => {
-                            // Any other key cancels, then falls through to its
-                            // normal handling below.
-                            *pending_delete = None;
-                        }
+                match crate::views::session_picker::handle_pending_delete_key(pending_delete, ev) {
+                    crate::views::session_picker::PendingDeleteKey::Confirm(pd) => {
+                        return InputOutcome::Action(Action::DeleteSession {
+                            source: pd.source,
+                            session_id: pd.session_id,
+                            cwd: pd.cwd,
+                        });
                     }
+                    crate::views::session_picker::PendingDeleteKey::Cancel => {
+                        return InputOutcome::Changed;
+                    }
+                    crate::views::session_picker::PendingDeleteKey::Disarmed
+                    | crate::views::session_picker::PendingDeleteKey::NotArmed => {}
                 }
 
                 if let crossterm::event::Event::Key(key) = ev
@@ -1042,7 +1097,12 @@ impl AgentView {
                     });
                 }
 
-                match handle_picker_input(ev, state, entry_count, &config) {
+                let selected_before = state.selected;
+                let outcome = handle_picker_input(ev, state, entry_count, &config);
+                if pending_delete.is_some() && state.selected != selected_before {
+                    *pending_delete = None;
+                }
+                match outcome {
                     PickerOutcome::Selected(i) => {
                         match entry_map.get(i).and_then(|e| e.as_ref()) {
                             Some(PickerItem::Fuzzy { original_index }) => {
@@ -1066,10 +1126,15 @@ impl AgentView {
                         }
                     }
                     PickerOutcome::SubmitQuery => {
-                        let query = state.query().trim().to_string();
-                        if !query.is_empty() {
+                        // Free-text load only for a UUID session id.
+                        // Own the id before clearing the modal (state is a
+                        // reborrow of `active_modal`).
+                        let load_id =
+                            crate::views::session_picker::session_id_for_direct_load(state.query())
+                                .map(str::to_owned);
+                        if let Some(sid) = load_id {
                             self.active_modal = None;
-                            InputOutcome::Action(Action::LoadSession(query, None, false))
+                            InputOutcome::Action(Action::LoadSession(sid, None, false))
                         } else {
                             InputOutcome::Unchanged
                         }
@@ -1185,28 +1250,13 @@ impl AgentView {
                         InputOutcome::Action(Action::CycleSessionSourceFilter)
                     }
                     PickerOutcome::Action('d') => {
-                        // Arm a delete confirmation on the highlighted row,
-                        // capturing source, id, and cwd now (the row is present at
-                        // this moment) so the `y` confirm can't be foiled by an
-                        // async picker-list update. `y` confirms / `n` cancels
-                        // on the next key press (intercepted above).
                         *pending_delete =
-                            match entry_map.get(state.selected).and_then(|e| e.as_ref()) {
-                                Some(PickerItem::Fuzzy { original_index }) => entries
-                                    .as_ref()
-                                    .and_then(|e| e.get(*original_index))
-                                    .filter(|entry| {
-                                        !crate::app::foreign_sessions::is_foreign_picker_source(
-                                            &entry.source,
-                                        )
-                                    })
-                                    .map(|e| (e.source.clone(), e.id.clone(), e.cwd.clone())),
-                                Some(PickerItem::Content { hit_index }) => content_results
-                                    .as_ref()
-                                    .and_then(|h| h.get(*hit_index))
-                                    .map(|h| ("local".into(), h.session_id.clone(), h.cwd.clone())),
-                                None => None,
-                            };
+                            crate::views::session_picker::pending_delete_from_selection(
+                                state.selected,
+                                &entry_map,
+                                entries.as_deref(),
+                                content_results.as_deref(),
+                            );
                         InputOutcome::Changed
                     }
                     PickerOutcome::NonSelectableClick(_)
@@ -1288,6 +1338,7 @@ impl AgentView {
                 filter_label: None,
                 filter_key_hint: None,
                 filter_active: false,
+                header_note: None,
                 action_keys: &[],
                 disable_search: false,
                 compact_bottom_bar: false,
@@ -1348,9 +1399,10 @@ impl AgentView {
     ///
     /// Click on a button → same as pressing that key.
     /// Hover → update `modal_hovered_key` for highlight.
-    pub(super) fn handle_modal_mouse(
+    pub(super) fn handle_modal_mouse_with_registry(
         &mut self,
         mouse: &crossterm::event::MouseEvent,
+        registry: &crate::actions::ActionRegistry,
     ) -> InputOutcome {
         use crate::views::modal::ActiveModal;
         use crate::views::modal_window::{self as mw, ModalWindowOutcome};
@@ -1500,7 +1552,7 @@ impl AgentView {
                         };
                     }
                     let ev = crossterm::event::Event::Mouse(*mouse);
-                    return self.handle_palette_or_arg_input(&ev);
+                    return self.handle_palette_or_arg_input_with_registry(&ev, registry);
                 }
                 _ => return InputOutcome::Changed,
             }
@@ -1556,6 +1608,87 @@ impl AgentView {
             }
         }
 
+        // UsageInfo: chrome first (tabs / close / footer stay clickable), then drag / wheel.
+        if let Some(ActiveModal::UsageInfo { state }) = &mut self.active_modal {
+            use crate::views::usage_modal::{
+                self, COPY_ALL_SESSION_INFO_SHORTCUT, COPY_SESSION_ID_SHORTCUT, UsageModalOutcome,
+            };
+            let outcome =
+                mw::handle_modal_mouse(&mut state.window, mouse.kind, mouse.column, mouse.row);
+            match outcome {
+                ModalWindowOutcome::CloseRequested => {
+                    self.active_modal = None;
+                    return InputOutcome::Changed;
+                }
+                ModalWindowOutcome::TabChanged(idx) => {
+                    state.set_tab(usage_modal::UsageInfoTab::from_index(idx));
+                    return InputOutcome::Changed;
+                }
+                ModalWindowOutcome::ShortcutActivated(id) => {
+                    // Footer click: drop gesture + hover.
+                    state.clear_text_drag();
+                    if id == COPY_SESSION_ID_SHORTCUT {
+                        self.copy_usage_modal_session_id();
+                    } else if id == COPY_ALL_SESSION_INFO_SHORTCUT {
+                        let text = match self.active_modal.as_ref() {
+                            Some(ActiveModal::UsageInfo { state }) => state.session_info_copy_all(),
+                            _ => None,
+                        };
+                        if let Some(text) = text {
+                            self.copy_usage_modal_text(&text);
+                        }
+                    }
+                    return InputOutcome::Changed;
+                }
+                ModalWindowOutcome::Handled => {
+                    match mouse.kind {
+                        // Same rule as content: bare Moved with an active drag is a
+                        // lost Up. Pending press is left alone for click-to-copy.
+                        MouseEventKind::Moved => {
+                            if state.has_active_drag() {
+                                return match state.finish_lost_drag() {
+                                    UsageModalOutcome::CopyText(text) => {
+                                        self.copy_usage_modal_text(&text);
+                                        InputOutcome::Changed
+                                    }
+                                    _ => {
+                                        state.hovered_copy_line = None;
+                                        InputOutcome::Changed
+                                    }
+                                };
+                            }
+                            state.hovered_copy_line = None;
+                        }
+                        // Same-tab click and other chrome Downs: drop gesture + hover.
+                        _ => {
+                            state.clear_text_drag();
+                        }
+                    }
+                    return InputOutcome::Changed;
+                }
+                ModalWindowOutcome::Unhandled => {
+                    return match usage_modal::handle_usage_modal_mouse(
+                        state,
+                        mouse.kind,
+                        mouse.column,
+                        mouse.row,
+                    ) {
+                        UsageModalOutcome::CopySessionId => {
+                            self.copy_usage_modal_session_id();
+                            InputOutcome::Changed
+                        }
+                        UsageModalOutcome::CopyText(text) => {
+                            self.copy_usage_modal_text(&text);
+                            InputOutcome::Changed
+                        }
+                        UsageModalOutcome::Changed => InputOutcome::Changed,
+                        UsageModalOutcome::Unchanged => InputOutcome::Unchanged,
+                    };
+                }
+                _ => return InputOutcome::Changed,
+            }
+        }
+
         // ResetSettingsConfirm: route mouse events through the
         // modal-window chrome.
         if let Some(ActiveModal::ResetSettingsConfirm { settings_state, .. }) =
@@ -1599,7 +1732,7 @@ impl AgentView {
                 for btn in &self.modal_buttons {
                     if btn.rect.contains((mouse.column, mouse.row).into()) {
                         let key = KeyEvent::new(KeyCode::Char(btn.key), KeyModifiers::NONE);
-                        return self.handle_modal_key(&key);
+                        return self.handle_modal_key_with_registry(&key, registry);
                     }
                 }
                 InputOutcome::Changed
@@ -1619,6 +1752,25 @@ impl AgentView {
             }
             _ => InputOutcome::Changed,
         }
+    }
+
+    /// Copy the usage modal's session ID and toast the delivery outcome.
+    fn copy_usage_modal_session_id(&mut self) {
+        let Some(ActiveModal::UsageInfo { state }) = self.active_modal.as_ref() else {
+            return;
+        };
+        let Some(id) = state.ctx.session_id.clone() else {
+            return;
+        };
+        let delivery = crate::clipboard::copy_text_or_file(&id);
+        self.show_toast(delivery.toast_message().as_ref());
+    }
+
+    /// Copy Session-info text (`y` / footer "copy all") and toast the
+    /// delivery outcome. Mirrors [`Self::copy_usage_modal_session_id`].
+    fn copy_usage_modal_text(&mut self, text: &str) {
+        let delivery = crate::clipboard::copy_text_or_file(text);
+        self.show_toast(delivery.toast_message().as_ref());
     }
 
     /// Draw the active modal overlay: the per-`ActiveModal`-variant render
@@ -1672,7 +1824,11 @@ impl AgentView {
             } = active_modal
             {
                 // Command palette: ModalWindow chrome + picker content.
-                let filtered = modal::filter_palette_entries(state.query(), self.sharing_enabled);
+                let filtered = modal::filter_palette_entries(
+                    state.query(),
+                    self.sharing_enabled,
+                    &self.prompt.slash_controller,
+                );
                 let non_sel: Vec<bool> = filtered
                     .iter()
                     .map(|e| matches!(e.command, modal::PaletteCommand::SectionHeader(_)))
@@ -2066,7 +2222,16 @@ impl AgentView {
                         non_sel_flags.push(false);
                     }
 
-                    let entries_area = Rect {
+                    let hidden_hint = if chat_mode {
+                        None
+                    } else {
+                        crate::views::session_picker::hidden_external_hint(
+                            entries.as_deref(),
+                            *source_filter,
+                        )
+                    };
+
+                    let mut entries_area = Rect {
                         x: content_area.x,
                         y: entries_start_y,
                         width: content_area.width,
@@ -2074,6 +2239,22 @@ impl AgentView {
                             .height
                             .saturating_sub(entries_start_y.saturating_sub(content_area.y)),
                     };
+                    // Pinned above the list so it stays visible regardless of scroll.
+                    if let Some(hint) = hidden_hint.as_deref()
+                        && entries_area.height > 0
+                    {
+                        buf.set_stringn(
+                            entries_area.x + 1,
+                            entries_area.y,
+                            hint,
+                            entries_area.width.saturating_sub(1) as usize,
+                            ratatui::style::Style::default()
+                                .fg(theme.gray_dim)
+                                .bg(theme.bg_base),
+                        );
+                        entries_area.y += 1;
+                        entries_area.height -= 1;
+                    }
                     let content_hit = picker::render_picker_content_with_scrollbar_x(
                         buf,
                         entries_area,
@@ -2083,7 +2264,13 @@ impl AgentView {
                         &non_sel_flags,
                         &[],
                         Some(theme.bg_base),
-                        entries.is_none() && (*loading || lanes.foreign_loading),
+                        crate::views::session_picker::loading_spinner_active(
+                            entries.as_deref(),
+                            *source_filter,
+                            *loading,
+                            lanes,
+                        ),
+                        self.scrollback.tick_count(),
                         mca.inner_x + mca.inner_width - 1,
                     );
                     state.hit_areas = Some(picker::PickerHitAreas {
@@ -2277,6 +2464,15 @@ impl AgentView {
                         !searching,
                     );
                 }
+            } else if let modal::ActiveModal::UsageInfo { state } = active_modal {
+                crate::views::usage_modal::render_usage_modal(
+                    buf,
+                    area,
+                    state,
+                    self.credit_balance.as_ref(),
+                    compact,
+                    &theme,
+                );
             } else if let modal::ActiveModal::MemoryBrowser { state: mem_state } = active_modal {
                 crate::views::memory_modal::render_memory_modal(buf, area, mem_state, compact);
             } else if let modal::ActiveModal::Settings {
@@ -2326,7 +2522,7 @@ mod session_picker_delete_tests {
     use crate::app::agent_view::test_fixtures::make_agent;
     use crate::app::app_view::{InputOutcome, SessionPickerEntry};
     use crate::views::modal::ActiveModal;
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 
     fn entry(id: &str) -> SessionPickerEntry {
         SessionPickerEntry {
@@ -2343,6 +2539,8 @@ mod session_picker_delete_tests {
             branch: None,
             repo_name: "repo".into(),
             worktree_label: None,
+            last_turn_summary: None,
+            last_recap: None,
             card_detail: None,
         }
     }
@@ -2370,9 +2568,9 @@ mod session_picker_delete_tests {
 
     fn pending(agent: &AgentView) -> Option<String> {
         match agent.active_modal.as_ref() {
-            Some(ActiveModal::SessionPicker { pending_delete, .. }) => pending_delete
-                .as_ref()
-                .map(|(_, session_id, _)| session_id.clone()),
+            Some(ActiveModal::SessionPicker { pending_delete, .. }) => {
+                pending_delete.as_ref().map(|pd| pd.session_id.clone())
+            }
             _ => None,
         }
     }
@@ -2433,6 +2631,20 @@ mod session_picker_delete_tests {
     }
 
     #[test]
+    fn mouse_move_keeps_pending_delete() {
+        let mut agent = make_agent();
+        open_picker(&mut agent, vec![entry("s0"), entry("s1")]);
+        agent.handle_palette_or_arg_input(&key('d'));
+        agent.handle_palette_or_arg_input(&Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }));
+        assert_eq!(pending(&agent).as_deref(), Some("s0"));
+    }
+
+    #[test]
     fn y_without_armed_confirmation_does_not_delete() {
         let mut agent = make_agent();
         open_picker(&mut agent, vec![entry("s0")]);
@@ -2483,7 +2695,7 @@ mod session_picker_delete_tests {
         };
         assert_eq!(
             filter,
-            crate::views::session_picker::SourceFilter::All,
+            crate::views::session_picker::SourceFilter::Grok,
             "f must not cycle the hidden source filter under chat mode"
         );
     }
@@ -2512,6 +2724,11 @@ mod session_picker_delete_tests {
         let mut foreign = entry("codex-session");
         foreign.source = "codex".into();
         open_picker(&mut agent, vec![foreign]);
+        // Pin All: the refusals only fire when the foreign row is focusable.
+        if let Some(ActiveModal::SessionPicker { source_filter, .. }) = agent.active_modal.as_mut()
+        {
+            *source_filter = crate::views::session_picker::SourceFilter::All;
+        }
 
         let delete = agent.handle_palette_or_arg_input(&key('d'));
         assert!(matches!(delete, InputOutcome::Changed));
@@ -2665,6 +2882,43 @@ mod session_picker_delete_tests {
             "typing a query restores the selection highlight"
         );
     }
+
+    /// Paste garbage + Enter with no rows must not LoadSession.
+    #[test]
+    fn enter_with_garbage_query_does_not_load_session() {
+        let mut agent = make_agent();
+        open_picker(&mut agent, vec![]);
+        if let Some(ActiveModal::SessionPicker { state, .. }) = agent.active_modal.as_mut() {
+            state.set_query("this is pasted garbage!!!");
+        }
+        let out = agent.handle_palette_or_arg_input(&key_code(KeyCode::Enter));
+        assert!(
+            matches!(out, InputOutcome::Unchanged),
+            "garbage query must be a no-op, got {out:?}"
+        );
+        assert!(
+            matches!(agent.active_modal, Some(ActiveModal::SessionPicker { .. })),
+            "picker must stay open"
+        );
+    }
+
+    #[test]
+    fn enter_with_uuid_query_loads_session() {
+        let mut agent = make_agent();
+        open_picker(&mut agent, vec![]);
+        let sid = "019fb61a-85a5-7ba0-a4ec-24647dca1893";
+        if let Some(ActiveModal::SessionPicker { state, .. }) = agent.active_modal.as_mut() {
+            state.set_query(sid);
+        }
+        let out = agent.handle_palette_or_arg_input(&key_code(KeyCode::Enter));
+        assert!(
+            matches!(
+                out,
+                InputOutcome::Action(Action::LoadSession(ref id, None, false)) if id == sid
+            ),
+            "UUID query should direct-load, got {out:?}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -2681,7 +2935,10 @@ mod command_palette_vim_input_tests {
     // INPUT mode (`input_active`) over the full palette entries.
     fn open_command_palette(agent: &mut AgentView) {
         agent.active_modal = Some(ActiveModal::CommandPalette {
-            entries: crate::views::modal::default_palette_entries(agent.sharing_enabled),
+            entries: crate::views::modal::default_palette_entries(
+                agent.sharing_enabled,
+                &agent.prompt.slash_controller,
+            ),
             state: PickerState::input_active(),
             window: crate::views::modal_window::ModalWindowState::new(),
         });
@@ -2701,6 +2958,94 @@ mod command_palette_vim_input_tests {
             Some(ActiveModal::CommandPalette { state, .. }) => state,
             _ => panic!("expected open command palette"),
         }
+    }
+
+    #[test]
+    fn minimal_palette_shortcuts_uses_live_configured_registry() {
+        let mut agent = make_agent();
+        agent
+            .prompt
+            .set_screen_mode(crate::app::ScreenMode::Minimal);
+        agent.active_modal = Some(ActiveModal::CommandPalette {
+            entries: crate::views::modal::default_palette_entries(
+                agent.sharing_enabled,
+                &agent.prompt.slash_controller,
+            ),
+            state: {
+                let mut state = PickerState::input_active();
+                state.set_query("keyboard shortcuts");
+                state.selected = 1; // matching section header is row 0
+                state
+            },
+            window: crate::views::modal_window::ModalWindowState::new(),
+        });
+        // Start from the real minimal set, then inject the existing config-gated
+        // action in a supported context. This pins that modal dispatch preserves
+        // the exact live registry rather than reconstructing any defaults.
+        let mut actions =
+            crate::actions::ActionRegistry::defaults_for(crate::app::ScreenMode::Minimal)
+                .all()
+                .to_vec();
+        let mut config_gated = crate::actions::ActionRegistry::defaults_with_config(true)
+            .find(crate::actions::ActionId::ToggleMouseCapture)
+            .expect("config-gated action")
+            .clone();
+        config_gated.context = crate::actions::When::AgentScreen;
+        actions.push(config_gated);
+        let registry = crate::actions::ActionRegistry::new(actions);
+        let out = agent.handle_modal_key_with_registry(
+            &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            &registry,
+        );
+        assert!(matches!(out, InputOutcome::Changed));
+
+        let Some(ActiveModal::ShortcutsHelp { entries, .. }) = &agent.active_modal else {
+            panic!("expected shortcuts help modal");
+        };
+        let action_ids: Vec<_> = entries
+            .iter()
+            .filter_map(|entry| match entry {
+                crate::views::shortcuts_help::ShortcutsHelpEntry::Hint {
+                    action_id: Some(id),
+                    ..
+                } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert!(action_ids.contains(&crate::actions::ActionId::EditPromptExternal));
+        assert!(!action_ids.contains(&crate::actions::ActionId::ToggleTasks));
+        assert!(action_ids.contains(&crate::actions::ActionId::ToggleMouseCapture));
+        assert!(!action_ids.contains(&crate::actions::ActionId::OpenDashboard));
+    }
+
+    #[test]
+    fn minimal_edit_prompt_palette_selection_preserves_draft() {
+        let mut agent = make_agent();
+        agent
+            .prompt
+            .set_screen_mode(crate::app::ScreenMode::Minimal);
+        agent.prompt.set_text("keep this draft");
+        agent.active_modal = Some(ActiveModal::CommandPalette {
+            entries: crate::views::modal::default_palette_entries(
+                agent.sharing_enabled,
+                &agent.prompt.slash_controller,
+            ),
+            state: {
+                let mut state = PickerState::input_active();
+                // Contiguous substring of the label ("Edit Prompt in External Editor").
+                state.set_query("external editor");
+                state.selected = 1; // matching section header is row 0
+                state
+            },
+            window: crate::views::modal_window::ModalWindowState::new(),
+        });
+        let out = agent.handle_modal_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(
+            out,
+            InputOutcome::Action(crate::app::actions::Action::EditPromptExternal)
+        ));
+        assert_eq!(agent.prompt.text(), "keep this draft");
+        assert!(agent.active_modal.is_none());
     }
 
     /// Headline command-palette vim flow — a CI-runnable mirror of the ignored

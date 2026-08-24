@@ -96,10 +96,12 @@ pub enum ToolKind {
     ImageToVideo,
     ReferenceToVideo,
     DeployApp,
+    InitOrUpdateApp,
     SearchTool,
     UseTool,
     Monitor,
     GoalUpdate,
+    Workflow,
     #[serde(other)]
     Other,
 }

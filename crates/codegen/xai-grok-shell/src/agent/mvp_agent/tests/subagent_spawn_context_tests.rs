@@ -1,6 +1,6 @@
 //! Subagent spawn-context inheritance: a child session must inherit the parent's
-//! permission handle and goal-loop gate so policy and run-state can't be bypassed
-//! by delegating to a subagent.
+//! permission handle, goal-loop gate, and configured tool-overrides cutoff so policy,
+//! run-state, and a backtest bound can't be bypassed by delegating to a subagent.
 
 use super::{build_minimal_agent_for_tests, make_test_handle};
 use agent_client_protocol as acp;
@@ -43,7 +43,7 @@ async fn subagent_spawn_context_inherits_parent_permission_handle() {
 
             let mut handle = make_test_handle("test-model", false, None);
             handle.permission_handle = permission_handle;
-            agent.sessions.borrow_mut().insert(sid.clone(), handle);
+            agent.insert_resident(&sid, handle);
 
             let ctx = agent.build_subagent_spawn_context(sid.0.as_ref());
             let inherited = ctx
@@ -87,7 +87,7 @@ async fn subagent_spawn_context_shares_parent_goal_loop_gate() {
     let handle = make_test_handle("test-model", false, None);
     // Clone the parent's live gate before the handle moves into `sessions`.
     let parent_gate = handle.tool_context.goal_loop_active_gate.clone();
-    agent.sessions.borrow_mut().insert(sid.clone(), handle);
+    agent.insert_resident(&sid, handle);
 
     let ctx = agent.build_subagent_spawn_context(sid.0.as_ref());
 
@@ -100,36 +100,156 @@ async fn subagent_spawn_context_shares_parent_goal_loop_gate() {
     );
 }
 
-/// A subagent inherits the parent session's `ask_user_question` gate, so
-/// `--no-ask-user` strips the tool from subagents too, while the default keeps it.
+/// A parent may expose `ask_user_question`, but that setting must never cross
+/// the subagent boundary.
 #[tokio::test]
-async fn subagent_spawn_context_inherits_parent_ask_user_question_gate() {
+async fn subagent_spawn_context_disables_ask_user_question_from_enabled_parent() {
+    let agent = build_minimal_agent_for_tests();
+    let sid = acp::SessionId::new("parent-ask-enabled");
+    let mut handle = make_test_handle("test-model", false, None);
+    handle.ask_user_question_enabled = true;
+    agent.insert_resident(&sid, handle);
+
+    let ctx = agent.build_subagent_spawn_context(sid.0.as_ref());
+
+    assert!(
+        !ctx.ask_user_question_enabled,
+        "subagent must not inherit the enabled parent ask_user_question gate"
+    );
+}
+
+/// A subagent copies the parent's `non_interactive` flag, so a headless (`-p`)
+/// parent's children omit interactive prompt guidance.
+#[tokio::test]
+async fn subagent_spawn_context_copies_parent_non_interactive() {
     let agent = build_minimal_agent_for_tests();
 
-    // Parent with the tool disabled (the `--no-ask-user` case) → child off.
-    let sid_off = acp::SessionId::new("parent-no-ask");
-    let mut handle_off = make_test_handle("test-model", false, None);
-    handle_off.ask_user_question_enabled = false;
-    agent
-        .sessions
-        .borrow_mut()
-        .insert(sid_off.clone(), handle_off);
-    let ctx_off = agent.build_subagent_spawn_context(sid_off.0.as_ref());
+    // Headless parent → child context is non-interactive.
+    let sid_headless = acp::SessionId::new("parent-headless");
+    let mut handle_headless = make_test_handle("test-model", false, None);
+    handle_headless.non_interactive = true;
+    agent.insert_resident(&sid_headless, handle_headless);
+    let ctx_headless = agent.build_subagent_spawn_context(sid_headless.0.as_ref());
     assert!(
-        !ctx_off.ask_user_question_enabled,
-        "subagent must inherit the parent's disabled ask_user_question gate (--no-ask-user)"
+        ctx_headless.parent_non_interactive,
+        "subagent must copy the parent's non_interactive flag (headless -p parent)"
     );
 
-    // Parent with the tool enabled (the default) → child on.
-    let sid_on = acp::SessionId::new("parent-ask");
-    let handle_on = make_test_handle("test-model", false, None);
-    agent
-        .sessions
-        .borrow_mut()
-        .insert(sid_on.clone(), handle_on);
-    let ctx_on = agent.build_subagent_spawn_context(sid_on.0.as_ref());
+    // Interactive parent (the default) → child context stays interactive.
+    let sid_tui = acp::SessionId::new("parent-tui");
+    agent.insert_resident(&sid_tui, make_test_handle("test-model", false, None));
+    let ctx_tui = agent.build_subagent_spawn_context(sid_tui.0.as_ref());
     assert!(
-        ctx_on.ask_user_question_enabled,
-        "subagent must inherit the parent's enabled ask_user_question gate"
+        !ctx_tui.parent_non_interactive,
+        "an interactive parent must not mark its subagents non-interactive"
+    );
+}
+
+#[tokio::test]
+async fn subagent_spawn_context_inherits_parent_configured_cutoff() {
+    let agent = build_minimal_agent_for_tests();
+
+    let cutoff = xai_grok_sampling_types::ToolOverrides {
+        x_search: Some(xai_grok_sampling_types::XSearchOptions {
+            date_bound: Some(
+                xai_grok_sampling_types::SearchDateBound::new(None, Some("2020-01-01".to_string()))
+                    .unwrap(),
+            ),
+        }),
+        web_search: None,
+    };
+
+    let sid = acp::SessionId::new("parent-cutoff");
+    let handle = make_test_handle("test-model", false, None);
+    handle
+        .resolved_tool_overrides
+        .store(Some(std::sync::Arc::new(cutoff.clone())));
+    agent.insert_resident(&sid, handle);
+    let ctx = agent.build_subagent_spawn_context(sid.0.as_ref());
+    assert_eq!(
+        ctx.inherited_tool_overrides,
+        Some(cutoff),
+        "subagent context must inherit the parent's configured cutoff for its first-turn update"
+    );
+
+    // A parent with no configured cutoff must not fabricate one for the child.
+    let sid_none = acp::SessionId::new("parent-unbounded");
+    agent.insert_resident(&sid_none, make_test_handle("test-model", false, None));
+    let ctx_none = agent.build_subagent_spawn_context(sid_none.0.as_ref());
+    assert!(
+        ctx_none.inherited_tool_overrides.is_none(),
+        "an unbounded parent must not hand a subagent a cutoff"
+    );
+}
+
+/// A subagent inherits the parent's `process_scope`, so an owner enrolled through it stays visible via the child.
+/// End-to-end reaping is covered by the spine's `process_scope_reclaim` tests.
+#[tokio::test]
+async fn subagent_spawn_context_inherits_parent_process_scope() {
+    let agent = build_minimal_agent_for_tests();
+    let sid = acp::SessionId::new("parent-process-scope");
+    let mut handle = make_test_handle("test-model", false, None);
+    let parent_scope = xai_tty_utils::ProcessScope::new();
+    handle.tool_context.process_scope = Some(parent_scope.clone());
+    agent.insert_resident(&sid, handle);
+
+    // Hold an owner Arc in the parent scope so live_count == 1.
+    let owner = std::sync::Arc::new(xai_tty_utils::ProcessGroup::new().expect("process group"));
+    parent_scope.register(&owner);
+
+    let ctx = agent.build_subagent_spawn_context(sid.0.as_ref());
+    let inherited = ctx
+        .process_scope
+        .expect("subagent context must inherit the parent's process scope");
+
+    assert_eq!(
+        inherited.live_count(),
+        1,
+        "the child sees the owner enrolled through the parent scope"
+    );
+}
+
+fn model_entry_with_rate_limit(
+    slug: &str,
+    attempts: Option<u32>,
+) -> crate::agent::config::ModelEntry {
+    let mut info = crate::agent::config::ModelInfo::fallback(slug);
+    info.subagent_rate_limit_max_attempts = attempts;
+    crate::agent::config::ModelEntry {
+        info,
+        api_key: None,
+        env_key: None,
+        auth_provider: None,
+        api_base_url: None,
+    }
+}
+
+#[tokio::test]
+async fn subagent_spawn_context_resolves_rate_limit_attempts_against_child_model() {
+    let agent = build_minimal_agent_for_tests();
+    let sid = acp::SessionId::new("parent-rate-limit");
+    agent.insert_resident(&sid, make_test_handle("parent-model", false, None));
+
+    let mut ctx = agent.build_subagent_spawn_context(sid.0.as_ref());
+    let mut models = indexmap::IndexMap::new();
+    models.insert(
+        "parent-model".to_string(),
+        model_entry_with_rate_limit("parent-model", Some(4)),
+    );
+    models.insert(
+        "child-model".to_string(),
+        model_entry_with_rate_limit("child-model", Some(0)),
+    );
+    ctx.available_models = models;
+
+    assert_eq!(
+        ctx.resolve_subagent_rate_limit_max_attempts("child-model"),
+        0,
+        "a subagent on a different model must honor that model's disable (0), not the parent's"
+    );
+    assert_eq!(
+        ctx.resolve_subagent_rate_limit_max_attempts("parent-model"),
+        4,
+        "the per-model lookup keys on the passed model id"
     );
 }

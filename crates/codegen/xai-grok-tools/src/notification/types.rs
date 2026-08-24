@@ -312,13 +312,65 @@ pub struct ScheduledTaskFired {
     /// RFC3339 timestamp of next fire (for live countdown viz).
     pub next_fire_at: Option<String>,
     pub subagent_id: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub generation: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub revision: u64,
+}
+
+/// Why a scheduled task was removed. Drives client UX: only `Expired` needs a visible notice
+/// (the task died without any user or model action).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, schemars::JsonSchema)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum ScheduledTaskRemovedReason {
+    /// A one-shot task fired and completed.
+    Completed,
+    /// A recurring task reached `expires_at` (7 days after creation).
+    Expired,
+    /// Explicit `scheduler_delete` by the user or model.
+    Deleted,
+    /// Actor shutdown chip-cleanup. The task itself persists on disk and re-arms on session
+    /// resume, so this must not read as a real removal.
+    Shutdown,
+    /// Absent on legacy payloads, or a variant this build doesn't know. Consumers must treat
+    /// it as "no special handling".
+    #[default]
+    #[cfg_attr(feature = "serde", serde(other))]
+    Unknown,
 }
 
 /// Notification that a scheduled task was removed (deleted, expired, or one-shot completed).
+/// `#[non_exhaustive]`: downstream crates construct via [`Self::new`], so the next wire field
+/// stays additive there instead of breaking every struct literal again.
 #[derive(Debug, Clone, PartialEq, Eq, schemars::JsonSchema)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub struct ScheduledTaskRemoved {
     pub task_id: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reason: ScheduledTaskRemovedReason,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub generation: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub revision: u64,
+}
+
+impl ScheduledTaskRemoved {
+    pub fn new(
+        task_id: String,
+        reason: ScheduledTaskRemovedReason,
+        generation: String,
+        revision: u64,
+    ) -> Self {
+        Self {
+            task_id,
+            reason,
+            generation,
+            revision,
+        }
+    }
 }
 
 /// Notification that a scheduled task was created and should appear in the tasks pane.
@@ -333,6 +385,10 @@ pub struct ScheduledTaskCreated {
     pub human_schedule: String,
     /// RFC3339 timestamp of next fire (for live countdown viz).
     pub next_fire_at: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub generation: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub revision: u64,
 }
 
 /// A streaming event from a Monitor tool background process.
@@ -352,6 +408,21 @@ pub struct MonitorEvent {
     pub raw_text: String,
     /// Session that owns the monitor task (from the task snapshot). `None` for
     /// legacy backends. The bridge drops events whose owner isn't its session.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub owner_session_id: Option<String>,
+}
+
+/// A background subagent reached a terminal state while the parent held a handle.
+#[derive(Debug, Clone, PartialEq, Eq, schemars::JsonSchema)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SubagentCompleted {
+    pub subagent_id: String,
+    pub subagent_type: String,
+    pub description: String,
+    pub status: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub error: Option<String>,
+    pub duration_ms: u64,
     #[cfg_attr(feature = "serde", serde(default))]
     pub owner_session_id: Option<String>,
 }
@@ -385,6 +456,9 @@ pub enum ToolNotification {
     /// Task completed notification which sends the exit code as well and notifies any client
     /// about the task being finished status
     TaskCompleted(TaskSnapshot),
+
+    /// A background subagent reached a terminal state.
+    SubagentCompleted(SubagentCompleted),
 
     /// The agent requested to enter plan mode.
     /// Consumers (gateway, TUI) use this to transition the client into
@@ -468,6 +542,7 @@ notification_variants! {
     BashExecutionFailed => BashExecutionFailed,
     FileWritten => FileWritten,
     TaskCompleted => TaskSnapshot,
+    SubagentCompleted => SubagentCompleted,
     PlanModeEntered => PlanModeEntered,
     PlanModeExited => PlanModeExited,
     UserQuestionAsked => UserQuestionAsked,
@@ -604,5 +679,36 @@ mod tests {
             }
             other => panic!("expected BashOutputChunk, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn scheduler_lifecycle_versions_default_for_legacy_json_and_round_trip() {
+        let legacy: ScheduledTaskRemoved =
+            serde_json::from_value(serde_json::json!({ "task_id": "loop-1" })).unwrap();
+        assert_eq!(legacy.generation, "");
+        assert_eq!(legacy.revision, 0);
+        assert_eq!(
+            legacy.reason,
+            ScheduledTaskRemovedReason::Unknown,
+            "legacy payloads decode to the no-op reason"
+        );
+
+        let current = ScheduledTaskRemoved {
+            task_id: "loop-1".into(),
+            reason: ScheduledTaskRemovedReason::Expired,
+            generation: "019b0000-0000-7000-8000-000000000000".into(),
+            revision: 7,
+        };
+        let json = serde_json::to_value(&current).unwrap();
+        assert_eq!(json["reason"], "expired", "reason serializes snake_case");
+        let round_trip: ScheduledTaskRemoved = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, current);
+
+        // A reason variant from a newer sender must not break deserialization.
+        let future: ScheduledTaskRemoved = serde_json::from_value(
+            serde_json::json!({ "task_id": "loop-1", "reason": "vaporized" }),
+        )
+        .unwrap();
+        assert_eq!(future.reason, ScheduledTaskRemovedReason::Unknown);
     }
 }
