@@ -1,0 +1,23 @@
+---
+description: Grok Build 汉化版 (Windows 11 适配与云端自动化构建) 项目上下文与开发规范
+globs: ["**/*"]
+---
+
+# Grok Build 社区汉化版 (Windows 11 适配分支)
+
+## 项目架构与上下游关系
+- **官方上游**：`xai-org/grok-build` (官方英文版)
+- **汉化上游**：`ivan6232/grok-build-zh` (社区 Linux/macOS 汉化)
+- **本仓库**：`akinokoiri/grok-build-zh` (分支 `zh-CN`)，负责 Windows 11 编译适配、CI/CD 自动化发布与 PowerShell 一键安装。
+
+## 关键文件与职责
+1. `.github/workflows/release.yml`: GitHub Actions 多平台（Windows x64 / Linux x64 / Linux ARM64 / macOS arm64）自动化编译与 Release 发布流水线。
+2. `install.ps1`: Windows 11 PowerShell 一键安装/升级脚本。自动获取最新 Release、解压至 `~/.grok/bin/grok-zh.exe`、配置用户 PATH 并部署中文技能/人设描述。
+3. `crates/build/xai-proto-build`: 核心跨平台构建辅助 crate。已修复 Windows 下 Makefile 盘符转义（`D\:`）与 `/dev/stdout` 缺失导致的构建失败。
+4. `docs/zh/bundled-zh/`: 内置人设（personas）、角色（roles）、技能（skills）的中文描述与注入脚本。
+
+## 核心约定与准则
+- 编译生成的目标程序命名为 `grok-zh` / `grok-zh.exe`，绝不直接覆盖官方的 `grok.exe`。
+- 配置与凭证共享：汉化版与官方版共用 `~/.grok/` 目录（`config.toml`、`auth.json` 等）。
+- 跨平台代码修改时，严禁引入 Unix-only 专有系统调用（如 `/dev/stdout` 或未做 Windows 兼容的路径解析）。
+- 发版流程：推送 `v*` tag（如 `v0.1.0-zh.4`）或在 GitHub Actions 触发 `workflow_dispatch`。
