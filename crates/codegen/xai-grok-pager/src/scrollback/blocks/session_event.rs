@@ -180,8 +180,8 @@ impl SessionEvent {
             }
             SessionEvent::TurnHalted { elapsed } => {
                 format!(
-"代理未能继续推进 \u{2014} 回合在 {} 后结束。"
-                    format_duration(*elapsed)
+                    "代理未能继续推进 \u{2014} 回合在 {} 后结束。",
+                    format_duration(*elapsed),
                 )
             }
             SessionEvent::TurnFailed {
