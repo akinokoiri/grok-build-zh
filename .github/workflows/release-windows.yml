@@ -1,0 +1,121 @@
+name: Release Windows x64
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（例如 0.2.106-zh.1）"
+        required: true
+        type: string
+      ref:
+        description: "要构建的分支或提交"
+        required: true
+        default: "zh-CN"
+        type: string
+      notes:
+        description: "可选发行说明"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-x64
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  TARGET: x86_64-pc-windows-msvc
+  ASSET: grok-zh-x86_64-pc-windows-msvc.zip
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_NOTES: ${{ inputs.notes }}
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Validate version
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+-zh\.\d+$') {
+            throw 'Version must look like 0.2.106-zh.1'
+          }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-release
+          cache-on-failure: true
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "29.3"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release gates
+        shell: pwsh
+        run: |
+          ./scripts/audit-translations.ps1
+          cargo fmt --all -- --check
+          cargo test -p xai-grok-shared i18n --lib
+          cargo test -p xai-proto-build dependency_tests --lib
+      - name: Build Windows x64
+        shell: pwsh
+        env:
+          GROK_VERSION: ${{ inputs.version }}
+        run: cargo build -p xai-grok-pager-bin --release --features release-dist --target $env:TARGET
+      - name: Smoke test and package
+        shell: pwsh
+        run: |
+          $Binary = "target/$env:TARGET/release/xai-grok-pager.exe"
+          if (-not (Test-Path -LiteralPath $Binary)) { throw "Missing $Binary" }
+          $VersionOutput = & $Binary version | Out-String
+          if ($VersionOutput -notmatch [regex]::Escape($env:RELEASE_VERSION)) {
+            throw "Smoke test returned unexpected version: $VersionOutput"
+          }
+          $Stage = "dist/package"
+          New-Item -ItemType Directory -Path $Stage -Force | Out-Null
+          Copy-Item -LiteralPath $Binary -Destination "$Stage/grok-zh.exe"
+          Copy-Item -LiteralPath "install.ps1" -Destination "$Stage/install.ps1"
+          Copy-Item -LiteralPath "LICENSE" -Destination "$Stage/LICENSE"
+          Copy-Item -LiteralPath "README.md" -Destination "$Stage/README.md"
+          Copy-Item -LiteralPath "crates/codegen/xai-grok-shared/i18n/zh-CN.json" -Destination "$Stage/zh-CN.json"
+          Copy-Item -LiteralPath "crates/codegen/xai-grok-shared/i18n/schema.json" -Destination "$Stage/schema.json"
+          Compress-Archive -Path "$Stage/*" -DestinationPath $env:ASSET -CompressionLevel Optimal
+          $Hash = (Get-FileHash -LiteralPath $env:ASSET -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$Hash  $env:ASSET" | Set-Content -LiteralPath "$env:ASSET.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-release
+          path: |
+            grok-zh-x86_64-pc-windows-msvc.zip
+            grok-zh-x86_64-pc-windows-msvc.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $Tag = "v$env:RELEASE_VERSION"
+          git tag --force $Tag HEAD
+          git push origin "refs/tags/$Tag" --force
+          $Notes = $env:RELEASE_NOTES
+          if ([string]::IsNullOrWhiteSpace($Notes)) {
+            $Notes = "Windows x64 个人汉化构建。上游源码：$(Get-Content SOURCE_REV -Raw)"
+          }
+          gh release view $Tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $Tag $env:ASSET "$env:ASSET.sha256" --clobber
+          } else {
+            gh release create $Tag $env:ASSET "$env:ASSET.sha256" --title $Tag --notes $Notes --latest
+          }

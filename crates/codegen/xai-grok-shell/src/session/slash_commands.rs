@@ -794,13 +794,17 @@ pub(super) fn available_commands(
         catalog.builtins.len() + catalog.skills.commands.len() + catalog.workflows.len(),
     );
     commands.extend(catalog.builtins.iter().map(|builtin| {
-        acp::AvailableCommand::new(builtin.name.to_string(), builtin.description.to_string())
-            .input(builtin.argument_hint.map(|hint| {
-                acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
-                    hint.to_string(),
-                ))
-            }))
-            .meta(exact_workflow_projection(builtin, workflows).map(workflow_meta))
+        acp::AvailableCommand::new(
+            builtin.name.to_string(),
+            xai_grok_shared::i18n::command_description(builtin.name, builtin.description)
+                .into_owned(),
+        )
+        .input(builtin.argument_hint.map(|hint| {
+            acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
+                hint.to_string(),
+            ))
+        }))
+        .meta(exact_workflow_projection(builtin, workflows).map(workflow_meta))
     }));
     commands.extend(catalog.skills.commands.iter().map(|command| {
         let skill = command.skill;
@@ -825,20 +829,23 @@ pub(super) fn available_commands(
                 }
             }
         }
-        acp::AvailableCommand::new(
-            command.name.clone(),
-            skill
-                .short_description
-                .as_deref()
-                .unwrap_or(&skill.description)
-                .to_string(),
-        )
-        .input(skill.argument_hint.as_ref().map(|hint| {
-            acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
-                hint.clone(),
-            ))
-        }))
-        .meta(Some(meta_map))
+        let fallback = skill
+            .short_description
+            .as_deref()
+            .unwrap_or(&skill.description);
+        let description =
+            if skill.scope == xai_grok_tools::implementations::skills::types::SkillScope::Bundled {
+                xai_grok_shared::i18n::skill_description(&skill.name, fallback).into_owned()
+            } else {
+                fallback.to_string()
+            };
+        acp::AvailableCommand::new(command.name.clone(), description)
+            .input(skill.argument_hint.as_ref().map(|hint| {
+                acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
+                    hint.clone(),
+                ))
+            }))
+            .meta(Some(meta_map))
     }));
     commands.extend(catalog.workflows.iter().map(|workflow| {
         let meta = serde_json::json!({
@@ -847,16 +854,15 @@ pub(super) fn available_commands(
         })
         .as_object()
         .cloned();
-        acp::AvailableCommand::new(
-            workflow.name.clone(),
-            format!("Workflow: {}", workflow.description),
-        )
-        .input(Some(acp::AvailableCommandInput::Unstructured(
-            acp::UnstructuredCommandInput::new(
-                "[--agent-budget N] [--effort LEVEL] [args]".to_string(),
-            ),
-        )))
-        .meta(meta)
+        let description =
+            xai_grok_shared::i18n::workflow_description(&workflow.name, &workflow.description);
+        acp::AvailableCommand::new(workflow.name.clone(), format!("工作流：{description}"))
+            .input(Some(acp::AvailableCommandInput::Unstructured(
+                acp::UnstructuredCommandInput::new(
+                    "[--agent-budget N] [--effort LEVEL] [args]".to_string(),
+                ),
+            )))
+            .meta(meta)
     }));
     commands
 }
@@ -875,13 +881,15 @@ pub(crate) fn builtin_commands(availability: CommandAvailability) -> Vec<acp::Av
         .iter()
         .filter(|cmd| availability.allows(cmd.gate))
         .map(|cmd| {
-            acp::AvailableCommand::new(cmd.name.to_string(), cmd.description.to_string()).input(
-                cmd.argument_hint.map(|hint| {
-                    acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
-                        hint.to_string(),
-                    ))
-                }),
+            acp::AvailableCommand::new(
+                cmd.name.to_string(),
+                xai_grok_shared::i18n::command_description(cmd.name, cmd.description).into_owned(),
             )
+            .input(cmd.argument_hint.map(|hint| {
+                acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
+                    hint.to_string(),
+                ))
+            }))
         })
         .collect()
 }

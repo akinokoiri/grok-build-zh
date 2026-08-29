@@ -227,10 +227,21 @@ impl ActionDef {
     /// Uses `default_key` only.
     /// For paired hints (j/k, h/l), the view should use [`HintItem::paired`] with keys from two related action defs.
     pub fn hint(&self) -> HintItem {
-        let mut item = HintItem::new(self.default_key, self.label);
+        let mut item = HintItem::new(self.default_key, self.localized_label());
         item.custom_display = self.hint_key_display;
-        item.description = Some(std::borrow::Cow::Borrowed(self.description));
+        item.description = Some(self.localized_description());
         item
+    }
+
+    fn localized_label(&self) -> std::borrow::Cow<'static, str> {
+        xai_grok_shared::i18n::translate(&format!("action.{:?}.label", self.id), self.label)
+    }
+
+    fn localized_description(&self) -> std::borrow::Cow<'static, str> {
+        xai_grok_shared::i18n::translate(
+            &format!("action.{:?}.description", self.id),
+            self.description,
+        )
     }
 }
 

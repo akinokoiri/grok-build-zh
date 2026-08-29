@@ -74,18 +74,32 @@ impl CommandTrigger {
         source: CommandSource,
     ) -> Self {
         let key = alias.unwrap_or(canonical);
+        let provenance = command.provenance();
+        let fallback = command.description();
+        let description = match &provenance {
+            CommandProvenance::Skill { source } if source == "bundled" => {
+                let bare = canonical
+                    .rsplit_once(':')
+                    .map_or(canonical, |(_, name)| name);
+                xai_grok_shared::i18n::skill_description(bare, fallback).into_owned()
+            }
+            CommandProvenance::Skill { .. } => fallback.to_string(),
+            CommandProvenance::Builtin | CommandProvenance::Shell => {
+                xai_grok_shared::i18n::command_description(canonical, fallback).into_owned()
+            }
+        };
         Self {
             canonical: canonical.to_string(),
             alias: alias.map(|s| s.to_string()),
             display: format!("/{key}"),
             match_text: key.to_string(),
-            description: command.description().to_string(),
+            description,
             usage: command.usage().to_string(),
             takes_args: command.takes_args(),
             args_required: command.args_required(),
             command_index,
             source,
-            provenance: command.provenance(),
+            provenance,
         }
     }
 

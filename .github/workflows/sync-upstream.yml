@@ -1,0 +1,50 @@
+name: Propose weekly upstream sync
+
+on:
+  schedule:
+    - cron: "20 19 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: true
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: zh-CN
+          fetch-depth: 0
+      - name: Merge official main into proposal branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add official https://github.com/xai-org/grok-build.git
+          git fetch official main
+          git switch --force-create automation/upstream-sync zh-CN
+          if git merge --no-edit official/main; then
+            if git diff --quiet zh-CN..HEAD; then
+              echo "Already synchronized."
+              exit 0
+            fi
+            git push --force-with-lease origin automation/upstream-sync
+            gh pr view automation/upstream-sync --json number >/dev/null 2>&1 || \
+              gh pr create \
+                --base zh-CN \
+                --head automation/upstream-sync \
+                --title "chore: sync official upstream" \
+                --body "每周上游同步提案。合并前必须通过翻译审计和 Windows x64 编译门禁。"
+          else
+            echo "::error::Upstream merge has conflicts; run the LLM maintenance task locally."
+            git status --short
+            exit 1
+          fi

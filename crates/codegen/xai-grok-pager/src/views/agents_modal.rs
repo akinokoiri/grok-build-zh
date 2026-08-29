@@ -472,7 +472,20 @@ pub fn build_agent_list(
 /// Base persona list from bundle status (bundled cache catalog).
 fn personas_from_bundle(bundle: &BundleState) -> Vec<PersonaDetail> {
     if !bundle.persona_details.is_empty() {
-        bundle.persona_details.clone()
+        bundle
+            .persona_details
+            .iter()
+            .cloned()
+            .map(|mut persona| {
+                if let Some(description) = persona.description.as_deref() {
+                    persona.description = Some(
+                        xai_grok_shared::i18n::persona_description(&persona.name, description)
+                            .into_owned(),
+                    );
+                }
+                persona
+            })
+            .collect()
     } else {
         bundle
             .personas

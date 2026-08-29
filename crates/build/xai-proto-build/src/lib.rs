@@ -2,9 +2,9 @@ mod debug_redact;
 pub mod find_protoc;
 
 use anyhow::Context;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::{fs, iter};
 
 /// Find the protoc well-known types include directory.
 ///
@@ -134,19 +134,29 @@ impl XaiProtoBuilder {
     ) -> anyhow::Result<()> {
         let includes = Vec::from_iter(includes);
 
-        if let Some(protoc) = protoc {
-            println!(
-                "cargo:rerun-if-changed={}",
-                protoc.to_str().context("protoc path not UTF-8")?
-            );
+        if let Some(protoc) = protoc
+            && let Some(protoc) = protoc.to_str()
+        {
+            println!("cargo:rerun-if-changed={protoc}");
         }
+
+        // `/dev/stdout` and `/dev/null` make the upstream dependency probe fail
+        // on Windows. Real temporary files work on every supported host.
+        let temp = tempfile::TempDir::new()?;
+        let dependency_path = temp.path().join("dependencies.d");
+        let descriptor_path = temp.path().join("descriptor.pbbin");
 
         // Can only process one input file when using --dependency_out=FILE.
         for proto in protos {
+            println!("cargo:rerun-if-changed={}", proto.display());
             let mut command = Command::new(protoc.unwrap_or(Path::new("protoc")));
             command
-                .arg("--dependency_out=/dev/stdout")
-                .arg("--descriptor_set_out=/dev/null");
+                .arg(format!("--dependency_out={}", dependency_path.display()))
+                .arg(format!(
+                    "--descriptor_set_out={}",
+                    descriptor_path.display()
+                ))
+                .arg("--experimental_allow_proto3_optional");
 
             // Add protoc's well-known types include directory first (if found).
             // This is needed for Bazel sandboxed builds where protoc and its
@@ -167,35 +177,31 @@ impl XaiProtoBuilder {
             command.stdin(Stdio::null());
             command.stderr(Stdio::inherit());
 
-            let output = command.output().context("protoc command failed")?;
+            let output = command.output().context("protoc dependency probe failed")?;
             if !output.status.success() {
-                return Err(anyhow::anyhow!("protoc command failed"));
+                return Err(anyhow::anyhow!("protoc dependency probe failed"));
             }
 
-            let output =
-                String::from_utf8(output.stdout).context("protoc command output not UTF-8")?;
-
-            let mut lines = output.lines();
-            let first_line = lines.next().context("protoc command output is empty")?;
-            let prefix = "/dev/null:";
-            let rem = first_line.strip_prefix(prefix).with_context(|| {
-                format!("protoc command output must start with /dev/null: {output:?}")
-            })?;
-            for line in iter::once(rem).chain(lines) {
-                let line = line.trim();
-                let line = line.strip_suffix("\\").unwrap_or(line);
+            let dependency_output = fs::read_to_string(&dependency_path)
+                .context("failed to read protoc dependency output")?;
+            for dependency in parse_makefile_dependencies(&dependency_output) {
                 // Depending on absolute paths like
                 // /Users/user/homebrew/Cellar/protobuf/29.1/include/google/protobuf/timestamp.proto
                 // is valid, but we want to have output more deterministic.
-                if line.contains("/include/google/protobuf/") {
+                if dependency.contains("/include/google/protobuf/")
+                    || dependency.contains(r"\include\google\protobuf\")
+                {
                     continue;
                 }
 
-                if !fs::exists(line)? {
-                    return Err(anyhow::anyhow!("dependency file not found: {line}"));
+                // Protoc's Makefile output escapes Windows drive colons (`D\:`).
+                // Invalid or synthetic paths should not block code generation; the
+                // primary proto itself is already registered above.
+                if fs::exists(&dependency).unwrap_or(false) {
+                    println!("cargo:rerun-if-changed={dependency}");
+                } else {
+                    eprintln!("xai-proto-build: skipping missing dependency path {dependency:?}");
                 }
-
-                println!("cargo:rerun-if-changed={line}");
             }
         }
 
@@ -328,6 +334,53 @@ impl XaiProtoBuilder {
         }
 
         Ok(())
+    }
+}
+
+/// Parse protoc's Makefile dependency file on Unix and Windows.
+fn parse_makefile_dependencies(output: &str) -> Vec<String> {
+    let flattened = output.replace("\\\r\n", " ").replace("\\\n", " ");
+    let dependencies = flattened
+        .char_indices()
+        .find_map(|(index, ch)| {
+            (ch == ':'
+                && flattened[index + ch.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_whitespace))
+            .then_some(&flattened[index + ch.len_utf8()..])
+        })
+        .unwrap_or(flattened.as_str());
+    const ESCAPED_SPACE: &str = "\u{1f}";
+    dependencies
+        .replace(r"\ ", ESCAPED_SPACE)
+        .split_whitespace()
+        .map(|path| path.replace(ESCAPED_SPACE, " ").replace(r"\:", ":"))
+        .filter(|path| !path.is_empty())
+        .collect()
+}
+
+#[cfg(test)]
+mod dependency_tests {
+    use super::parse_makefile_dependencies;
+
+    #[test]
+    fn parses_windows_drive_colons_and_escaped_spaces() {
+        let output = r#"C\:\tmp\descriptor.pbbin: D\:\src\a.proto \
+ D\:\with\ space\b.proto"#;
+        assert_eq!(
+            parse_makefile_dependencies(output),
+            vec![r"D:\src\a.proto", r"D:\with space\b.proto"]
+        );
+    }
+
+    #[test]
+    fn parses_unix_dependency_output() {
+        let output = "/tmp/descriptor.pbbin: src/a.proto \\\n src/b.proto\n";
+        assert_eq!(
+            parse_makefile_dependencies(output),
+            vec!["src/a.proto", "src/b.proto"]
+        );
     }
 }
 

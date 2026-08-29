@@ -3,6 +3,7 @@
 //! so it must never depend on it.
 
 pub mod clipboard;
+pub mod i18n;
 pub mod placeholder_images;
 pub mod session;
 pub mod stderr;

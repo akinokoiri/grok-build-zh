@@ -1,0 +1,25 @@
+name: Translation audit
+
+on:
+  pull_request:
+    paths:
+      - "crates/codegen/xai-grok-shared/i18n/**"
+      - "scripts/audit-translations.ps1"
+  push:
+    branches: [zh-CN, main]
+    paths:
+      - "crates/codegen/xai-grok-shared/i18n/**"
+      - "scripts/audit-translations.ps1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Chinese catalog
+        shell: pwsh
+        run: ./scripts/audit-translations.ps1

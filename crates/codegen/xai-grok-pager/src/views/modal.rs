@@ -565,6 +565,16 @@ pub(crate) fn default_palette_entries(
             command: PaletteCommand::Quit,
         },
     ];
+    for entry in &mut entries {
+        let key = entry
+            .label
+            .to_ascii_lowercase()
+            .replace(|ch: char| !ch.is_ascii_alphanumeric(), "_")
+            .trim_matches('_')
+            .to_string();
+        entry.label =
+            xai_grok_shared::i18n::translate(&format!("palette.{key}"), &entry.label).into_owned();
+    }
     entries.retain(|entry| {
         if !sharing_enabled
             && matches!(&entry.command, PaletteCommand::SlashCommand(s) if s.trim() == "/share")

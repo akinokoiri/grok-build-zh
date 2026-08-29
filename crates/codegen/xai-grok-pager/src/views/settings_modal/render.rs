@@ -19,6 +19,23 @@ use crate::views::modal_window::{
     self, ModalContentArea, ModalSizing, ModalWindowConfig, Shortcut,
 };
 
+fn setting_label<'a>(meta: &'a SettingMeta) -> std::borrow::Cow<'a, str> {
+    xai_grok_shared::i18n::translate(&format!("setting.{}.label", meta.key), meta.label)
+}
+
+fn setting_description<'a>(meta: &'a SettingMeta) -> std::borrow::Cow<'a, str> {
+    xai_grok_shared::i18n::translate(
+        &format!("setting.{}.description", meta.key),
+        meta.description,
+    )
+}
+
+fn setting_category_label(category: &crate::settings::SettingCategory) -> String {
+    let fallback = category.label();
+    let key = fallback.to_ascii_lowercase().replace([' ', '&'], "_");
+    xai_grok_shared::i18n::translate(&format!("setting.category.{key}"), fallback).into_owned()
+}
+
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
@@ -62,8 +79,11 @@ pub fn render_settings_modal(
         match &state.state.mode {
             SettingsMode::PickingEnum { key, .. } => {
                 if let Some(meta) = state.registry.find(key) {
-                    breadcrumb_owned =
-                        format!("{MODAL_TITLE} {} {}", crate::glyphs::chevron(), meta.label);
+                    breadcrumb_owned = format!(
+                        "{MODAL_TITLE} {} {}",
+                        crate::glyphs::chevron(),
+                        setting_label(meta)
+                    );
                     &breadcrumb_owned
                 } else {
                     MODAL_TITLE
@@ -72,8 +92,11 @@ pub fn render_settings_modal(
 
             SettingsMode::EditingString { key, .. } | SettingsMode::EditingInt { key, .. } => {
                 if let Some(meta) = state.registry.find(key) {
-                    breadcrumb_owned =
-                        format!("{MODAL_TITLE} {} {}", crate::glyphs::chevron(), meta.label);
+                    breadcrumb_owned = format!(
+                        "{MODAL_TITLE} {} {}",
+                        crate::glyphs::chevron(),
+                        setting_label(meta)
+                    );
                     &breadcrumb_owned
                 } else {
                     MODAL_TITLE
@@ -81,8 +104,11 @@ pub fn render_settings_modal(
             }
             SettingsMode::PickingGroup { key, .. } => {
                 if let Some(meta) = state.registry.find(key) {
-                    breadcrumb_owned =
-                        format!("{MODAL_TITLE} {} {}", crate::glyphs::chevron(), meta.label);
+                    breadcrumb_owned = format!(
+                        "{MODAL_TITLE} {} {}",
+                        crate::glyphs::chevron(),
+                        setting_label(meta)
+                    );
                     &breadcrumb_owned
                 } else {
                     MODAL_TITLE
@@ -588,7 +614,7 @@ pub(super) fn render_rows(
 
         match row {
             RowEntry::Header { category } => {
-                let label = category.label();
+                let label = setting_category_label(category);
                 let header_style = Style::default()
                     .fg(theme.gray)
                     .bg(theme.bg_base)
@@ -670,7 +696,7 @@ pub(super) fn render_rows(
                 let show_restart_pill_for_layout = meta.restart_required && is_expanded;
                 let layout_decision = row_layout(
                     area.width,
-                    meta.label,
+                    setting_label(meta).as_ref(),
                     &value_display,
                     show_restart_pill_for_layout,
                 );
@@ -807,7 +833,8 @@ fn compute_filtered_row_heights(state: &SettingsModalState, area_width: u16) -> 
                 let lock = state.row_lock(key);
                 let value_display = value_display(meta, &value, lock);
                 let show_restart_pill = meta.restart_required && is_expanded;
-                let layout = row_layout(area_width, meta.label, &value_display, show_restart_pill);
+                let label = setting_label(meta);
+                let layout = row_layout(area_width, &label, &value_display, show_restart_pill);
                 let mut h: u16 = match layout {
                     RowLayout::OneLine => 1,
                     RowLayout::TwoLine | RowLayout::TwoLineWithLabelTruncation => 2,
@@ -840,7 +867,8 @@ fn wrapped_description_height(
     if wrap_w == 0 {
         return 0;
     }
-    let text = lock_reason.unwrap_or(meta.description);
+    let description = setting_description(meta);
+    let text = lock_reason.unwrap_or(&description);
     let line = Line::from(Span::raw(text));
     let wrapped = crate::render::wrapping::word_wrap_line(&line, wrap_w as usize);
     (wrapped.len() as u16).min(cap)
@@ -975,7 +1003,9 @@ pub(super) fn render_picking_enum(
     }
 
     // Choosers need title + gap (2 rows) before the description renders
-    let header_rows = render_sub_pane_header(buf, area, theme, meta.label, meta.description, 2);
+    let label = setting_label(meta);
+    let description = setting_description(meta);
+    let header_rows = render_sub_pane_header(buf, area, theme, &label, &description, 2);
     if area.height <= header_rows {
         return;
     }
@@ -1256,14 +1286,9 @@ fn render_picking_group(
     }
 
     // Chooser shape: title + gap (2 rows) before the description renders
-    let header_rows = render_sub_pane_header(
-        buf,
-        area,
-        theme,
-        group_meta.label,
-        group_meta.description,
-        2,
-    );
+    let group_label = setting_label(group_meta);
+    let group_description = setting_description(group_meta);
+    let header_rows = render_sub_pane_header(buf, area, theme, &group_label, &group_description, 2);
     if area.height <= header_rows {
         return Vec::new();
     }
@@ -1341,10 +1366,11 @@ fn render_picking_group(
             .max(label_x);
         if value_x > label_x {
             let label_room = (value_x - label_x).saturating_sub(1) as usize;
-            let label_text: std::borrow::Cow<'_, str> = if child_meta.label.width() <= label_room {
-                std::borrow::Cow::Borrowed(child_meta.label)
+            let child_label = setting_label(child_meta);
+            let label_text: std::borrow::Cow<'_, str> = if child_label.width() <= label_room {
+                std::borrow::Cow::Borrowed(child_label.as_ref())
             } else {
-                std::borrow::Cow::Owned(truncate_str(child_meta.label, label_room))
+                std::borrow::Cow::Owned(truncate_str(&child_label, label_room))
             };
             let label_w = (label_text.width() as u16).min((value_x - label_x).saturating_sub(1));
             buf.set_span(
@@ -1548,15 +1574,15 @@ pub(super) fn render_editing_value(
             return;
         };
         // Snapshot meta fields to release registry borrow.
-        let label = meta.label;
-        let description = meta.description;
+        let label = setting_label(meta).into_owned();
+        let description = setting_description(meta).into_owned();
         render_int_stepper(
             buf,
             area,
             state,
             setting_key,
-            label,
-            description,
+            &label,
+            &description,
             &buffer,
             theme,
         );
@@ -1580,7 +1606,9 @@ pub(super) fn render_editing_value(
     };
 
     // Editors reserve title + gap + the input row (3 rows) before the description
-    let header_rows = render_sub_pane_header(buf, area, theme, meta.label, meta.description, 3);
+    let label = setting_label(meta);
+    let description = setting_description(meta);
+    let header_rows = render_sub_pane_header(buf, area, theme, &label, &description, 3);
     if area.height <= header_rows {
         return;
     }
@@ -1707,8 +1735,8 @@ fn render_int_stepper(
     area: Rect,
     state: &mut SettingsModalState,
     setting_key: SettingKey,
-    label: &'static str,
-    description: &'static str,
+    label: &str,
+    description: &str,
     buffer: &str,
     theme: &Theme,
 ) {
@@ -2292,7 +2320,8 @@ pub(super) fn render_setting_row(
     );
 
     // Fall back to one-line if only 1 line was allocated.
-    let layout_decision = row_layout(area.width, meta.label, value_text, show_restart_pill);
+    let localized_label = setting_label(meta);
+    let layout_decision = row_layout(area.width, &localized_label, value_text, show_restart_pill);
     let layout = if area.height < 2 {
         // Only 1 line is available: collapse to a one-line render and accept that the label might collide with the value column
         RowLayout::OneLine
@@ -2312,7 +2341,7 @@ pub(super) fn render_setting_row(
             let chevron_x = restart_x_line1.saturating_sub(ROW_CHEVRON_COL_W);
             let value_x = chevron_x.saturating_sub(value_w + 1);
 
-            let label_text = format!("{triangle} {}", meta.label);
+            let label_text = format!("{triangle} {localized_label}");
             let label_w = label_text.width() as u16;
             let label_max_x = area.x.saturating_add(label_w);
             // Cap label end at value_x to never collide with the value column.
@@ -2380,11 +2409,11 @@ pub(super) fn render_setting_row(
                     if label_avail == 0 {
                         ""
                     } else {
-                        label_text_owned = truncate_str(meta.label, label_avail as usize);
+                        label_text_owned = truncate_str(&localized_label, label_avail as usize);
                         &label_text_owned
                     }
                 }
-                _ => meta.label,
+                _ => localized_label.as_ref(),
             };
 
             let full_label_text = format!("{triangle} {label_text}");
@@ -2478,7 +2507,8 @@ fn render_expanded_description(
         .fg(theme.gray)
         .bg(theme.bg_base)
         .add_modifier(Modifier::ITALIC);
-    let desc_text = lock_reason.unwrap_or(meta.description);
+    let description = setting_description(meta);
+    let desc_text = lock_reason.unwrap_or(&description);
     // Indent 4 cols to nest under the label.
     let indent = 4u16.min(area.width);
     let wrap_w = area.width.saturating_sub(indent);
@@ -2521,11 +2551,13 @@ fn render_setting_row_no_value(
         .add_modifier(Modifier::BOLD);
 
     let label_max_w = max_label_w;
-    let label_truncated: std::borrow::Cow<'_, str> = if meta.label.width() <= label_max_w as usize {
-        std::borrow::Cow::Borrowed(meta.label)
-    } else {
-        std::borrow::Cow::Owned(truncate_str(meta.label, label_max_w as usize))
-    };
+    let localized_label = setting_label(meta);
+    let label_truncated: std::borrow::Cow<'_, str> =
+        if localized_label.width() <= label_max_w as usize {
+            std::borrow::Cow::Borrowed(localized_label.as_ref())
+        } else {
+            std::borrow::Cow::Owned(truncate_str(&localized_label, label_max_w as usize))
+        };
     let text = format!(" !   {label_truncated} (no read mapping)");
     let w = text.width() as u16;
     buf.set_span(
@@ -2564,7 +2596,7 @@ fn render_setting_group_row(
 
     // Triangle prefix mirrors normal rows: "▾" expanded, "▸" collapsed (the group's description expands inline via Right/l like other rows)
     let triangle = if is_expanded { "\u{25BE}" } else { "\u{25B8}" };
-    let label_text = format!("{triangle} {}", meta.label);
+    let label_text = format!("{triangle} {}", setting_label(meta));
     let label_cap = chevron_x.saturating_sub(area.x).saturating_sub(1);
     let label_w = (label_text.width() as u16).min(label_cap);
     if label_w > 0 {

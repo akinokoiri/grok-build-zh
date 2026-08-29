@@ -2482,14 +2482,11 @@ fn build_update_config() -> UpdateConfig {
 /// Central gate for auto-update checks; add new suppression rules here,
 /// not at call sites.
 fn should_check_for_updates(no_auto_update_flag: bool) -> bool {
-    if cfg!(debug_assertions) {
-        return false;
-    }
-    if no_auto_update_flag {
-        return false;
-    }
-    !std::env::var_os("GROK_DISABLE_AUTOUPDATER")
-        .is_some_and(|v| env_flag_enabled(&v.to_string_lossy()))
+    let _ = no_auto_update_flag;
+    // This personal Windows build never contacts the official update service
+    // in the background. Updates are deliberately initiated with
+    // `grok-zh update` and come only from our GitHub Releases.
+    false
 }
 /// Gate for the stdio agent's background auto-update: only the direct stdio
 /// agent, from the managed install. Other modes update in `run_agent_command`.
@@ -2561,15 +2558,11 @@ async fn run_update_command(
     if json && !check {
         anyhow::bail!("--json requires --check");
     }
-    let mut update_config = base_update_config.clone();
-    if check {
-        if version.is_some() {
-            anyhow::bail!("--version cannot be used with --check");
-        }
-        auto_update::apply_channel_switch(channel_switch, &mut update_config).await;
-        let status = auto_update::check_update_status(&update_config).await;
-        auto_update::print_update_status(&status, json)?;
-        return Ok(());
+    if channel_switch.is_some() {
+        anyhow::bail!("此个人版本只有一个发布通道，不支持切换 alpha/stable/enterprise");
+    }
+    if check && version.is_some() {
+        anyhow::bail!("--version cannot be used with --check");
     }
     if let Some(ref v) = version
         && semver::Version::parse(v).is_err()
@@ -2579,31 +2572,73 @@ async fn run_update_command(
             v
         );
     }
-    let telemetry_cfg = xai_grok_shell::config::load_agent_config_disk_only()
-        .map_err(|e| tracing::warn!("grok update: telemetry init skipped (agent config: {e})"))
-        .ok();
-    if let Some(agent_cfg) = telemetry_cfg {
-        let auth_manager = std::sync::Arc::new(xai_grok_shell::auth::AuthManager::new(
-            &xai_grok_shell::util::grok_home::grok_home(),
-            agent_cfg.grok_com_config.clone(),
+    let _ = (trigger, base_update_config);
+    run_personal_windows_update(check, json, force_reinstall, version.as_deref()).await
+}
+
+#[cfg(windows)]
+async fn run_personal_windows_update(
+    check: bool,
+    json: bool,
+    force_reinstall: bool,
+    version: Option<&str>,
+) -> Result<()> {
+    const INSTALLER_URL: &str =
+        "https://raw.githubusercontent.com/akinokoiri/grok-build-zh/zh-CN/install.ps1";
+
+    let local_installer = std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.parent()
+                .map(|parent| parent.join("install-grok-zh.ps1"))
+        })
+        .filter(|path| path.is_file());
+    let mut command = tokio::process::Command::new("powershell.exe");
+    command.args(["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"]);
+    if let Some(path) = local_installer {
+        command.arg("-File").arg(path);
+    } else {
+        command.arg("-Command").arg(format!(
+            "& ([scriptblock]::Create((Invoke-WebRequest -UseBasicParsing '{}').Content)) @args",
+            INSTALLER_URL
         ));
-        xai_grok_shell::agent::init::update_telemetry_config(&agent_cfg, &auth_manager);
     }
-    let result = auto_update::run_update(
-        force_reinstall,
-        version.as_deref(),
-        channel_switch,
-        &mut update_config,
-        trigger,
-    )
-    .await;
-    if let Ok(Some(installed_version)) = &result {
-        signal_leaders_to_relaunch(installed_version).await;
+    if check {
+        command.arg("-Check");
     }
-    xai_grok_telemetry::session_ctx::drain_pending(xai_grok_telemetry::session_ctx::CLI_DRAIN)
-        .await;
-    result?;
+    if json {
+        command.arg("-Json");
+    }
+    if force_reinstall {
+        command.arg("-Force");
+    }
+    if let Some(version) = version {
+        command.arg("-Version").arg(version);
+    }
+
+    if check {
+        let status = command.status().await?;
+        if !status.success() {
+            anyhow::bail!("更新检查失败（PowerShell 退出码：{status}）");
+        }
+    } else {
+        command
+            .arg("-WaitForProcessId")
+            .arg(std::process::id().to_string());
+        command.spawn()?;
+        println!("更新程序已启动；当前进程退出后将安全替换 grok-zh.exe。");
+    }
     Ok(())
+}
+
+#[cfg(not(windows))]
+async fn run_personal_windows_update(
+    _check: bool,
+    _json: bool,
+    _force_reinstall: bool,
+    _version: Option<&str>,
+) -> Result<()> {
+    anyhow::bail!("此个人版本只支持 Windows x64")
 }
 /// After a successful `grok update`, ask any running leader on this machine that
 /// is older than `installed_version` to relaunch onto the new binary (bounded
@@ -2992,6 +3027,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
     /// Pins the gate composition; a dropped conjunct fails its named case.
+    #[test]
+    fn personal_build_never_runs_background_update_checks() {
+        assert!(!should_check_for_updates(false));
+        assert!(!should_check_for_updates(true));
+    }
+
+    /// Pins the stdio gate composition; a dropped conjunct fails its named case.
     #[test]
     fn stdio_auto_update_requires_direct_stdio_enabled_and_managed() {
         assert!(stdio_auto_update_enabled(true, false, true, true));

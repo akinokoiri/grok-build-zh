@@ -1,0 +1,56 @@
+name: Verify Windows x64
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "crates/codegen/xai-grok-shared/i18n/**"
+      - "scripts/audit-translations.ps1"
+  push:
+    branches: [zh-CN, main]
+    paths-ignore:
+      - "**/*.md"
+      - "crates/codegen/xai-grok-shared/i18n/**"
+      - "scripts/audit-translations.ps1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-verify
+          cache-on-failure: true
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "29.3"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Translation audit
+        shell: pwsh
+        run: ./scripts/audit-translations.ps1
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Translation loader tests
+        run: cargo test -p xai-grok-shared i18n --lib
+      - name: Windows protobuf regression tests
+        run: cargo test -p xai-proto-build dependency_tests --lib
+      - name: Compile Windows application
+        run: cargo check -p xai-grok-pager-bin
