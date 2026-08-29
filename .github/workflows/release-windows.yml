@@ -70,20 +70,24 @@ jobs:
         with:
           version: "29.3"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Release gates
+      - name: Static release gates
         shell: pwsh
         run: |
           ./scripts/audit-translations.ps1
           cargo fmt --all -- --check
-          # Keep the release gates on the same profile and target as the final
-          # binary so a cold release does not compile the dependency graph twice.
-          cargo test -p xai-grok-shared i18n --lib --release --target $env:TARGET
-          cargo test -p xai-proto-build dependency_tests --lib --release --target $env:TARGET
       - name: Build Windows x64
         shell: pwsh
         env:
           GROK_VERSION: ${{ inputs.version }}
         run: cargo build -p xai-grok-pager-bin --release --features release-dist --target $env:TARGET
+      # Build the broad release-dist graph first. The narrower test binaries can
+      # then reuse its release dependencies instead of warming a mismatched
+      # feature graph before the final build.
+      - name: Release tests
+        shell: pwsh
+        run: |
+          cargo test -p xai-grok-shared i18n --lib --release --target $env:TARGET
+          cargo test -p xai-proto-build dependency_tests --lib --release --target $env:TARGET
       - name: Smoke test and package
         shell: pwsh
         run: |
