@@ -41,7 +41,7 @@ grok-zh update --check
 
 ## 维护与构建
 
-详细流程见 [docs/zh/MAINTENANCE.md](docs/zh/MAINTENANCE.md)。核心门禁：
+协作 Agent 先读 [AGENTS.md](AGENTS.md) 和 [当前交接](docs/zh/HANDOFF.md)；详细流程见 [docs/zh/MAINTENANCE.md](docs/zh/MAINTENANCE.md)。核心门禁：
 
 ```powershell
 ./scripts/audit-translations.ps1
