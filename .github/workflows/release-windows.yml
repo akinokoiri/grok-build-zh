@@ -66,8 +66,10 @@ jobs:
         run: |
           ./scripts/audit-translations.ps1
           cargo fmt --all -- --check
-          cargo test -p xai-grok-shared i18n --lib
-          cargo test -p xai-proto-build dependency_tests --lib
+          # Keep the release gates on the same profile and target as the final
+          # binary so a cold release does not compile the dependency graph twice.
+          cargo test -p xai-grok-shared i18n --lib --release --target $env:TARGET
+          cargo test -p xai-proto-build dependency_tests --lib --release --target $env:TARGET
       - name: Build Windows x64
         shell: pwsh
         env:
