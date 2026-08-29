@@ -6,12 +6,18 @@ on:
       - "**/*.md"
       - "crates/codegen/xai-grok-shared/i18n/**"
       - "scripts/audit-translations.ps1"
+      - ".github/workflows/release-windows.yml"
+      - ".github/workflows/sync-upstream.yml"
+      - ".github/workflows/translations.yml"
   push:
     branches: [zh-CN, main]
     paths-ignore:
       - "**/*.md"
       - "crates/codegen/xai-grok-shared/i18n/**"
       - "scripts/audit-translations.ps1"
+      - ".github/workflows/release-windows.yml"
+      - ".github/workflows/sync-upstream.yml"
+      - ".github/workflows/translations.yml"
 
 permissions:
   contents: read
@@ -24,6 +30,8 @@ env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   check:
@@ -35,9 +43,16 @@ jobs:
         with:
           toolchain: "1.94.0"
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
+      # v0.0.11, pinned so the executable action cannot change underneath us.
+      - uses: mozilla-actions/sccache-action@fd02668681acd5f960e1372061bee5e3e987195c
+        with:
+          version: "v0.17.0"
+      # Keep Cargo downloads, but let sccache own compiler outputs. Caching both
+      # target/ and sccache objects wastes space and makes post-job uploads slow.
+      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
         with:
           shared-key: windows-x64-verify
+          cache-targets: false
           cache-on-failure: true
       - uses: arduino/setup-protoc@v3
         with:

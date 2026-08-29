@@ -31,6 +31,12 @@
 
 Release 必须保持为非 prerelease，这样 GitHub 的 `/releases/latest` API 能被安装器使用。尽管版本字符串带 `-zh.N`，这只是个人版版本约定。
 
+### 编译缓存
+
+Windows 校验和发布都使用固定版本的 `sccache`，通过 GitHub Actions 缓存按 Rust 编译单元复用结果。`Swatinem/rust-cache` 只缓存 Cargo 注册表，不再缓存 `target/`，避免两套缓存重复上传。`CARGO_INCREMENTAL=0` 是有意保留的：Rust 增量编译会让 sccache 无法缓存对应编译任务。
+
+第一次运行或 Rust/Cargo 参数大幅变化时仍会冷编译；成功结束后才会上传新缓存。判断优化效果时应比较第二次及之后的相似提交，并查看工作流摘要里的 sccache 命中统计，不要用首次冷构建作为稳定耗时。
+
 ## 回滚与边界
 
 - `legacy/full-fork-2026-08-29` 保存重构前的完整汉化分支。
