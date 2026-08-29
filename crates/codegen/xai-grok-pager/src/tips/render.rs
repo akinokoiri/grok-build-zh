@@ -29,14 +29,16 @@ pub fn tip_height(width: u16, tip: &str) -> u16 {
     }
 }
 
-fn tip_line(tip: &str) -> Line<'_> {
+fn tip_line(tip: &str) -> Line<'static> {
     let theme = Theme::current();
+    let prefix = xai_grok_shared::i18n::translate("welcome.tip.prefix", "Tip: ");
+    let tip = xai_grok_shared::i18n::source_text(tip);
     Line::from(vec![
         Span::styled(
-            "Tip: ",
+            prefix.into_owned(),
             Style::default().fg(theme.gray).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(tip, Style::default().fg(theme.gray)),
+        Span::styled(tip.into_owned(), Style::default().fg(theme.gray)),
     ])
 }
 

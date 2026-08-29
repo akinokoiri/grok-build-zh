@@ -484,6 +484,7 @@ pub(super) fn render_announcement_block(
     let mut row = area.y;
     let max_w = area.width as usize;
     if let Some(title) = ann.title.as_deref() {
+        let title = xai_grok_shared::i18n::source_text(title);
         let title_color = match ann.severity.as_deref() {
             Some("critical") => theme.accent_error,
             _ => theme.warning,
@@ -491,11 +492,12 @@ pub(super) fn render_announcement_block(
         let title_style = Style::default()
             .fg(title_color)
             .add_modifier(Modifier::BOLD);
-        let display = crate::render::line_utils::truncate_str(title, max_w);
+        let display = crate::render::line_utils::truncate_str(title.as_ref(), max_w);
         buf.set_span(area.x, row, &Span::styled(display, title_style), area.width);
         row += 1;
     }
     if let Some(msg) = ann.message.as_deref() {
+        let msg = xai_grok_shared::i18n::source_text(msg);
         let remaining_rows = (area.y + area.height).saturating_sub(row) as usize;
         let max_lines = if expanded {
             remaining_rows
@@ -504,7 +506,8 @@ pub(super) fn render_announcement_block(
         };
         // Only brighten when there's something to toggle (an overflowing message or the already-expanded state)
         // A short message that fits isn't clickable, so it must not look interactive
-        let interactive = expanded || wrapped_line_count(msg, area.width) as usize > max_lines;
+        let interactive =
+            expanded || wrapped_line_count(msg.as_ref(), area.width) as usize > max_lines;
         let hovered = over && interactive;
         let msg_style = super::hover_style(theme, hovered, Style::default().fg(theme.gray));
         // Dim `…` affordance unless hovered.
@@ -516,7 +519,14 @@ pub(super) fn render_announcement_block(
                 .add_modifier(Modifier::DIM),
         );
         return render_wrapped_text(
-            buf, area.x, row, area.width, msg, msg_style, ell_style, max_lines,
+            buf,
+            area.x,
+            row,
+            area.width,
+            msg.as_ref(),
+            msg_style,
+            ell_style,
+            max_lines,
         );
     }
     false
@@ -546,11 +556,11 @@ fn render_hero_changelog(
             .fg(theme.gray_bright)
             .add_modifier(Modifier::DIM),
     );
-    let title = "Changelog";
+    let title = xai_grok_shared::i18n::translate("welcome.changelog.title", "Changelog");
     buf.set_span(
         area.x,
         area.y,
-        &Span::styled(title, header_style),
+        &Span::styled(title.into_owned(), header_style),
         area.width,
     );
 
@@ -562,7 +572,8 @@ fn render_hero_changelog(
         if row >= area.y + area.height {
             break;
         }
-        let truncated = crate::render::line_utils::truncate_str(bullet, max_text_width);
+        let localized = xai_grok_shared::i18n::source_text(bullet);
+        let truncated = crate::render::line_utils::truncate_str(localized.as_ref(), max_text_width);
         let text = format!(" \u{2022} {truncated}");
         buf.set_span(area.x, row, &Span::styled(text, bullet_style), area.width);
     }
@@ -613,7 +624,8 @@ pub(super) fn announcement_text_rows(
 ) -> u16 {
     let title_rows = if ann.title.is_some() { 1u16 } else { 0 };
     let msg_rows = ann.message.as_deref().map_or(0, |msg| {
-        let wrapped = wrapped_line_count(msg, width);
+        let localized = xai_grok_shared::i18n::source_text(msg);
+        let wrapped = wrapped_line_count(localized.as_ref(), width);
         if expanded { wrapped } else { wrapped.min(2) }
     });
     title_rows + msg_rows

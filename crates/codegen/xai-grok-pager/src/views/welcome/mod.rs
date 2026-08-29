@@ -474,7 +474,12 @@ pub(super) fn render_version_badge(
         spans.push(sep);
     }
 
-    let channel = xai_grok_update::channel_label();
+    let raw_channel = xai_grok_update::channel_label();
+    let channel = match raw_channel.trim() {
+        "[stable]" => xai_grok_shared::i18n::translate("welcome.channel.stable", "[stable]"),
+        "[alpha]" => xai_grok_shared::i18n::translate("welcome.channel.alpha", "[alpha]"),
+        other => std::borrow::Cow::Borrowed(other),
+    };
     match &mode {
         VersionBadgeMode::Full { .. } => {
             spans.push(Span::styled(
@@ -484,14 +489,18 @@ pub(super) fn render_version_badge(
                     .add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled(
-                format!("{}{}", xai_grok_version::VERSION, channel),
+                if channel.is_empty() {
+                    xai_grok_version::VERSION.to_string()
+                } else {
+                    format!("{} {}", xai_grok_version::VERSION, channel)
+                },
                 Style::default().fg(theme.gray),
             ));
         }
         VersionBadgeMode::HeroFooter => {
             if !channel.is_empty() {
                 spans.push(Span::styled(
-                    channel.trim(),
+                    channel.as_ref(),
                     Style::default().fg(theme.gray),
                 ));
             }
@@ -1554,11 +1563,11 @@ fn render_changelog_section(
             .fg(theme.gray_bright)
             .add_modifier(Modifier::DIM),
     );
-    let title = "Changelog";
+    let title = xai_grok_shared::i18n::translate("welcome.changelog.title", "Changelog");
     buf.set_span(
         centered.x,
         centered.y,
-        &Span::styled(title, header_style),
+        &Span::styled(title.into_owned(), header_style),
         centered.width,
     );
 
@@ -1569,7 +1578,8 @@ fn render_changelog_section(
         if row >= centered.y + centered.height {
             break;
         }
-        let truncated = crate::render::line_utils::truncate_str(bullet, max_text_width);
+        let localized = xai_grok_shared::i18n::source_text(bullet);
+        let truncated = crate::render::line_utils::truncate_str(localized.as_ref(), max_text_width);
         let text = format!("\u{2022} {truncated}");
         buf.set_span(
             centered.x,
@@ -1719,10 +1729,25 @@ fn render_welcome_done(
     // Changelog is reachable via this menu row (ctrl+l). Show from the first frame so the menu doesn't shift while the CDN fetch completes.
     let show_changelog_action = p.has_access && !show_picker;
 
+    let menu_import = xai_grok_shared::i18n::translate(
+        "welcome.menu.import_claude_settings",
+        "Import Claude settings",
+    );
+    let menu_new_worktree =
+        xai_grok_shared::i18n::translate("welcome.menu.new_worktree", "New worktree");
+    let menu_resume =
+        xai_grok_shared::i18n::translate("welcome.menu.resume_session", "Resume session");
+    let menu_changelog = xai_grok_shared::i18n::translate("welcome.menu.changelog", "Changelog");
+    let menu_logout = xai_grok_shared::i18n::translate("welcome.menu.logout", "Logout");
+    let menu_quit = xai_grok_shared::i18n::translate("welcome.menu.quit", "Quit");
     let gate_menu;
     let owned_menu;
     let menu_items: &[(&str, &str)] = if !p.has_access {
-        gate_menu = [(key_g, cta), (key_l, "Logout"), (key_q, "Quit")];
+        gate_menu = [
+            (key_g, cta),
+            (key_l, menu_logout.as_ref()),
+            (key_q, menu_quit.as_ref()),
+        ];
         &gate_menu
     } else {
         let (key_w, key_resume, key_q, key_i_with_x) = (
@@ -1737,15 +1762,15 @@ fn render_welcome_done(
             // The trailing "[x]" is a clickable dismiss control
             // The welcome screen mouse handler treats clicks on the rightmost 3 cells of this row as dismiss instead of open. Keyboard: ctrl-shift-i.
             // The key string is right-aligned by render_menu, so [x] sits at the very end of the row
-            items.push((key_i_with_x, "Import Claude settings"));
+            items.push((key_i_with_x, menu_import.as_ref()));
         }
-        items.push((key_w, "New worktree"));
-        items.push((key_resume, "Resume session"));
+        items.push((key_w, menu_new_worktree.as_ref()));
+        items.push((key_resume, menu_resume.as_ref()));
         // "Changelog" above Quit; no shortcut, opened by click (row or block)
         if show_changelog_action {
-            items.push(("", "Changelog"));
+            items.push(("", menu_changelog.as_ref()));
         }
-        items.push((key_q, "Quit"));
+        items.push((key_q, menu_quit.as_ref()));
         owned_menu = items;
         owned_menu.as_slice()
     };

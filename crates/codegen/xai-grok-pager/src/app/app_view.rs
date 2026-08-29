@@ -4502,11 +4502,15 @@ impl AppView {
             if view_area.height > 0 {
                 match *active_view {
                     ActiveView::Welcome => {
+                        let always_approve_label = xai_grok_shared::i18n::translate(
+                            "welcome.mode.always_approve",
+                            "always-approve",
+                        );
                         let mut flags_vec: Vec<crate::views::prompt_widget::PromptFlag<'_>> =
                             Vec::new();
                         if self.default_yolo {
                             flags_vec.push(crate::views::prompt_widget::PromptFlag {
-                                text: "always-approve",
+                                text: always_approve_label.as_ref(),
                                 color: None,
                                 bold: false,
                             });
@@ -4521,7 +4525,11 @@ impl AppView {
                         };
                         let model_name_base = self.models.current_model_name().unwrap_or_default();
                         let model_name = match self.models.reasoning_effort {
-                            Some(eff) => format!("{model_name_base} ({eff})"),
+                            Some(eff) => {
+                                let fallback = eff.to_string();
+                                let localized = xai_grok_shared::i18n::reasoning_effort(&fallback);
+                                format!("{model_name_base} ({localized})")
+                            }
                             None => model_name_base,
                         };
                         let hero_cta = crate::views::announcements::promo_cta(

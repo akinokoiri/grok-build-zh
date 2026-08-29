@@ -48,6 +48,18 @@ pub fn translate<'a>(id: &str, fallback: &'a str) -> Cow<'a, str> {
     }
 }
 
+/// Translate manually reviewed first-party text whose source arrives at
+/// runtime (for example remote tips and announcements). Unknown strings stay
+/// untouched; this never performs machine translation.
+pub fn source_text<'a>(fallback: &'a str) -> Cow<'a, str> {
+    translate(&format!("source.{fallback}"), fallback)
+}
+
+/// Translate a reasoning-effort label while preserving unknown future values.
+pub fn reasoning_effort<'a>(fallback: &'a str) -> Cow<'a, str> {
+    translate(&format!("reasoning_effort.{fallback}"), fallback)
+}
+
 /// Translate a slash-command description using its canonical command name.
 pub fn command_description<'a>(name: &str, fallback: &'a str) -> Cow<'a, str> {
     translate(&format!("command.{name}.description"), fallback)
@@ -146,6 +158,9 @@ mod tests {
             catalog.get("command.help.description").unwrap(),
             "浏览命令与键盘快捷键"
         );
+        assert_eq!(source_text("Grok 4.6 is here!"), "Grok 4.6 已上线！");
+        assert_eq!(reasoning_effort("medium"), "中等");
+        assert_eq!(source_text("future remote text"), "future remote text");
     }
 
     #[test]
