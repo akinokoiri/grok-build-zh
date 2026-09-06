@@ -429,26 +429,30 @@ fn paint_peek_config_badge(
         return;
     }
     let model_label = panel.model_name.clone().unwrap_or_default();
+    let plan_label = xai_grok_shared::i18n::translate("mode.plan", "plan");
+    let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
+    let always_approve_label =
+        xai_grok_shared::i18n::translate("welcome.mode.always_approve", "always-approve");
     let mut flags: Vec<PromptFlag> = Vec::new();
     // Mirror the chat prompt's flag precedence: plan wins over always-approve, which wins over auto
     // Plan mode blocks edits regardless of the underlying permission mode (the gate in xai-grok-shell)
     // `plan` alone is therefore the honest badge even when yolo stays on underneath
     if panel.plan_mode {
         flags.push(PromptFlag {
-            text: "plan",
+            text: plan_label.as_ref(),
             color: Some(theme.accent_plan),
             bold: false,
         });
     } else if panel.auto_approve {
         flags.push(PromptFlag {
-            text: "always-approve",
+            text: always_approve_label.as_ref(),
             color: None,
             bold: false,
         });
     } else if panel.auto {
         // Auto (LLM classifier) mode. Blue `accent_system`.
         flags.push(PromptFlag {
-            text: "auto",
+            text: auto_label.as_ref(),
             color: Some(theme.accent_system),
             bold: false,
         });

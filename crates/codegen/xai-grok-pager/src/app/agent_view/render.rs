@@ -2567,6 +2567,13 @@ impl AgentView {
         };
         let editing_label;
         let commenting_label;
+        let always_approve_label =
+            xai_grok_shared::i18n::translate("welcome.mode.always_approve", "always-approve");
+        let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
+        let plan_base_label = xai_grok_shared::i18n::translate("mode.plan", "plan");
+        let plan_approval_label =
+            xai_grok_shared::i18n::translate("mode.plan_approval", "plan approval");
+        let commenting_prefix = xai_grok_shared::i18n::translate("mode.commenting", "commenting");
         let theme = Theme::current();
         let mut mode_flags_vec: Vec<PromptFlag> = Vec::new();
         let approval_is_commenting = self
@@ -2585,15 +2592,15 @@ impl AgentView {
             };
             let plan_label: &str = if approval_is_commenting || casual_commenting {
                 commenting_label = match commenting_range {
-                    Some(r) if r.len() == 1 => format!("commenting L{}", r.start),
-                    Some(r) => format!("commenting L{}-{}", r.start, r.end - 1),
-                    None => "commenting".to_string(),
+                    Some(r) if r.len() == 1 => format!("{commenting_prefix} L{}", r.start),
+                    Some(r) => format!("{commenting_prefix} L{}-{}", r.start, r.end - 1),
+                    None => commenting_prefix.to_string(),
                 };
                 commenting_label.as_str()
             } else if self.plan_approval_view.is_some() {
-                "plan approval"
+                plan_approval_label.as_ref()
             } else {
-                "plan"
+                plan_base_label.as_ref()
             };
             mode_flags_vec.push(PromptFlag {
                 text: plan_label,
@@ -2603,14 +2610,14 @@ impl AgentView {
         }
         if self.session.is_yolo() && !effective_plan {
             mode_flags_vec.push(PromptFlag {
-                text: "always-approve",
+                text: always_approve_label.as_ref(),
                 color: None,
                 bold: false,
             });
         }
         if self.auto_flag_visible(effective_plan) {
             mode_flags_vec.push(PromptFlag {
-                text: "auto",
+                text: auto_label.as_ref(),
                 color: Some(theme.accent_system),
                 bold: false,
             });
@@ -2629,7 +2636,11 @@ impl AgentView {
         let usage_warning = usage_warning_text.as_deref();
         let usage_warning_critical = warning.is_some_and(|(_, critical)| critical);
         let model_label = match self.session.models.reasoning_effort {
-            Some(eff) => format!("{model_id} ({eff})"),
+            Some(eff) => {
+                let fallback = eff.to_string();
+                let localized = xai_grok_shared::i18n::reasoning_effort(&fallback);
+                format!("{model_id} ({localized})")
+            }
             None => model_id,
         };
         let info = match &self.prompt_mode {

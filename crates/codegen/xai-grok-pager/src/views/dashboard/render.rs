@@ -2601,27 +2601,36 @@ fn paint_dispatch_config_badge(
         .pending_model
         .as_ref()
         .map(|m| match m.effort {
-            Some(effort) => format!("{} ({effort})", m.display),
+            Some(effort) => {
+                let fallback = effort.to_string();
+                let localized = xai_grok_shared::i18n::reasoning_effort(&fallback);
+                format!("{} ({localized})", m.display)
+            }
             None => m.display.clone(),
         })
         .or_else(|| state.models.current_model_name())
         .unwrap_or_default();
 
+    let plan_label = xai_grok_shared::i18n::translate("mode.plan", "plan");
+    let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
+    let always_approve_label =
+        xai_grok_shared::i18n::translate("welcome.mode.always_approve", "always-approve");
+
     // Mode flag, styled exactly like the chat prompt's mode flags.
     let mut flags: Vec<PromptFlag> = Vec::new();
     match state.pending_mode {
         DashboardDispatchMode::Plan => flags.push(PromptFlag {
-            text: "plan",
+            text: plan_label.as_ref(),
             color: Some(theme.accent_plan),
             bold: false,
         }),
         DashboardDispatchMode::Auto => flags.push(PromptFlag {
-            text: "auto",
+            text: auto_label.as_ref(),
             color: Some(theme.accent_system),
             bold: false,
         }),
         DashboardDispatchMode::AlwaysApprove => flags.push(PromptFlag {
-            text: "always-approve",
+            text: always_approve_label.as_ref(),
             color: None,
             bold: false,
         }),
