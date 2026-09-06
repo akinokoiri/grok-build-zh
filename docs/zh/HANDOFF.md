@@ -21,8 +21,11 @@
 - 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.16-zh.1>
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
+- 本机报告版本：`grok 1.0.16-zh.1 (3c3801bac1fa) [alpha]`
+- 本机可执行文件 SHA-256：`33EA75766933D8188B4B142D463F1A62500F891489E716C54C08847D92F9F95C`
+- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（414 条翻译已就绪）
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- 更新方式：本机运行 `grok-zh update` 即可自动拉取最新 Release 二进制并完成安装。
+- 本机更新已通过安装脚本完成无缝热替换与校验。
 
 ## 汉化与门禁快照
 
