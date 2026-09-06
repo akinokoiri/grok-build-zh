@@ -17,15 +17,12 @@
 
 ## 已发布与本机状态
 
-- Release：`v1.0.12-zh.2`
-- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.12-zh.2>
+- Release：`v1.0.16-zh.1`
+- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.16-zh.1>
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
-- 本机报告版本：`grok 1.0.12-zh.2 (bce3f55664e6) [stable]`
-- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-
-发布产物已经由安装器校验 SHA-256；本机可执行文件的当前 SHA-256 为 `C43ED804839C4FBFF25057C9BD643A0826FDF7FFFC21776E6C2B9A32FE7D7C96`。为替换正在运行的旧二进制，安装时只终止了 PID 24564；未删除会话或用户配置。
+- 更新方式：本机运行 `grok-zh update` 即可自动拉取最新 Release 二进制并完成安装。
 
 ## 汉化与门禁快照
 
