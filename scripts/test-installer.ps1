@@ -69,3 +69,7 @@ try {
     }
     Remove-Item -LiteralPath $TaskCleanupRoot -Recurse -Force
 }
+
+# Expected native failures are test inputs. Only after every assertion and
+# cleanup has succeeded, clear their exit code for the GitHub PowerShell host.
+$global:LASTEXITCODE = 0
