@@ -50,7 +50,14 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@master
+      - name: Reject an existing release version
+        shell: pwsh
+        run: |
+          $Tag = "v$env:RELEASE_VERSION"
+          $ExistingTag = git ls-remote --tags origin "refs/tags/$Tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect remote tags' }
+          if ($ExistingTag) { throw "Release tag $Tag already exists; choose a new version" }
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: "1.94.0"
           components: rustfmt
@@ -75,6 +82,7 @@ jobs:
         run: |
           ./scripts/audit-translations.ps1
           cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting gate failed' }
       - name: Build Windows x64
         shell: pwsh
         env:
@@ -87,13 +95,16 @@ jobs:
         shell: pwsh
         run: |
           cargo test -p xai-grok-shared i18n --lib --release --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) { throw 'Translation tests failed' }
           cargo test -p xai-proto-build dependency_tests --lib --release --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) { throw 'Windows protobuf tests failed' }
       - name: Smoke test and package
         shell: pwsh
         run: |
           $Binary = "target/$env:TARGET/release/xai-grok-pager.exe"
           if (-not (Test-Path -LiteralPath $Binary)) { throw "Missing $Binary" }
           $VersionOutput = & $Binary version | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "Version smoke test failed: $LASTEXITCODE" }
           if ($VersionOutput -notmatch [regex]::Escape($env:RELEASE_VERSION)) {
             throw "Smoke test returned unexpected version: $VersionOutput"
           }
@@ -108,7 +119,7 @@ jobs:
           Compress-Archive -Path "$Stage/*" -DestinationPath $env:ASSET -CompressionLevel Optimal
           $Hash = (Get-FileHash -LiteralPath $env:ASSET -Algorithm SHA256).Hash.ToLowerInvariant()
           "$Hash  $env:ASSET" | Set-Content -LiteralPath "$env:ASSET.sha256" -Encoding ascii
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-x64-release
           path: |
@@ -122,15 +133,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $Tag = "v$env:RELEASE_VERSION"
-          git tag --force $Tag HEAD
-          git push origin "refs/tags/$Tag" --force
+          $ExistingTag = git ls-remote --tags origin "refs/tags/$Tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect remote tags' }
+          if ($ExistingTag) { throw "Release tag $Tag already exists; choose a new version" }
+          git tag $Tag HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create release tag' }
+          git push origin "refs/tags/$Tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot push release tag' }
           $Notes = $env:RELEASE_NOTES
           if ([string]::IsNullOrWhiteSpace($Notes)) {
             $Notes = "Windows x64 个人汉化构建。上游源码：$(Get-Content SOURCE_REV -Raw)"
           }
-          gh release view $Tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $Tag $env:ASSET "$env:ASSET.sha256" --clobber
-          } else {
-            gh release create $Tag $env:ASSET "$env:ASSET.sha256" --title $Tag --notes $Notes --latest
-          }
+          $NotesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -LiteralPath $NotesPath -Value $Notes -Encoding utf8
+          gh release create $Tag $env:ASSET "$env:ASSET.sha256" --title $Tag --notes-file $NotesPath --verify-tag --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish GitHub Release; existing releases will never be overwritten' }
