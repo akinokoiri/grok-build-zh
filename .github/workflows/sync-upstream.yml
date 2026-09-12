@@ -33,7 +33,7 @@ jobs:
           git switch --force-create automation/upstream-sync zh-CN
           if git merge --no-edit official/main; then
             if git diff --quiet zh-CN..HEAD; then
-              echo "Already synchronized."
+              echo "Already synchronized with $(git rev-parse official/main)." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             git push --force-with-lease origin automation/upstream-sync
@@ -44,7 +44,25 @@ jobs:
                 --title "chore: sync official upstream" \
                 --body "每周上游同步提案。合并前必须通过翻译审计和 Windows x64 编译门禁。"
           else
-            echo "::error::Upstream merge has conflicts; run the LLM maintenance task locally."
-            git status --short
-            exit 1
+            merge_status=$?
+            conflicts=$(git diff --name-only --diff-filter=U)
+            if [[ -n "$conflicts" ]]; then
+              {
+                echo '## Upstream sync needs manual resolution'
+                echo
+                echo "Maintenance baseline: $(git rev-parse zh-CN)"
+                echo "Official upstream: $(git rev-parse official/main)"
+                echo
+                echo 'No proposal was pushed and no release was published. Resolve these conflicts locally, then run the translation and Windows gates:'
+                echo
+                echo '```text'
+                echo "$conflicts"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              git merge --abort
+              echo '::notice::Upstream changes need manual conflict resolution; see the run summary.'
+              exit 0
+            fi
+            echo '::error::Upstream merge failed without merge conflicts.'
+            exit "$merge_status"
           fi

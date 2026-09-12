@@ -4,7 +4,7 @@
 
 ## 每周同步
 
-`Propose weekly upstream sync` 工作流每周获取 `xai-org/grok-build:main`，合并到 `automation/upstream-sync` 并创建候选 PR。它不自动合并、不自动发布。若上游产生冲突，工作流直接失败，由一次 LLM 维护任务在本地处理；不要为了保持历史补丁形状而长期保留散落的硬编码翻译。
+`Propose weekly upstream sync` 工作流每周六北京时间 03:20（GitHub 调度可能延迟）获取 `xai-org/grok-build:main`，合并到 `automation/upstream-sync` 并创建候选 PR。它不自动合并、不自动发布。若上游产生冲突，工作流在运行摘要中列出双方提交与冲突文件，以 notice 提示需要本地维护后正常结束，不再仅因冲突发送失败邮件。网络、权限或其他非冲突错误仍会失败。不要为了保持历史补丁形状而长期保留散落的硬编码翻译。
 
 同步时按以下顺序处理：
 
@@ -22,7 +22,7 @@
 
 ## 发布
 
-在 Actions 中手动运行 `Release Windows x64`，版本必须类似 `0.2.106-zh.1`。工作流按顺序执行翻译审计、格式检查、语言包测试、Windows protobuf 回归测试、Release 编译和版本冒烟测试；任一步失败都不会创建 Release。
+在 Actions 中手动运行 `Release Windows x64`，版本必须类似 `0.2.106-zh.1`。工作流先拒绝已存在的版本标签，然后执行翻译审计、安装器回滚测试、格式检查、Release 编译、语言包测试、Windows protobuf 回归测试和版本冒烟测试；逐条检查原生命令退出码，任一步失败都不会创建 Release。版本标签和既有资产不允许强制覆盖，重发需使用新的 `-zh.N` 修订号。
 
 成功后只发布：
 
@@ -42,6 +42,6 @@ Windows 校验和发布都使用固定版本的 `sccache`，通过 GitHub Action
 ## 回滚与边界
 
 - `legacy/full-fork-2026-08-29` 保存重构前的完整汉化分支。
-- 安装器替换前备份现有 `grok-zh.exe`，新程序无法运行时恢复备份。
+- 安装器替换前备份现有 `grok-zh.exe`，检查新程序退出码及完整版本后才更新语言包并删除备份；验证失败恢复原程序，首次安装失败则删除新程序。`scripts/test-installer.ps1` 覆盖成功、异常退出、版本错误、版本前缀误匹配及首次安装失败。
 - 官方后台更新在源码中硬关闭；`grok-zh update` 只启动本仓库安装器。
 - 不维护 ARM64、Windows 10、PowerShell 5.1、macOS、Linux、源码安装或与官方 `grok` 并存的专门逻辑。

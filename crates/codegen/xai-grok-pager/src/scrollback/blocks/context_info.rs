@@ -7,48 +7,18 @@
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
+use xai_grok_shared::i18n;
 
 use crate::appearance::AppearanceConfig;
 use crate::render::wrapping::word_wrap_lines;
 use crate::scrollback::block::BlockContent;
 use crate::scrollback::types::{AccentStyle, BlockContext, BlockLine, BlockOutput};
 use crate::theme::{Theme, quantize};
-use xai_grok_shell::session::{ContextInfo, count_detail};
+use xai_grok_shell::session::{ContextInfo, TokenUsageCategory, count_detail};
 
-/// Block that renders a `/context` snapshot in scrollback.
-///
-/// Layout (all left-aligned to column 0):
-///
-/// ```text
-/// Context
-///
-/// 36.7k / 1.0m tokens (3.67%)
-/// grok-4
-///
-/// ◆ ◆ ◆ ◆ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇
-/// ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇
-/// ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇
-/// ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇
-/// ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇ ◇
-///
-/// ◆ System prompt     1.2k tokens  (0.1%)   (gray)
-/// ◆ Messages         29.9k tokens    (3%)
-/// ◇ Free              963k tokens   (96%)
-///
-/// ◈ Tool definitions  5.6k tokens  (0.6%) · 12 tools
-/// ◈ Skills            2.4k tokens  (0.2%) · 21 skills
-/// ◈ MCP servers        320 tokens  (0.1%) ·  4 servers
-/// ◈ AGENTS.md          1.1k tokens  (0.1%) ·  2 files
-///
-/// Auto-compact at 85% · ~812k tokens remaining
-///
-/// Turns: 5 · Tool calls: 12 · Compactions: 0
-/// ```
-///
-/// The bar is a categorical breakdown: each cell uses its category's glyph and color.
-/// System (gray ◆), messages (primary ◆), and reasoning/overhead (violet ◆) fill left-to-right in legend order.
-/// The remainder renders as muted ◇ outlines for free capacity.
-/// The ◈ informational rows never enter the bar.
+/// Categorical bar: each cell uses its category's glyph and color, filled left-to-right in legend order; free capacity is muted outlines.
+/// The informational rows never enter the bar.
 #[derive(Debug, Clone)]
 pub struct ContextInfoBlock {
     /// The captured context-window snapshot.
@@ -57,17 +27,8 @@ pub struct ContextInfoBlock {
     pub model: String,
 }
 
-/// Shape of the categorical bar: how the 100 cells are laid out.
-///
-/// Two layouts ship today:
-///
-/// - `WIDE`: 5 rows × 20 cells = 100 cells, ~39 columns wide. The default when the terminal has room.
-/// - `NARROW`: 10 rows × 10 cells = 100 cells, ~19 columns wide.
-///   Selected when the terminal width drops below [`BarLayout::NARROW_BREAKPOINT`].
-///   The bar then still fits on narrow terminals (tmux split panes, small terminal windows, embedded shells).
-///
-/// Both shapes hold the same 100 cells, so the visual breakdown (which categories occupy which share of the bar) is identical.
-/// Only the aspect ratio changes.
+/// Shape of the categorical bar: how the 100 cells are laid out. Both shapes hold the same 100 cells, so the visual
+/// breakdown (which categories occupy which share of the bar) is identical. Only the aspect ratio changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BarLayout {
     /// Cells per row.
@@ -91,10 +52,9 @@ impl BarLayout {
         rows: 10,
     };
 
-    /// Terminal width (in columns) at which the bar switches from [`Self::WIDE`] to [`Self::NARROW`].
-    /// The wide layout needs 39 columns just for the bar; 50 leaves ~11 columns of margin.
-    /// 50 is also roughly where the legend rows (e.g. `◈ Tool definitions  5.6k tokens   (0.6%) · 12 tools`) start to word-wrap.
-    /// The breakpoint therefore matches the rest of the block's responsive behavior.
+    /// Terminal width (in columns) at which the bar switches from [`Self::WIDE`] to [`Self::NARROW`]. The wide layout
+    /// needs 39 columns just for the bar. 50 leaves ~11 columns of margin. 50 is also roughly where the legend rows ·
+    /// 12 tools`) start to word-wrap. The breakpoint therefore matches the rest of the block's responsive behavior.
     const NARROW_BREAKPOINT: u16 = 50;
 
     /// Choose a layout that fits the available terminal width.
@@ -133,15 +93,10 @@ struct RowLayout {
 
 impl RowLayout {
     /// Measure column widths over every row that will render.
-    /// Widths are in codepoints, not bytes.
+    /// Label widths are terminal display columns, including wide CJK characters.
     fn measure<'a>(rows: impl Iterator<Item = &'a LegendRow> + Clone, total: u64) -> Self {
         Self {
-            label_width: rows
-                .clone()
-                .map(|r| r.label.chars().count())
-                .max()
-                .unwrap_or(0)
-                + 1,
+            label_width: rows.clone().map(|r| r.label.width()).max().unwrap_or(0) + 1,
             tokens_width: rows
                 .clone()
                 .map(|r| fmt_tok(r.tokens).chars().count())
@@ -225,9 +180,9 @@ impl RowLayout {
                 glyph,
                 Span::styled(
                     format!(
-                        "{:<label_width$}",
+                        "{}{}",
                         row.label,
-                        label_width = self.label_width
+                        " ".repeat(self.label_width.saturating_sub(row.label.width()))
                     ),
                     label_style,
                 ),
@@ -256,15 +211,8 @@ impl ContextInfoBlock {
         self.build_lines(theme, BarLayout::for_width(width))
     }
 
-    /// Build the styled lines using the supplied theme and bar layout.
-    ///
-    /// Called from `output()` on every redraw so theme switches take effect without re-running `/context`.
-    /// The theme is passed in rather than re-resolved here.
-    /// A single `Theme::current()` lookup in `output()` is then shared with the `max_lines` truncation branch.
-    ///
-    /// `bar` controls the shape of the categorical bar; the wide layout (5×20) is the default.
-    /// `output()` switches to the narrow layout (10×10) when terminal width drops below `BarLayout::NARROW_BREAKPOINT`.
-    /// The bar then still fits on narrow terminals.
+    /// Build the styled lines using the supplied theme and bar layout. Called from `output()` on every redraw so theme
+    /// switches take effect without re-running `/context`. The theme is passed in rather than re-resolved here.
     fn build_lines(&self, theme: &Theme, bar: BarLayout) -> Vec<Line<'static>> {
         let snapshot = &self.snapshot;
         let model = &self.model;
@@ -296,10 +244,9 @@ impl ContextInfoBlock {
         let empty_color = quantize(theme.gray_dim); // free / outline
         let overhead_color = quantize(theme.accent_verify);
 
-        // Categorical bar: 100 cells laid out as `bar.rows` rows of `bar.row_len` cells with one space between cells
-        // Each category gets its own glyph and color so the bar reads as a stacked breakdown at a glance
-        // Routed through `glyphs` so the diamonds degrade to CP437-safe stand-ins (`◆`→`♦`, `◇`→`○`)
-        // Legacy Windows consoles can't render the U+25Cx diamonds
+        // Each category gets its own glyph and color so the bar reads as a stacked breakdown at a glance. Routed through
+        // `glyphs` so the diamonds degrade to CP437-safe stand-ins (`◆`→`♦`, `◇`→`○`). Legacy Windows consoles can't
+        // render the U+25Cx diamonds.
         let system_glyph = crate::glyphs::diamond_filled(); // ◆ (gray)
         let tools_glyph = crate::glyphs::diamond_dotted(); // ◈
         let messages_glyph = crate::glyphs::diamond_filled(); // ◆ (primary)
@@ -358,14 +305,14 @@ impl ContextInfoBlock {
             LegendRow {
                 glyph: system_glyph,
                 color: system_color,
-                label: "System prompt".to_string(),
+                label: i18n::source_text("System prompt").into_owned(),
                 tokens: system_tokens,
                 detail: None,
             },
             LegendRow {
                 glyph: messages_glyph,
                 color: messages_color,
-                label: "Messages".to_string(),
+                label: i18n::source_text("Messages").into_owned(),
                 tokens: message_tokens,
                 detail: None,
             },
@@ -374,7 +321,7 @@ impl ContextInfoBlock {
             legend_rows.push(LegendRow {
                 glyph: overhead_glyph,
                 color: overhead_color,
-                label: "Reasoning/overhead".to_string(),
+                label: i18n::source_text("Reasoning/overhead").into_owned(),
                 tokens: overhead_tokens,
                 detail: None,
             });
@@ -382,23 +329,29 @@ impl ContextInfoBlock {
         legend_rows.push(LegendRow {
             glyph: free_glyph,
             color: empty_color,
-            label: "Free".to_string(),
+            label: i18n::source_text("Free").into_owned(),
             tokens: free_tokens,
             detail: None,
         });
         let info_rows: Vec<LegendRow> = std::iter::once(LegendRow {
             glyph: tools_glyph,
             color: tools_color,
-            label: "Tool definitions".to_string(),
+            label: i18n::source_text("Tool definitions").into_owned(),
             tokens: tool_tokens,
-            detail: Some(count_detail(tool_count, "tool")),
+            detail: Some(localized_count_detail(
+                &count_detail(tool_count, "tool"),
+                "tool",
+            )),
         })
-        .chain(snapshot.usage_categories.iter().map(|c| LegendRow {
-            glyph: tools_glyph,
-            color: tools_color,
-            label: c.label.clone(),
-            tokens: c.tokens,
-            detail: c.detail.clone(),
+        .chain(snapshot.usage_categories.iter().map(|c| {
+            let (label, detail) = localized_category(c);
+            LegendRow {
+                glyph: tools_glyph,
+                color: tools_color,
+                label,
+                tokens: c.tokens,
+                detail,
+            }
         }))
         .collect();
         let layout = RowLayout::measure(legend_rows.iter().chain(info_rows.iter()), total);
@@ -406,14 +359,15 @@ impl ContextInfoBlock {
 
         let mut lines: Vec<Line<'static>> = vec![
             // Header: bold white "Context"
-            Line::from(Span::styled("Context", primary)),
+            Line::from(Span::styled(
+                i18n::source_text("Context").into_owned(),
+                primary,
+            )),
             // Blank row between header and the at-a-glance summary
             Line::from(""),
-            // Sub-header: token totals and percent
-            // Uses `text_secondary` for a touch more contrast than `muted` so the at-a-glance numbers stand apart from the breakdown/footer rows
-            // Switches to "m" with one decimal place once a value reaches a million so wide context windows (e.g. 1m / 2m / 4m) read naturally.
-            // The percentage is recomputed from `used / total` so we get two decimal places of precision
-            // The `usage_pct: u8` field on `ContextInfo` is pre-rounded to an integer
+            // Sub-header: token totals and percent. Uses `text_secondary` for a touch more contrast than `muted` so the
+            // at-a-glance numbers stand apart from the breakdown/footer rows. The percentage is recomputed from `used / total`
+            // so we get two decimal places of precision.
             Line::from(Span::styled(
                 format!(
                     "{} / {} tokens ({:.2}%)",
@@ -442,32 +396,32 @@ impl ContextInfoBlock {
         }
         lines.push(Line::from(""));
 
-        // Auto-compact estimate: tokens until we hit the auto-compact threshold
-        // Uses the *live* value from the session snapshot (it comes from xai-grok-shell's model config resolution)
-        // The “Auto-compact at X%” line and the tip therefore match whatever the current model has configured
-        // Remote settings, user TOML, and env all feed that value (e.g. 65 for grok-build).
-        //
-        // `threshold_tokens` uses `div_ceil` rather than truncating integer division
-        // It then matches the rounded `usage_pct` from `ContextInfo` (which uses `round()`)
-        // Without `div_ceil`, tiny totals could produce `remaining == 0` while `usage_pct < threshold_percent`
-        // That would show `~0 tokens remaining` for a context window that isn't actually at the threshold
+        // `threshold_tokens` uses `div_ceil` rather than truncating integer division. Without `div_ceil`, tiny totals
+        // could produce `remaining == 0` while `usage_pct < threshold_percent`. That would show `~0 tokens remaining` for
+        // a context window that isn't actually at the threshold.
         if total > 0 {
             let threshold_percent = snapshot.auto_compact_threshold_percent;
             let threshold_tokens = total.saturating_mul(threshold_percent as u64).div_ceil(100);
             let remaining = threshold_tokens.saturating_sub(used);
             let (text, style) = if usage_pct >= threshold_percent {
                 (
-                    format!("Auto-compact triggers next turn (at {threshold_percent}%)"),
+                    i18n::translate(
+                        "context.auto_compact_next",
+                        "Auto-compact triggers next turn (at {threshold}%)",
+                    )
+                    .replace("{threshold}", &threshold_percent.to_string()),
                     Style::default().fg(quantize(theme.warning)),
                 )
             } else {
                 // Use `fmt_tok_big` (same as the header) so the remaining count rolls over to `m` for wide context windows
                 // A 4m window at 60% reads `~1.0m tokens remaining`, not `~1000k tokens remaining`
                 (
-                    format!(
-                        "Auto-compact at {threshold_percent}% \u{00b7} ~{} tokens remaining",
-                        fmt_tok_big(remaining)
-                    ),
+                    i18n::translate(
+                        "context.auto_compact_remaining",
+                        "Auto-compact at {threshold}% \u{00b7} ~{remaining} tokens remaining",
+                    )
+                    .replace("{threshold}", &threshold_percent.to_string())
+                    .replace("{remaining}", &fmt_tok_big(remaining)),
                     muted,
                 )
             };
@@ -477,26 +431,64 @@ impl ContextInfoBlock {
 
         // Footer stats
         lines.push(Line::from(Span::styled(
-            format!(
-                "Turns: {turn_count} \u{00b7} Tool calls: {tool_call_count} \u{00b7} Compactions: {compaction_count}"
-            ),
+            i18n::translate(
+                "context.stats",
+                "Turns: {turns} \u{00b7} Tool calls: {calls} \u{00b7} Compactions: {compactions}",
+            )
+            .replace("{turns}", &turn_count.to_string())
+            .replace("{calls}", &tool_call_count.to_string())
+            .replace("{compactions}", &compaction_count.to_string()),
             muted,
         )));
 
-        // The tip about approaching auto-compact only shows in the gap between the "getting close" mark (80%) and the actual auto-compact threshold
-        // Above the threshold the "Auto-compact triggers next turn" line already renders in warning style
-        // A second warning-styled tip suggesting a manual `/compact` would just stack visually and contradict itself
-        // Auto-compact is about to fire on its own
+        // The tip about approaching auto-compact only shows in the gap between the "getting close" mark (80%) and the
+        // actual auto-compact threshold. A second warning-styled tip suggesting a manual `/compact` would just stack
+        // visually and contradict itself.
         if (80..snapshot.auto_compact_threshold_percent).contains(&usage_pct) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                "Tip: run /compact to free up context space.".to_string(),
+                i18n::source_text("Tip: run /compact to free up context space.").into_owned(),
                 Style::default().fg(quantize(theme.warning)),
             )));
         }
 
         lines
     }
+}
+
+/// Localize only the built-in display categories; protocol data stays untouched.
+fn localized_category(category: &TokenUsageCategory) -> (String, Option<String>) {
+    let noun = match category.label.as_str() {
+        "Skills" => "skill",
+        "Workflows" => "workflow",
+        "MCP servers" => "server",
+        "AGENTS.md" => "file",
+        _ => return (category.label.clone(), category.detail.clone()),
+    };
+    let label = if category.label == "AGENTS.md" {
+        category.label.clone()
+    } else {
+        i18n::source_text(&category.label).into_owned()
+    };
+    let detail = category
+        .detail
+        .as_deref()
+        .map(|d| localized_count_detail(d, noun));
+    (label, detail)
+}
+
+/// Translate the known count/noun form only, preserving unfamiliar server text.
+fn localized_count_detail(detail: &str, noun: &str) -> String {
+    let Some((count, word)) = detail.split_once(' ') else {
+        return detail.to_string();
+    };
+    if count.parse::<u64>().is_err() || (word != noun && word != format!("{noun}s")) {
+        return detail.to_string();
+    }
+    format!(
+        "{count} {}",
+        i18n::translate(&format!("context.count.{word}"), word)
+    )
 }
 
 /// Format a token count compactly (`123`, `1.2k`, `999k`).
@@ -526,7 +518,6 @@ fn precise_usage_percent(used: u64, total: u64) -> f64 {
 }
 
 /// Like [`fmt_tok`] but rolls over to `1.0m` at one million.
-///
 /// Used for the at-a-glance totals line so a 1M / 2M / 4M context window reads naturally as `1.0m` rather than `1000k`.
 /// Per-category legend rows stay on [`fmt_tok`] so a fractional-million breakdown still shows the finer-grained `k` resolution.
 fn fmt_tok_big(n: u64) -> String {
@@ -622,7 +613,32 @@ impl BlockContent for ContextInfoBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xai_grok_shell::session::TokenUsageCategory;
+
+    #[test]
+    fn category_localization_preserves_unknown_data_and_protocol_snapshot() {
+        let category = TokenUsageCategory::skills_listing("skill listing", 1);
+        let original = category.clone();
+        let (label, detail) = localized_category(&category);
+        assert_eq!(label, i18n::source_text("Skills"));
+        assert_eq!(
+            detail.unwrap(),
+            format!("1 {}", i18n::translate("context.count.skill", "skill"))
+        );
+        assert_eq!(category, original);
+
+        let unknown = TokenUsageCategory {
+            label: "Custom category".to_string(),
+            tokens: 123,
+            detail: Some("2 skills".to_string()),
+        };
+        assert_eq!(
+            localized_category(&unknown),
+            (unknown.label.clone(), unknown.detail.clone())
+        );
+        for detail in ["custom detail", "2 custom skills", "many skills", "2 tools"] {
+            assert_eq!(localized_count_detail(detail, "skill"), detail);
+        }
+    }
 
     fn snapshot() -> ContextInfo {
         ContextInfo {
@@ -673,7 +689,7 @@ mod tests {
         let theme = test_theme();
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         // Layout: Context / <blank> / tokens / model.
-        assert_eq!(line_text(&lines, 0), "Context");
+        assert_eq!(line_text(&lines, 0), i18n::source_text("Context"));
         assert_eq!(line_text(&lines, 1), "");
         let l2 = line_text(&lines, 2);
         assert!(l2.contains("tokens"));
@@ -744,7 +760,11 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("Auto-compact at 85%") && all.contains("tokens remaining"),
+            all.contains(
+                &i18n::translate("context.auto_compact_remaining", "")
+                    .replace("{threshold}", "85")
+                    .replace("{remaining}", "813k")
+            ),
             "expected `Auto-compact at 85% · ~X tokens remaining` line, got:\n{all}"
         );
     }
@@ -762,7 +782,11 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("~3.4m tokens remaining"),
+            all.contains(
+                &i18n::translate("context.auto_compact_remaining", "")
+                    .replace("{threshold}", "85")
+                    .replace("{remaining}", "3.4m")
+            ),
             "expected ETA to use millions, got:\n{all}"
         );
     }
@@ -775,7 +799,11 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("~813k tokens remaining"),
+            all.contains(
+                &i18n::translate("context.auto_compact_remaining", "")
+                    .replace("{threshold}", "85")
+                    .replace("{remaining}", "813k")
+            ),
             "expected `~813k tokens remaining`, got:\n{all}"
         );
     }
@@ -828,23 +856,16 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("Auto-compact triggers next turn"),
+            all.contains(
+                &i18n::translate("context.auto_compact_next", "").replace("{threshold}", "85")
+            ),
             "expected `Auto-compact triggers next turn` line, got:\n{all}"
         );
     }
 
-    // -------------------------------------------------------------------
-    // Bar partition tests
-    //
-    // The bar lives at line indices 5..(5+layout.rows) (after header / blank / tokens / model / blank)
-    // Each row is rendered as `glyph` spans separated by raw-space spans
-    // To count cells per category, we walk the bar lines for the given layout and count spans whose content matches each category's glyph
-    // -------------------------------------------------------------------
-
-    const SYSTEM_GLYPH_TEST: &str = "\u{25C6}";
-    const TOOLS_GLYPH_TEST: &str = "\u{25C8}";
-    const MESSAGES_GLYPH_TEST: &str = "\u{25C6}"; // same as system; distinguished by color in real render
-    const FREE_GLYPH_TEST: &str = "\u{25C7}";
+    // Bar partition tests. The bar lives at line indices 5.(5+layout.rows) (after header / blank / tokens / model /
+    // blank). Each row is rendered as `glyph` spans separated by raw-space spans. To count cells per category, we walk
+    // the bar lines for the given layout and count spans whose content matches each category's glyph.
 
     /// `layout` tells the function how many bar rows to slice (5 for WIDE, 10 for NARROW).
     /// Without it the slice would be wrong for the narrow layout and the assertions would fail spuriously.
@@ -860,12 +881,14 @@ mod tests {
         for line in &lines[bar_start..bar_end] {
             for span in &line.spans {
                 let c = span.content.as_ref();
-                if c == SYSTEM_GLYPH_TEST || c == MESSAGES_GLYPH_TEST {
-                    // SYSTEM_GLYPH_TEST == MESSAGES_GLYPH_TEST; counted together.
+                // Legacy ConHost shares filled/dotted glyphs, and no-color
+                // terminals also collapse their colors. Count occupied cells
+                // first; the used/free totals still verify the bar partition.
+                if c == crate::glyphs::diamond_filled() {
                     diamonds += 1;
-                } else if c == TOOLS_GLYPH_TEST {
+                } else if c == crate::glyphs::diamond_dotted() {
                     tools += 1;
-                } else if c == FREE_GLYPH_TEST {
+                } else if c == crate::glyphs::diamond_hollow() {
                     free += 1;
                 }
             }
@@ -989,11 +1012,15 @@ mod tests {
 
         let all = all_text(&lines);
         assert!(
-            all.contains("Reasoning/overhead") && all.contains("70.0k"),
+            all.contains(i18n::source_text("Reasoning/overhead").as_ref()) && all.contains("70.0k"),
             "overhead row (70.0k) missing:\n{all}"
         );
         assert!(
-            all.contains("Tool definitions") && all.contains("190 tools"),
+            all.contains(i18n::source_text("Tool definitions").as_ref())
+                && all.contains(&format!(
+                    "190 {}",
+                    i18n::translate("context.count.tools", "tools")
+                )),
             "tools row must be shown with its count:\n{all}"
         );
 
@@ -1009,6 +1036,7 @@ mod tests {
         let mut snap = snapshot();
         snap.usage_categories = vec![
             TokenUsageCategory::skills_listing(&"x".repeat(9_600), 21),
+            TokenUsageCategory::workflows_listing("workflow listing", 1),
             TokenUsageCategory::mcp_servers(&"y".repeat(1_200), 4),
             TokenUsageCategory::agents_md(&"z".repeat(4_400), 2),
         ];
@@ -1017,42 +1045,75 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("Skills") && all.contains("21 skills"),
+            all.contains(i18n::source_text("Skills").as_ref())
+                && all.contains(&format!(
+                    "21 {}",
+                    i18n::translate("context.count.skills", "skills")
+                )),
             "skills row missing:\n{all}"
         );
         assert!(
-            all.contains("MCP servers") && all.contains("4 servers"),
+            all.contains(i18n::source_text("MCP servers").as_ref())
+                && all.contains(&format!(
+                    "4 {}",
+                    i18n::translate("context.count.servers", "servers")
+                )),
             "mcp row missing:\n{all}"
         );
         assert!(
-            all.contains("AGENTS.md") && all.contains("2 files"),
+            all.contains("AGENTS.md")
+                && all.contains(&format!(
+                    "2 {}",
+                    i18n::translate("context.count.files", "files")
+                )),
             "agents.md row missing:\n{all}"
         );
-        assert!(all.contains("\u{00b7} 12 tools"), "tools count:\n{all}");
+        assert!(
+            all.contains(&format!(
+                "\u{00b7} 12 {}",
+                i18n::translate("context.count.tools", "tools")
+            )),
+            "tools count:\n{all}"
+        );
+        assert!(all.contains(i18n::source_text("Workflows").as_ref()));
+        assert!(all.contains(&format!(
+            "1 {}",
+            i18n::translate("context.count.workflow", "workflow")
+        )));
         let (_, tools, _, total) = count_bar_glyphs(&lines, BarLayout::WIDE);
         assert_eq!(total, 100);
         assert_eq!(tools, 0, "usage categories must never enter the bar");
 
         // Token, percent, and count columns line up across all rows; single-digit counts are right-aligned ("·  4 servers")
         let is_row = |l: &&str| {
-            (l.starts_with('\u{25C6}') || l.starts_with('\u{25C8}') || l.starts_with('\u{25C7}'))
+            (l.starts_with(crate::glyphs::diamond_filled())
+                || l.starts_with(crate::glyphs::diamond_dotted())
+                || l.starts_with(crate::glyphs::diamond_hollow()))
                 && l.contains(" tokens ")
         };
         let cols = |needle: &str| -> Vec<usize> {
             all.lines()
                 .filter(is_row)
-                .filter_map(|l| l.find(needle))
+                .filter_map(|l| l.find(needle).map(|byte| l[..byte].width()))
                 .collect()
         };
         for needle in [" tokens ", ")"] {
             let positions = cols(needle);
+            assert_eq!(
+                positions.len(),
+                9,
+                "all legend and category rows must be checked"
+            );
             assert!(
                 positions.windows(2).all(|w| w[0] == w[1]),
                 "{needle:?} column misaligned: {positions:?}\n{all}"
             );
         }
         assert!(
-            all.contains("\u{00b7}  4 servers"),
+            all.contains(&format!(
+                "\u{00b7}  4 {}",
+                i18n::translate("context.count.servers", "servers")
+            )),
             "single-digit count must be right-aligned:\n{all}"
         );
     }
@@ -1072,12 +1133,9 @@ mod tests {
         assert_eq!(percent_of_window(500_000, 1_000_000), "50%");
     }
 
-    // -------------------------------------------------------------------
     // Responsive bar layout tests
-    //
     // The bar's shape (5×20 vs 10×10) is chosen by `BarLayout::for_width` based on terminal width
     // Narrow terminals thus get a square bar that still fits in their column budget
-    // -------------------------------------------------------------------
 
     #[test]
     fn bar_layout_wide_is_5_rows_of_20() {
@@ -1157,10 +1215,9 @@ mod tests {
                 .iter()
                 .filter(|s| {
                     let c = s.content.as_ref();
-                    c == SYSTEM_GLYPH_TEST
-                        || c == TOOLS_GLYPH_TEST
-                        || c == MESSAGES_GLYPH_TEST
-                        || c == FREE_GLYPH_TEST
+                    c == crate::glyphs::diamond_filled()
+                        || c == crate::glyphs::diamond_dotted()
+                        || c == crate::glyphs::diamond_hollow()
                 })
                 .count();
             assert!(
@@ -1182,10 +1239,9 @@ mod tests {
                 .iter()
                 .filter(|s| {
                     let c = s.content.as_ref();
-                    c == SYSTEM_GLYPH_TEST
-                        || c == TOOLS_GLYPH_TEST
-                        || c == MESSAGES_GLYPH_TEST
-                        || c == FREE_GLYPH_TEST
+                    c == crate::glyphs::diamond_filled()
+                        || c == crate::glyphs::diamond_dotted()
+                        || c == crate::glyphs::diamond_hollow()
                 })
                 .count();
             assert!(
@@ -1206,10 +1262,14 @@ mod tests {
         lines: &'a [Line<'static>],
         label_prefix: &str,
     ) -> Option<&'a Line<'static>> {
+        let label_prefix = i18n::source_text(label_prefix);
         lines.iter().find(|line| {
-            line.spans
-                .iter()
-                .any(|s| s.content.as_ref().trim_start().starts_with(label_prefix))
+            line.spans.iter().any(|s| {
+                s.content
+                    .as_ref()
+                    .trim_start()
+                    .starts_with(label_prefix.as_ref())
+            })
         })
     }
 
@@ -1224,7 +1284,11 @@ mod tests {
         let label_span = row
             .spans
             .iter()
-            .find(|s| s.content.as_ref().starts_with("System prompt"))
+            .find(|s| {
+                s.content
+                    .as_ref()
+                    .starts_with(i18n::source_text("System prompt").as_ref())
+            })
             .expect("label span");
         assert_eq!(
             label_span.style.fg,
@@ -1244,7 +1308,7 @@ mod tests {
         let label_span = row
             .spans
             .iter()
-            .find(|s| s.content.as_ref() == "System prompt")
+            .find(|s| s.content.as_ref() == i18n::source_text("System prompt"))
             .expect("label span");
         assert_eq!(
             label_span.style.fg,
@@ -1278,7 +1342,7 @@ mod tests {
                 .map(|s| s.content.as_ref())
                 .collect();
             assert!(
-                row1.contains(label),
+                row1.contains(i18n::source_text(label).as_ref()),
                 "expected row {idx} to contain `{label}`, got: {row1:?}"
             );
             assert!(
@@ -1318,22 +1382,22 @@ mod tests {
             |i: usize| -> String { lines[i].spans.iter().map(|s| s.content.as_ref()).collect() };
         let l11 = row_text(11);
         assert!(
-            l11.contains("System prompt") && l11.contains("1.2k"),
+            l11.contains(i18n::source_text("System prompt").as_ref()) && l11.contains("1.2k"),
             "wide legend should keep label + tokens on one line, got: {l11:?}"
         );
         let l12 = row_text(12);
         assert!(
-            l12.contains("Messages") && l12.contains("29.9k"),
+            l12.contains(i18n::source_text("Messages").as_ref()) && l12.contains("29.9k"),
             "wide legend should keep label + tokens on one line, got: {l12:?}"
         );
         let l13 = row_text(13);
         assert!(
-            l13.contains("Reasoning/overhead") && l13.contains("5.6k"),
+            l13.contains(i18n::source_text("Reasoning/overhead").as_ref()) && l13.contains("5.6k"),
             "wide legend should show reasoning/overhead on one line, got: {l13:?}"
         );
         let l14 = row_text(14);
         assert!(
-            l14.contains("Free") && l14.contains("963k"),
+            l14.contains(i18n::source_text("Free").as_ref()) && l14.contains("963k"),
             "wide legend should keep label + tokens on one line, got: {l14:?}"
         );
     }

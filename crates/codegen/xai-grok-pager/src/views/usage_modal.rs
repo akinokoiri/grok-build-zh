@@ -12,6 +12,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
+use xai_grok_shared::i18n;
 
 use crate::scrollback::text_selection::apply_selection_highlight;
 use crate::scrollback::types::{col_past_grapheme, grapheme_cells_at, slice_display_cols};
@@ -44,12 +45,12 @@ impl UsageInfoTab {
         UsageInfoTab::SessionInfo,
     ];
 
-    pub fn label(self) -> &'static str {
-        match self {
+    pub fn label(self) -> std::borrow::Cow<'static, str> {
+        i18n::source_text(match self {
             UsageInfoTab::ContextUsage => "Context usage",
             UsageInfoTab::UsageLimit => "Usage limit",
             UsageInfoTab::SessionInfo => "Session info",
-        }
+        })
     }
 
     pub fn index(self) -> usize {
@@ -209,10 +210,9 @@ impl UsageInfoModalState {
         self.clear_text_drag();
     }
 
-    /// Finish an active drag whose `Up(Left)` never arrived (bare `Moved`).
-    /// Unlike scrollback recovery (which discards), a non-empty drag still copies, so the selection band does not vanish without copying.
-    /// The pending press is left alone: it paints nothing and the next Down overwrites it.
-    /// Clearing it would drop click-to-copy on terminals that report held motion as `Moved`.
+    /// Finish an active drag whose `Up(Left)` never arrived (bare `Moved`). Unlike scrollback recovery
+    /// (which discards), a non-empty drag still copies, so the selection band does not vanish without
+    /// copying. The pending press is left alone: it paints nothing and the next Down overwrites it.
     pub(crate) fn finish_lost_drag(&mut self) -> UsageModalOutcome {
         let outcome = if let Some(drag) = self.text_drag.take()
             && drag.is_non_empty()
@@ -254,23 +254,102 @@ impl UsageInfoModalState {
     }
 }
 
-/// Outcome of a content key/mouse event. Chrome events (Esc, `[✗]`, tab clicks, footer clicks) are handled by the caller via `modal_window`.
+/// Outcome of routing one key/mouse event through the modal.
+/// The host (agent view or dashboard) owns the modal slot, the clipboard, and the toast surface, so every variant is a request to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageModalOutcome {
-    /// Copy the session ID to the clipboard (the caller owns clipboard and toast).
+    /// Drop the modal (Esc, `[✗]`, click outside). Only the chrome routers emit this.
+    Close,
+    /// Copy the session ID to the clipboard.
     /// Emitted by the `c` shortcut and the footer button.
     CopySessionId,
-    /// Copy Session-info text (the caller owns clipboard and toast).
-    /// Emitted by `y`, a click on a value row, and a finished drag-select.
+    /// Copy Session-info text.
+    /// Emitted by `y`, a click on a value row, the footer "copy all" button, and a finished drag-select.
     CopyText(String),
     Changed,
     Unchanged,
 }
 
-pub fn handle_usage_modal_key(
+/// The modal's chrome config: no title, tabs, footer, or fold tree of its own (tabs and shortcuts are painted by `render_usage_modal`).
+fn chrome_cfg() -> ModalWindowConfig<'static> {
+    ModalWindowConfig {
+        title: "",
+        tabs: None,
+        shortcuts: &[],
+        sizing: ModalSizing::default(),
+        fold_info: None,
+    }
+}
+
+/// Route a key: `modal_window` chrome first (Esc closes), then the content keys.
+pub fn route_usage_modal_key(state: &mut UsageInfoModalState, key: &KeyEvent) -> UsageModalOutcome {
+    match mw::handle_modal_key(&mut state.window, key, &chrome_cfg()) {
+        mw::ModalWindowOutcome::CloseRequested => UsageModalOutcome::Close,
+        mw::ModalWindowOutcome::Unhandled => handle_usage_modal_key(state, key),
+        // The chrome config declares no tabs, footer, or fold tree, so these never fire for keys
+        mw::ModalWindowOutcome::Handled
+        | mw::ModalWindowOutcome::TabChanged(_)
+        | mw::ModalWindowOutcome::ShortcutActivated(_)
+        | mw::ModalWindowOutcome::CollapseGroup
+        | mw::ModalWindowOutcome::ExpandGroup
+        | mw::ModalWindowOutcome::CollapseDetails
+        | mw::ModalWindowOutcome::ExpandDetails
+        | mw::ModalWindowOutcome::JumpToParent(_) => UsageModalOutcome::Changed,
+    }
+}
+
+/// Route a mouse event: chrome first (close button, tab headers, footer buttons stay clickable), then drag / wheel / click-to-copy.
+pub fn route_usage_modal_mouse(
     state: &mut UsageInfoModalState,
-    key: &KeyEvent,
+    kind: MouseEventKind,
+    column: u16,
+    row: u16,
 ) -> UsageModalOutcome {
+    match mw::handle_modal_mouse(&mut state.window, kind, column, row) {
+        mw::ModalWindowOutcome::CloseRequested => UsageModalOutcome::Close,
+        mw::ModalWindowOutcome::TabChanged(idx) => {
+            state.set_tab(UsageInfoTab::from_index(idx));
+            UsageModalOutcome::Changed
+        }
+        mw::ModalWindowOutcome::ShortcutActivated(id) => {
+            // Footer click: drop gesture and hover
+            state.clear_text_drag();
+            if id == COPY_SESSION_ID_SHORTCUT {
+                UsageModalOutcome::CopySessionId
+            } else if id == COPY_ALL_SESSION_INFO_SHORTCUT
+                && let Some(text) = state.session_info_copy_all()
+            {
+                UsageModalOutcome::CopyText(text)
+            } else {
+                UsageModalOutcome::Changed
+            }
+        }
+        mw::ModalWindowOutcome::Handled => {
+            // Same rule as content: a bare Moved with an active drag is a lost Up, and a non-empty drag still copies
+            // The pending press is left alone for click-to-copy
+            if matches!(kind, MouseEventKind::Moved) {
+                if state.has_active_drag() {
+                    return state.finish_lost_drag();
+                }
+                state.hovered_copy_line = None;
+            } else {
+                // Same-tab click and other chrome Downs: drop gesture and hover
+                state.clear_text_drag();
+            }
+            UsageModalOutcome::Changed
+        }
+        mw::ModalWindowOutcome::Unhandled => handle_usage_modal_mouse(state, kind, column, row),
+        // Fold-tree navigation belongs to the settings modal; this window has no fold info
+        mw::ModalWindowOutcome::CollapseGroup
+        | mw::ModalWindowOutcome::ExpandGroup
+        | mw::ModalWindowOutcome::CollapseDetails
+        | mw::ModalWindowOutcome::ExpandDetails
+        | mw::ModalWindowOutcome::JumpToParent(_) => UsageModalOutcome::Changed,
+    }
+}
+
+/// Content keys (tabs, scroll, copy); chrome has already had its turn in [`route_usage_modal_key`].
+fn handle_usage_modal_key(state: &mut UsageInfoModalState, key: &KeyEvent) -> UsageModalOutcome {
     use crossterm::event::KeyModifiers;
     // BackTab and `G` legitimately carry SHIFT; reject only real chords
     if key
@@ -326,7 +405,8 @@ pub fn handle_usage_modal_key(
     }
 }
 
-pub fn handle_usage_modal_mouse(
+/// Content gestures (wheel, click-to-copy, drag-select); chrome has already had its turn in [`route_usage_modal_mouse`].
+fn handle_usage_modal_mouse(
     state: &mut UsageInfoModalState,
     kind: MouseEventKind,
     column: u16,
@@ -479,24 +559,33 @@ pub fn render_usage_modal(
     compact: bool,
     theme: &Theme,
 ) {
-    let labels: Vec<&str> = UsageInfoTab::ALL.iter().map(|t| t.label()).collect();
+    let translated_labels = UsageInfoTab::ALL.map(|t| t.label());
+    let labels: Vec<&str> = translated_labels.iter().map(|s| s.as_ref()).collect();
+    let shortcut_labels = [
+        "Tab switch",
+        "\u{2191}/\u{2193} scroll",
+        "c copy session ID",
+        "y copy all",
+        "Esc close",
+    ]
+    .map(i18n::source_text);
     state.window.active_tab = state.active_tab.index();
 
     let mut shortcuts: Vec<Shortcut> = vec![
         Shortcut {
-            label: "Tab switch",
+            label: &shortcut_labels[0],
             clickable: false,
             id: 0,
         },
         Shortcut {
-            label: "\u{2191}/\u{2193} scroll",
+            label: &shortcut_labels[1],
             clickable: false,
             id: 0,
         },
     ];
     if state.ctx.session_id.is_some() {
         shortcuts.push(Shortcut {
-            label: "c copy session ID",
+            label: &shortcut_labels[2],
             clickable: true,
             id: COPY_SESSION_ID_SHORTCUT,
         });
@@ -505,13 +594,13 @@ pub fn render_usage_modal(
         && state.session_fields.as_ref().is_some_and(|f| !f.is_empty())
     {
         shortcuts.push(Shortcut {
-            label: "y copy all",
+            label: &shortcut_labels[3],
             clickable: true,
             id: COPY_ALL_SESSION_INFO_SHORTCUT,
         });
     }
     shortcuts.push(Shortcut {
-        label: "Esc close",
+        label: &shortcut_labels[4],
         clickable: false,
         id: 0,
     });
@@ -781,16 +870,20 @@ fn context_tab_lines(state: &UsageInfoModalState, theme: &Theme, width: u16) -> 
     if let Some(error) = &state.context_error {
         return vec![muted_line(
             theme,
-            format!("Couldn't load context usage: {error}"),
+            i18n::translate("context.load_error", "Couldn't load context usage: {error}")
+                .replace("{error}", error),
         )];
     }
     if let Some(block) = &state.context {
         return block.lines_for_width(theme, width);
     }
     if state.ctx.session_id.is_none() {
-        return vec![muted_line(theme, "No active session.")];
+        return vec![muted_line(theme, i18n::source_text("No active session."))];
     }
-    vec![muted_line(theme, "Loading context usage\u{2026}")]
+    vec![muted_line(
+        theme,
+        i18n::source_text("Loading context usage\u{2026}"),
+    )]
 }
 
 /// Account allowance followed by this session's token/cost totals.
@@ -930,7 +1023,7 @@ fn session_info_content(state: &UsageInfoModalState, theme: &Theme) -> TabConten
             let value_idx = lines.len();
             let hovered = state.hovered_copy_line == Some(value_idx);
             let label_style = if hovered {
-                theme.muted().bg(theme.bg_hover)
+                theme.muted().patch(theme.hover_overlay())
             } else {
                 theme.muted()
             };
@@ -969,7 +1062,7 @@ fn session_info_content(state: &UsageInfoModalState, theme: &Theme) -> TabConten
 fn copy_value_style(theme: &Theme, hovered: bool) -> Style {
     let mut style = Style::default().fg(theme.text_primary);
     if hovered {
-        style = style.bg(theme.bg_hover);
+        style = style.patch(theme.hover_overlay());
     }
     style
 }
@@ -1100,25 +1193,43 @@ mod tests {
         state.session_usage_text = Some("Session usage: no model calls yet.".to_string());
         let theme = Theme::current();
         render_usage_modal(&mut buf, area, &mut state, None, false, &theme);
-        let text: String = (0..area.height)
-            .map(|y| {
-                (0..area.width)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect::<String>()
-                    + "\n"
-            })
-            .collect();
+        let text = buffer_text(&buf, area);
         for needle in [
             "Context usage",
             "Usage limit",
             "Session info",
-            "copy session ID",
+            "c copy session ID",
             "Session usage: no model calls yet.",
         ] {
-            assert!(text.contains(needle), "missing {needle:?} in:\n{text}");
+            let translated = i18n::source_text(needle);
+            assert!(
+                text.contains(translated.as_ref()),
+                "missing {translated:?} in:\n{text}"
+            );
         }
         assert_eq!(state.window.tab_rects.len(), 3);
+        for (tab, rect) in UsageInfoTab::ALL.iter().zip(&state.window.tab_rects) {
+            assert_eq!(
+                rect.expect("visible tab").width as usize,
+                tab.label().width()
+            );
+        }
         assert!(state.window.close_button_rect.is_some());
+    }
+
+    /// Skip continuation cells belonging to wide glyphs when reading a buffer.
+    fn buffer_text(buf: &Buffer, area: Rect) -> String {
+        let mut text = String::new();
+        for y in area.y..area.bottom() {
+            let mut x = area.x;
+            while x < area.right() {
+                let symbol = buf[(x, y)].symbol();
+                text.push_str(symbol);
+                x += symbol.width().max(1) as u16;
+            }
+            text.push('\n');
+        }
+        text
     }
 
     #[test]
@@ -1140,16 +1251,9 @@ mod tests {
         );
         let theme = Theme::current();
         render_usage_modal(&mut buf, area, &mut state, None, false, &theme);
-        let text: String = (0..area.height)
-            .map(|y| {
-                (0..area.width)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect::<String>()
-                    + "\n"
-            })
-            .collect();
+        let text = buffer_text(&buf, area);
         assert!(
-            text.contains("copy all"),
+            text.contains(i18n::source_text("y copy all").as_ref()),
             "missing copy-all button:\n{text}"
         );
         assert!(
