@@ -83,6 +83,7 @@ jobs:
           ./scripts/audit-translations.ps1
           cargo fmt --all -- --check
           if ($LASTEXITCODE -ne 0) { throw 'Formatting gate failed' }
+          ./scripts/test-installer.ps1
       - name: Build Windows x64
         shell: pwsh
         env:
@@ -105,7 +106,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $Binary)) { throw "Missing $Binary" }
           $VersionOutput = & $Binary version | Out-String
           if ($LASTEXITCODE -ne 0) { throw "Version smoke test failed: $LASTEXITCODE" }
-          if ($VersionOutput -notmatch [regex]::Escape($env:RELEASE_VERSION)) {
+          $ExpectedVersionPattern = '(?:^|\s)' + [regex]::Escape($env:RELEASE_VERSION) + '(?:\s|$)'
+          if ($VersionOutput -notmatch $ExpectedVersionPattern) {
             throw "Smoke test returned unexpected version: $VersionOutput"
           }
           $Stage = "dist/package"

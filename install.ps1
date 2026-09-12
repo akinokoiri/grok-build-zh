@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Version,
     [switch]$Check,
@@ -91,7 +91,8 @@ if (-not $ZipAsset -or -not $HashAsset) {
     throw "Release v$LatestVersion 缺少 Windows x64 安装包或校验文件"
 }
 
-$TempRoot = Join-Path ([IO.Path]::GetTempPath()) ("grok-zh-install-" + [Guid]::NewGuid().ToString("N"))
+$TempParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$TempRoot = [IO.Path]::GetFullPath((Join-Path $TempParent ("grok-zh-install-" + [Guid]::NewGuid().ToString("N"))))
 $ZipPath = Join-Path $TempRoot $AssetName
 $HashPath = "$ZipPath.sha256"
 $ExtractPath = Join-Path $TempRoot "extract"
@@ -149,6 +150,14 @@ try {
     }
 
     try {
+        $InstalledVersionOutput = & $CurrentExe version | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            throw "新版程序启动失败（退出码：$LASTEXITCODE），正在恢复原版本"
+        }
+        $ExpectedVersionPattern = '(?:^|\s)' + [regex]::Escape($LatestVersion) + '(?:\s|$)'
+        if ($InstalledVersionOutput -notmatch $ExpectedVersionPattern) {
+            throw "新版程序版本校验失败：$InstalledVersionOutput"
+        }
         if (Test-Path -LiteralPath $NewCatalog) {
             Copy-Item -LiteralPath $NewCatalog -Destination (Join-Path $I18nDir "zh-CN.json") -Force
         }
@@ -158,11 +167,12 @@ try {
         if (Test-Path -LiteralPath $NewInstaller) {
             Copy-Item -LiteralPath $NewInstaller -Destination (Join-Path $InstallDir "install-grok-zh.ps1") -Force
         }
-        & $CurrentExe version | Out-Null
         Remove-Item -LiteralPath $BackupExe -Force -ErrorAction SilentlyContinue
     } catch {
         if (Test-Path -LiteralPath $BackupExe) {
             Copy-Item -LiteralPath $BackupExe -Destination $CurrentExe -Force
+        } else {
+            Remove-Item -LiteralPath $CurrentExe -Force -ErrorAction SilentlyContinue
         }
         throw
     }
@@ -180,5 +190,11 @@ try {
 
     Write-Host "grok-zh $LatestVersion 安装完成。"
 } finally {
-    Remove-Item -LiteralPath $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    $ResolvedTempRoot = [IO.Path]::GetFullPath($TempRoot)
+    $ResolvedTempParent = [IO.Path]::GetFullPath((Split-Path $ResolvedTempRoot -Parent))
+    if ($ResolvedTempParent.TrimEnd('\', '/') -ine $TempParent.TrimEnd('\', '/') -or
+        (Split-Path $ResolvedTempRoot -Leaf) -notmatch '^grok-zh-install-[0-9a-f]{32}$') {
+        throw "拒绝清理非安装临时目录：$ResolvedTempRoot"
+    }
+    Remove-Item -LiteralPath $ResolvedTempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

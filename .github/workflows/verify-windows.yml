@@ -61,6 +61,9 @@ jobs:
       - name: Translation audit
         shell: pwsh
         run: ./scripts/audit-translations.ps1
+      - name: Installer rollback tests
+        shell: pwsh
+        run: ./scripts/test-installer.ps1
       - name: Formatting
         run: cargo fmt --all -- --check
       - name: Translation loader tests
