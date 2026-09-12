@@ -164,6 +164,29 @@ mod tests {
     }
 
     #[test]
+    fn context_templates_preserve_required_placeholders() {
+        let catalog = parse_catalog(EMBEDDED_ZH_CN).expect("valid catalog");
+        for (id, placeholders) in [
+            ("context.auto_compact_next", vec!["{threshold}"]),
+            (
+                "context.auto_compact_remaining",
+                vec!["{threshold}", "{remaining}"],
+            ),
+            ("context.stats", vec!["{turns}", "{calls}", "{compactions}"]),
+            ("context.load_error", vec!["{error}"]),
+        ] {
+            let template = catalog.get(id).expect("required context translation");
+            for placeholder in placeholders {
+                assert_eq!(
+                    template.matches(placeholder).count(),
+                    1,
+                    "{id}: {placeholder}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn invalid_external_catalog_keeps_embedded_fallback() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("zh-CN.json");

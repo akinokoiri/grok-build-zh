@@ -12,6 +12,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::UnicodeWidthStr;
+use xai_grok_shared::i18n;
 
 use crate::scrollback::text_selection::apply_selection_highlight;
 use crate::scrollback::types::{col_past_grapheme, grapheme_cells_at, slice_display_cols};
@@ -44,12 +45,12 @@ impl UsageInfoTab {
         UsageInfoTab::SessionInfo,
     ];
 
-    pub fn label(self) -> &'static str {
-        match self {
+    pub fn label(self) -> std::borrow::Cow<'static, str> {
+        i18n::source_text(match self {
             UsageInfoTab::ContextUsage => "Context usage",
             UsageInfoTab::UsageLimit => "Usage limit",
             UsageInfoTab::SessionInfo => "Session info",
-        }
+        })
     }
 
     pub fn index(self) -> usize {
@@ -479,24 +480,33 @@ pub fn render_usage_modal(
     compact: bool,
     theme: &Theme,
 ) {
-    let labels: Vec<&str> = UsageInfoTab::ALL.iter().map(|t| t.label()).collect();
+    let translated_labels = UsageInfoTab::ALL.map(|t| t.label());
+    let labels: Vec<&str> = translated_labels.iter().map(|s| s.as_ref()).collect();
+    let shortcut_labels = [
+        "Tab switch",
+        "\u{2191}/\u{2193} scroll",
+        "c copy session ID",
+        "y copy all",
+        "Esc close",
+    ]
+    .map(i18n::source_text);
     state.window.active_tab = state.active_tab.index();
 
     let mut shortcuts: Vec<Shortcut> = vec![
         Shortcut {
-            label: "Tab switch",
+            label: &shortcut_labels[0],
             clickable: false,
             id: 0,
         },
         Shortcut {
-            label: "\u{2191}/\u{2193} scroll",
+            label: &shortcut_labels[1],
             clickable: false,
             id: 0,
         },
     ];
     if state.ctx.session_id.is_some() {
         shortcuts.push(Shortcut {
-            label: "c copy session ID",
+            label: &shortcut_labels[2],
             clickable: true,
             id: COPY_SESSION_ID_SHORTCUT,
         });
@@ -505,13 +515,13 @@ pub fn render_usage_modal(
         && state.session_fields.as_ref().is_some_and(|f| !f.is_empty())
     {
         shortcuts.push(Shortcut {
-            label: "y copy all",
+            label: &shortcut_labels[3],
             clickable: true,
             id: COPY_ALL_SESSION_INFO_SHORTCUT,
         });
     }
     shortcuts.push(Shortcut {
-        label: "Esc close",
+        label: &shortcut_labels[4],
         clickable: false,
         id: 0,
     });
@@ -781,16 +791,20 @@ fn context_tab_lines(state: &UsageInfoModalState, theme: &Theme, width: u16) -> 
     if let Some(error) = &state.context_error {
         return vec![muted_line(
             theme,
-            format!("Couldn't load context usage: {error}"),
+            i18n::translate("context.load_error", "Couldn't load context usage: {error}")
+                .replace("{error}", error),
         )];
     }
     if let Some(block) = &state.context {
         return block.lines_for_width(theme, width);
     }
     if state.ctx.session_id.is_none() {
-        return vec![muted_line(theme, "No active session.")];
+        return vec![muted_line(theme, i18n::source_text("No active session."))];
     }
-    vec![muted_line(theme, "Loading context usage\u{2026}")]
+    vec![muted_line(
+        theme,
+        i18n::source_text("Loading context usage\u{2026}"),
+    )]
 }
 
 /// Account allowance followed by this session's token/cost totals.
@@ -1100,25 +1114,43 @@ mod tests {
         state.session_usage_text = Some("Session usage: no model calls yet.".to_string());
         let theme = Theme::current();
         render_usage_modal(&mut buf, area, &mut state, None, false, &theme);
-        let text: String = (0..area.height)
-            .map(|y| {
-                (0..area.width)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect::<String>()
-                    + "\n"
-            })
-            .collect();
+        let text = buffer_text(&buf, area);
         for needle in [
             "Context usage",
             "Usage limit",
             "Session info",
-            "copy session ID",
+            "c copy session ID",
             "Session usage: no model calls yet.",
         ] {
-            assert!(text.contains(needle), "missing {needle:?} in:\n{text}");
+            let translated = i18n::source_text(needle);
+            assert!(
+                text.contains(translated.as_ref()),
+                "missing {translated:?} in:\n{text}"
+            );
         }
         assert_eq!(state.window.tab_rects.len(), 3);
+        for (tab, rect) in UsageInfoTab::ALL.iter().zip(&state.window.tab_rects) {
+            assert_eq!(
+                rect.expect("visible tab").width as usize,
+                tab.label().width()
+            );
+        }
         assert!(state.window.close_button_rect.is_some());
+    }
+
+    /// Skip continuation cells belonging to wide glyphs when reading a buffer.
+    fn buffer_text(buf: &Buffer, area: Rect) -> String {
+        let mut text = String::new();
+        for y in area.y..area.bottom() {
+            let mut x = area.x;
+            while x < area.right() {
+                let symbol = buf[(x, y)].symbol();
+                text.push_str(symbol);
+                x += symbol.width().max(1) as u16;
+            }
+            text.push('\n');
+        }
+        text
     }
 
     #[test]
@@ -1140,16 +1172,9 @@ mod tests {
         );
         let theme = Theme::current();
         render_usage_modal(&mut buf, area, &mut state, None, false, &theme);
-        let text: String = (0..area.height)
-            .map(|y| {
-                (0..area.width)
-                    .map(|x| buf[(x, y)].symbol().to_string())
-                    .collect::<String>()
-                    + "\n"
-            })
-            .collect();
+        let text = buffer_text(&buf, area);
         assert!(
-            text.contains("copy all"),
+            text.contains(i18n::source_text("y copy all").as_ref()),
             "missing copy-all button:\n{text}"
         );
         assert!(

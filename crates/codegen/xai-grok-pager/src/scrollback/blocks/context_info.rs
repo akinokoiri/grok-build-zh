@@ -7,13 +7,15 @@
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
+use xai_grok_shared::i18n;
 
 use crate::appearance::AppearanceConfig;
 use crate::render::wrapping::word_wrap_lines;
 use crate::scrollback::block::BlockContent;
 use crate::scrollback::types::{AccentStyle, BlockContext, BlockLine, BlockOutput};
 use crate::theme::{Theme, quantize};
-use xai_grok_shell::session::{ContextInfo, count_detail};
+use xai_grok_shell::session::{ContextInfo, TokenUsageCategory, count_detail};
 
 /// Block that renders a `/context` snapshot in scrollback.
 ///
@@ -133,15 +135,10 @@ struct RowLayout {
 
 impl RowLayout {
     /// Measure column widths over every row that will render.
-    /// Widths are in codepoints, not bytes.
+    /// Label widths are terminal display columns, including wide CJK characters.
     fn measure<'a>(rows: impl Iterator<Item = &'a LegendRow> + Clone, total: u64) -> Self {
         Self {
-            label_width: rows
-                .clone()
-                .map(|r| r.label.chars().count())
-                .max()
-                .unwrap_or(0)
-                + 1,
+            label_width: rows.clone().map(|r| r.label.width()).max().unwrap_or(0) + 1,
             tokens_width: rows
                 .clone()
                 .map(|r| fmt_tok(r.tokens).chars().count())
@@ -225,9 +222,9 @@ impl RowLayout {
                 glyph,
                 Span::styled(
                     format!(
-                        "{:<label_width$}",
+                        "{}{}",
                         row.label,
-                        label_width = self.label_width
+                        " ".repeat(self.label_width.saturating_sub(row.label.width()))
                     ),
                     label_style,
                 ),
@@ -358,14 +355,14 @@ impl ContextInfoBlock {
             LegendRow {
                 glyph: system_glyph,
                 color: system_color,
-                label: "System prompt".to_string(),
+                label: i18n::source_text("System prompt").into_owned(),
                 tokens: system_tokens,
                 detail: None,
             },
             LegendRow {
                 glyph: messages_glyph,
                 color: messages_color,
-                label: "Messages".to_string(),
+                label: i18n::source_text("Messages").into_owned(),
                 tokens: message_tokens,
                 detail: None,
             },
@@ -374,7 +371,7 @@ impl ContextInfoBlock {
             legend_rows.push(LegendRow {
                 glyph: overhead_glyph,
                 color: overhead_color,
-                label: "Reasoning/overhead".to_string(),
+                label: i18n::source_text("Reasoning/overhead").into_owned(),
                 tokens: overhead_tokens,
                 detail: None,
             });
@@ -382,23 +379,29 @@ impl ContextInfoBlock {
         legend_rows.push(LegendRow {
             glyph: free_glyph,
             color: empty_color,
-            label: "Free".to_string(),
+            label: i18n::source_text("Free").into_owned(),
             tokens: free_tokens,
             detail: None,
         });
         let info_rows: Vec<LegendRow> = std::iter::once(LegendRow {
             glyph: tools_glyph,
             color: tools_color,
-            label: "Tool definitions".to_string(),
+            label: i18n::source_text("Tool definitions").into_owned(),
             tokens: tool_tokens,
-            detail: Some(count_detail(tool_count, "tool")),
+            detail: Some(localized_count_detail(
+                &count_detail(tool_count, "tool"),
+                "tool",
+            )),
         })
-        .chain(snapshot.usage_categories.iter().map(|c| LegendRow {
-            glyph: tools_glyph,
-            color: tools_color,
-            label: c.label.clone(),
-            tokens: c.tokens,
-            detail: c.detail.clone(),
+        .chain(snapshot.usage_categories.iter().map(|c| {
+            let (label, detail) = localized_category(c);
+            LegendRow {
+                glyph: tools_glyph,
+                color: tools_color,
+                label,
+                tokens: c.tokens,
+                detail,
+            }
         }))
         .collect();
         let layout = RowLayout::measure(legend_rows.iter().chain(info_rows.iter()), total);
@@ -406,7 +409,10 @@ impl ContextInfoBlock {
 
         let mut lines: Vec<Line<'static>> = vec![
             // Header: bold white "Context"
-            Line::from(Span::styled("Context", primary)),
+            Line::from(Span::styled(
+                i18n::source_text("Context").into_owned(),
+                primary,
+            )),
             // Blank row between header and the at-a-glance summary
             Line::from(""),
             // Sub-header: token totals and percent
@@ -457,17 +463,23 @@ impl ContextInfoBlock {
             let remaining = threshold_tokens.saturating_sub(used);
             let (text, style) = if usage_pct >= threshold_percent {
                 (
-                    format!("Auto-compact triggers next turn (at {threshold_percent}%)"),
+                    i18n::translate(
+                        "context.auto_compact_next",
+                        "Auto-compact triggers next turn (at {threshold}%)",
+                    )
+                    .replace("{threshold}", &threshold_percent.to_string()),
                     Style::default().fg(quantize(theme.warning)),
                 )
             } else {
                 // Use `fmt_tok_big` (same as the header) so the remaining count rolls over to `m` for wide context windows
                 // A 4m window at 60% reads `~1.0m tokens remaining`, not `~1000k tokens remaining`
                 (
-                    format!(
-                        "Auto-compact at {threshold_percent}% \u{00b7} ~{} tokens remaining",
-                        fmt_tok_big(remaining)
-                    ),
+                    i18n::translate(
+                        "context.auto_compact_remaining",
+                        "Auto-compact at {threshold}% \u{00b7} ~{remaining} tokens remaining",
+                    )
+                    .replace("{threshold}", &threshold_percent.to_string())
+                    .replace("{remaining}", &fmt_tok_big(remaining)),
                     muted,
                 )
             };
@@ -477,9 +489,13 @@ impl ContextInfoBlock {
 
         // Footer stats
         lines.push(Line::from(Span::styled(
-            format!(
-                "Turns: {turn_count} \u{00b7} Tool calls: {tool_call_count} \u{00b7} Compactions: {compaction_count}"
-            ),
+            i18n::translate(
+                "context.stats",
+                "Turns: {turns} \u{00b7} Tool calls: {calls} \u{00b7} Compactions: {compactions}",
+            )
+            .replace("{turns}", &turn_count.to_string())
+            .replace("{calls}", &tool_call_count.to_string())
+            .replace("{compactions}", &compaction_count.to_string()),
             muted,
         )));
 
@@ -490,13 +506,48 @@ impl ContextInfoBlock {
         if (80..snapshot.auto_compact_threshold_percent).contains(&usage_pct) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                "Tip: run /compact to free up context space.".to_string(),
+                i18n::source_text("Tip: run /compact to free up context space.").into_owned(),
                 Style::default().fg(quantize(theme.warning)),
             )));
         }
 
         lines
     }
+}
+
+/// Localize only the built-in display categories; protocol data stays untouched.
+fn localized_category(category: &TokenUsageCategory) -> (String, Option<String>) {
+    let noun = match category.label.as_str() {
+        "Skills" => "skill",
+        "Workflows" => "workflow",
+        "MCP servers" => "server",
+        "AGENTS.md" => "file",
+        _ => return (category.label.clone(), category.detail.clone()),
+    };
+    let label = if category.label == "AGENTS.md" {
+        category.label.clone()
+    } else {
+        i18n::source_text(&category.label).into_owned()
+    };
+    let detail = category
+        .detail
+        .as_deref()
+        .map(|d| localized_count_detail(d, noun));
+    (label, detail)
+}
+
+/// Translate the known count/noun form only, preserving unfamiliar server text.
+fn localized_count_detail(detail: &str, noun: &str) -> String {
+    let Some((count, word)) = detail.split_once(' ') else {
+        return detail.to_string();
+    };
+    if count.parse::<u64>().is_err() || (word != noun && word != format!("{noun}s")) {
+        return detail.to_string();
+    }
+    format!(
+        "{count} {}",
+        i18n::translate(&format!("context.count.{word}"), word)
+    )
 }
 
 /// Format a token count compactly (`123`, `1.2k`, `999k`).
@@ -622,7 +673,32 @@ impl BlockContent for ContextInfoBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xai_grok_shell::session::TokenUsageCategory;
+
+    #[test]
+    fn category_localization_preserves_unknown_data_and_protocol_snapshot() {
+        let category = TokenUsageCategory::skills_listing("skill listing", 1);
+        let original = category.clone();
+        let (label, detail) = localized_category(&category);
+        assert_eq!(label, i18n::source_text("Skills"));
+        assert_eq!(
+            detail.unwrap(),
+            format!("1 {}", i18n::translate("context.count.skill", "skill"))
+        );
+        assert_eq!(category, original);
+
+        let unknown = TokenUsageCategory {
+            label: "Custom category".to_string(),
+            tokens: 123,
+            detail: Some("2 skills".to_string()),
+        };
+        assert_eq!(
+            localized_category(&unknown),
+            (unknown.label.clone(), unknown.detail.clone())
+        );
+        for detail in ["custom detail", "2 custom skills", "many skills", "2 tools"] {
+            assert_eq!(localized_count_detail(detail, "skill"), detail);
+        }
+    }
 
     fn snapshot() -> ContextInfo {
         ContextInfo {
@@ -673,7 +749,7 @@ mod tests {
         let theme = test_theme();
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         // Layout: Context / <blank> / tokens / model.
-        assert_eq!(line_text(&lines, 0), "Context");
+        assert_eq!(line_text(&lines, 0), i18n::source_text("Context"));
         assert_eq!(line_text(&lines, 1), "");
         let l2 = line_text(&lines, 2);
         assert!(l2.contains("tokens"));
@@ -744,7 +820,11 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("Auto-compact at 85%") && all.contains("tokens remaining"),
+            all.contains(
+                &i18n::translate("context.auto_compact_remaining", "")
+                    .replace("{threshold}", "85")
+                    .replace("{remaining}", "813k")
+            ),
             "expected `Auto-compact at 85% · ~X tokens remaining` line, got:\n{all}"
         );
     }
@@ -762,7 +842,11 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("~3.4m tokens remaining"),
+            all.contains(
+                &i18n::translate("context.auto_compact_remaining", "")
+                    .replace("{threshold}", "85")
+                    .replace("{remaining}", "3.4m")
+            ),
             "expected ETA to use millions, got:\n{all}"
         );
     }
@@ -775,7 +859,11 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("~813k tokens remaining"),
+            all.contains(
+                &i18n::translate("context.auto_compact_remaining", "")
+                    .replace("{threshold}", "85")
+                    .replace("{remaining}", "813k")
+            ),
             "expected `~813k tokens remaining`, got:\n{all}"
         );
     }
@@ -828,7 +916,9 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("Auto-compact triggers next turn"),
+            all.contains(
+                &i18n::translate("context.auto_compact_next", "").replace("{threshold}", "85")
+            ),
             "expected `Auto-compact triggers next turn` line, got:\n{all}"
         );
     }
@@ -989,11 +1079,15 @@ mod tests {
 
         let all = all_text(&lines);
         assert!(
-            all.contains("Reasoning/overhead") && all.contains("70.0k"),
+            all.contains(i18n::source_text("Reasoning/overhead").as_ref()) && all.contains("70.0k"),
             "overhead row (70.0k) missing:\n{all}"
         );
         assert!(
-            all.contains("Tool definitions") && all.contains("190 tools"),
+            all.contains(i18n::source_text("Tool definitions").as_ref())
+                && all.contains(&format!(
+                    "190 {}",
+                    i18n::translate("context.count.tools", "tools")
+                )),
             "tools row must be shown with its count:\n{all}"
         );
 
@@ -1009,6 +1103,7 @@ mod tests {
         let mut snap = snapshot();
         snap.usage_categories = vec![
             TokenUsageCategory::skills_listing(&"x".repeat(9_600), 21),
+            TokenUsageCategory::workflows_listing("workflow listing", 1),
             TokenUsageCategory::mcp_servers(&"y".repeat(1_200), 4),
             TokenUsageCategory::agents_md(&"z".repeat(4_400), 2),
         ];
@@ -1017,18 +1112,41 @@ mod tests {
         let lines = block.build_lines(&theme, BarLayout::WIDE);
         let all = all_text(&lines);
         assert!(
-            all.contains("Skills") && all.contains("21 skills"),
+            all.contains(i18n::source_text("Skills").as_ref())
+                && all.contains(&format!(
+                    "21 {}",
+                    i18n::translate("context.count.skills", "skills")
+                )),
             "skills row missing:\n{all}"
         );
         assert!(
-            all.contains("MCP servers") && all.contains("4 servers"),
+            all.contains(i18n::source_text("MCP servers").as_ref())
+                && all.contains(&format!(
+                    "4 {}",
+                    i18n::translate("context.count.servers", "servers")
+                )),
             "mcp row missing:\n{all}"
         );
         assert!(
-            all.contains("AGENTS.md") && all.contains("2 files"),
+            all.contains("AGENTS.md")
+                && all.contains(&format!(
+                    "2 {}",
+                    i18n::translate("context.count.files", "files")
+                )),
             "agents.md row missing:\n{all}"
         );
-        assert!(all.contains("\u{00b7} 12 tools"), "tools count:\n{all}");
+        assert!(
+            all.contains(&format!(
+                "\u{00b7} 12 {}",
+                i18n::translate("context.count.tools", "tools")
+            )),
+            "tools count:\n{all}"
+        );
+        assert!(all.contains(i18n::source_text("Workflows").as_ref()));
+        assert!(all.contains(&format!(
+            "1 {}",
+            i18n::translate("context.count.workflow", "workflow")
+        )));
         let (_, tools, _, total) = count_bar_glyphs(&lines, BarLayout::WIDE);
         assert_eq!(total, 100);
         assert_eq!(tools, 0, "usage categories must never enter the bar");
@@ -1041,18 +1159,26 @@ mod tests {
         let cols = |needle: &str| -> Vec<usize> {
             all.lines()
                 .filter(is_row)
-                .filter_map(|l| l.find(needle))
+                .filter_map(|l| l.find(needle).map(|byte| l[..byte].width()))
                 .collect()
         };
         for needle in [" tokens ", ")"] {
             let positions = cols(needle);
+            assert_eq!(
+                positions.len(),
+                9,
+                "all legend and category rows must be checked"
+            );
             assert!(
                 positions.windows(2).all(|w| w[0] == w[1]),
                 "{needle:?} column misaligned: {positions:?}\n{all}"
             );
         }
         assert!(
-            all.contains("\u{00b7}  4 servers"),
+            all.contains(&format!(
+                "\u{00b7}  4 {}",
+                i18n::translate("context.count.servers", "servers")
+            )),
             "single-digit count must be right-aligned:\n{all}"
         );
     }
@@ -1206,10 +1332,14 @@ mod tests {
         lines: &'a [Line<'static>],
         label_prefix: &str,
     ) -> Option<&'a Line<'static>> {
+        let label_prefix = i18n::source_text(label_prefix);
         lines.iter().find(|line| {
-            line.spans
-                .iter()
-                .any(|s| s.content.as_ref().trim_start().starts_with(label_prefix))
+            line.spans.iter().any(|s| {
+                s.content
+                    .as_ref()
+                    .trim_start()
+                    .starts_with(label_prefix.as_ref())
+            })
         })
     }
 
@@ -1224,7 +1354,11 @@ mod tests {
         let label_span = row
             .spans
             .iter()
-            .find(|s| s.content.as_ref().starts_with("System prompt"))
+            .find(|s| {
+                s.content
+                    .as_ref()
+                    .starts_with(i18n::source_text("System prompt").as_ref())
+            })
             .expect("label span");
         assert_eq!(
             label_span.style.fg,
@@ -1244,7 +1378,7 @@ mod tests {
         let label_span = row
             .spans
             .iter()
-            .find(|s| s.content.as_ref() == "System prompt")
+            .find(|s| s.content.as_ref() == i18n::source_text("System prompt"))
             .expect("label span");
         assert_eq!(
             label_span.style.fg,
@@ -1278,7 +1412,7 @@ mod tests {
                 .map(|s| s.content.as_ref())
                 .collect();
             assert!(
-                row1.contains(label),
+                row1.contains(i18n::source_text(label).as_ref()),
                 "expected row {idx} to contain `{label}`, got: {row1:?}"
             );
             assert!(
@@ -1318,22 +1452,22 @@ mod tests {
             |i: usize| -> String { lines[i].spans.iter().map(|s| s.content.as_ref()).collect() };
         let l11 = row_text(11);
         assert!(
-            l11.contains("System prompt") && l11.contains("1.2k"),
+            l11.contains(i18n::source_text("System prompt").as_ref()) && l11.contains("1.2k"),
             "wide legend should keep label + tokens on one line, got: {l11:?}"
         );
         let l12 = row_text(12);
         assert!(
-            l12.contains("Messages") && l12.contains("29.9k"),
+            l12.contains(i18n::source_text("Messages").as_ref()) && l12.contains("29.9k"),
             "wide legend should keep label + tokens on one line, got: {l12:?}"
         );
         let l13 = row_text(13);
         assert!(
-            l13.contains("Reasoning/overhead") && l13.contains("5.6k"),
+            l13.contains(i18n::source_text("Reasoning/overhead").as_ref()) && l13.contains("5.6k"),
             "wide legend should show reasoning/overhead on one line, got: {l13:?}"
         );
         let l14 = row_text(14);
         assert!(
-            l14.contains("Free") && l14.contains("963k"),
+            l14.contains(i18n::source_text("Free").as_ref()) && l14.contains("963k"),
             "wide legend should keep label + tokens on one line, got: {l14:?}"
         );
     }
