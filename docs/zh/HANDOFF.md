@@ -8,31 +8,32 @@
 
 本轮修复 `/context` 漏译与中文显示列对齐，语言包从 414 条增至 448 条。修复 Windows PTY harness 的 Unix-only 导入及终端字形相关测试。每周同步的合并冲突改为摘要与 notice，真实错误继续失败；发布门禁逐条检查原生命令退出码，拒绝覆盖旧版本。安装器验证退出码及完整版本后才更新语言包、删除备份，失败恢复原程序；脚本保留 UTF-8 BOM，兼容现有 Windows 更新入口的解码方式。
 
-`zh-CN` 是远端默认维护分支；当前同步分支为 `codex/sync-official-2026-09-12`，候选 PR：<https://github.com/akinokoiri/grok-build-zh/pull/1>。必须用 merge 保留上游祖先关系。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
+`zh-CN` 是远端默认维护分支。[PR #1](https://github.com/akinokoiri/grok-build-zh/pull/1) 已通过 merge 合并为 `0723a12e`，保留官方上游祖先关系。正式版本从已验证提交 `f089b5ad` 构建。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
 
 ## 已发布与本机状态
 
-- Release：`v1.0.16-zh.1`
-- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.16-zh.1>
+- Release：`v1.0.24-zh.1`（2026-09-12 13:46，北京时间；非 prerelease，已设为 latest）
+- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.24-zh.1>
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
+- ZIP SHA-256：`a129ab6759264181523f6ae67a3a4cf433b4422e30ba3276f20c4c78a9b6686d`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
 - 本机报告版本：`grok 1.0.16-zh.1 (3c3801bac1fa) [alpha]`
 - 本机可执行文件 SHA-256：`33EA75766933D8188B4B142D463F1A62500F891489E716C54C08847D92F9F95C`
 - 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（414 条翻译已就绪）
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- 本机更新已通过安装脚本完成无缝热替换与校验。
+- 本次本机更新因正在运行的 `grok-zh.exe` 占用而未完成；安装器保留原程序，上述旧版版本、哈希与 414 条语言包已复核。用户退出正在运行的会话后，在仓库运行 `./install.ps1 -Version 1.0.24-zh.1`，再核对版本与 448 条语言包。安装前确认旧语言包没有用户自定义条目；未结束用户进程。
 
-## 待发布修复
+## 本次已发布修复
 
 2026-09-12 根据实际截图补齐 `/context` 上下文面板、三个共享页签及底部快捷键的汉化，新增 34 条集中语言包条目。弹窗和 minimal 模式的历史输出共用该渲染实现；中文标签按终端显示列宽对齐。只在显示层翻译已知内置分类和计数词，模型名、`AGENTS.md`、`tokens` 单位及未知数据保留原样。
 
-该修复尚未发布或安装，上述本机版本与语言包状态仍对应 `v1.0.16-zh.1`。只替换外部语言包无法修复旧二进制中尚未接入翻译的面板，需由正式发布工作流构建新版。
+该修复已随 `v1.0.24-zh.1` 发布，本机因文件占用仍为 `v1.0.16-zh.1`。只替换外部语言包无法修复旧二进制中尚未接入翻译的面板，需要安装正式新版。
 
-验证：翻译审计、格式检查、4 项共享语言包测试、2 项 protobuf 回归测试及 Windows pager-bin 编译检查均通过。PTY harness 编译问题已修复，40 项 context_info 测试在传统及现代终端两种字形模式下均通过，32 项 usage_modal 测试通过；安装器 5 种成功/失败场景通过。GitHub Windows 校验已通过一轮，最终源码仍需完成正式 Release 门禁与安装验证。
+验证：翻译审计、格式检查、4 项共享语言包测试、2 项 protobuf 回归测试及 Windows pager-bin 编译检查均通过。PTY harness 编译问题已修复，40 项 context_info 测试在传统及现代终端两种字形模式下均通过，32 项 usage_modal 测试通过；安装器 5 种成功/失败场景通过。最终提交的 [Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/34674243170) 和 [正式发布门禁](https://github.com/akinokoiri/grok-build-zh/actions/runs/34674248647) 均成功，包括 Release profile 测试、版本冒烟和资产上传。
 
 ## 汉化与门禁快照
 
-集中式语言包源码当前有 448 条（已发布版本为 414 条）：
+集中式语言包源码及最新 Release 均有 448 条（本机旧版为 414 条）：
 
 - 25 个内置斜杠命令说明已覆盖。
 - 72 个内置动作/快捷键说明已覆盖。
@@ -60,6 +61,8 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 `v1.0.12-zh.2` 是启用独立 Release 参数后的首轮冷发布，实测总耗时 57 分 02 秒：旧 `Release gates` 顺序耗时 20 分 22 秒，最终 `release-dist` 构建又耗时 33 分 58 秒；sccache 为 0/1639 命中。门禁与最终构建实际上用了不同特性图，因此没有实现注释声称的依赖复用。发布后已把工作流顺序调整为“静态门禁 -> 最终 `release-dist` 构建 -> Release 测试 -> 冒烟/发布”，让窄测试复用宽构建；下一次发布需记录暖缓存实测，不能继续沿用旧的 12 分钟估计。
 
 不要把首次冷编译视作稳定耗时；上游大改、版本/特性参数变化会自然降低命中率。
+
+2026-09-12 本轮最终 Windows 校验耗时 10 分 32 秒；`v1.0.24-zh.1` 发布任务约 51 分 20 秒，其中正式编译 44 分 57 秒，Release 测试 4 分 01 秒。合并后的同内容校验无需由主代理高频轮询；需要跨会话监控时必须确认持久调度和唤醒路径，不能仅凭临时子代理承诺持续监控。
 
 ## 本机维护环境
 
