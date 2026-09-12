@@ -867,11 +867,6 @@ mod tests {
     // blank). Each row is rendered as `glyph` spans separated by raw-space spans. To count cells per category, we walk
     // the bar lines for the given layout and count spans whose content matches each category's glyph.
 
-    const SYSTEM_GLYPH_TEST: &str = "\u{25C6}";
-    const TOOLS_GLYPH_TEST: &str = "\u{25C8}";
-    const MESSAGES_GLYPH_TEST: &str = "\u{25C6}"; // same as system; distinguished by color in real render
-    const FREE_GLYPH_TEST: &str = "\u{25C7}";
-
     /// `layout` tells the function how many bar rows to slice (5 for WIDE, 10 for NARROW).
     /// Without it the slice would be wrong for the narrow layout and the assertions would fail spuriously.
     fn count_bar_glyphs(
@@ -886,12 +881,14 @@ mod tests {
         for line in &lines[bar_start..bar_end] {
             for span in &line.spans {
                 let c = span.content.as_ref();
-                if c == SYSTEM_GLYPH_TEST || c == MESSAGES_GLYPH_TEST {
-                    // SYSTEM_GLYPH_TEST == MESSAGES_GLYPH_TEST; counted together.
+                // Legacy ConHost shares filled/dotted glyphs, and no-color
+                // terminals also collapse their colors. Count occupied cells
+                // first; the used/free totals still verify the bar partition.
+                if c == crate::glyphs::diamond_filled() {
                     diamonds += 1;
-                } else if c == TOOLS_GLYPH_TEST {
+                } else if c == crate::glyphs::diamond_dotted() {
                     tools += 1;
-                } else if c == FREE_GLYPH_TEST {
+                } else if c == crate::glyphs::diamond_hollow() {
                     free += 1;
                 }
             }
@@ -1089,7 +1086,9 @@ mod tests {
 
         // Token, percent, and count columns line up across all rows; single-digit counts are right-aligned ("·  4 servers")
         let is_row = |l: &&str| {
-            (l.starts_with('\u{25C6}') || l.starts_with('\u{25C8}') || l.starts_with('\u{25C7}'))
+            (l.starts_with(crate::glyphs::diamond_filled())
+                || l.starts_with(crate::glyphs::diamond_dotted())
+                || l.starts_with(crate::glyphs::diamond_hollow()))
                 && l.contains(" tokens ")
         };
         let cols = |needle: &str| -> Vec<usize> {
@@ -1216,10 +1215,9 @@ mod tests {
                 .iter()
                 .filter(|s| {
                     let c = s.content.as_ref();
-                    c == SYSTEM_GLYPH_TEST
-                        || c == TOOLS_GLYPH_TEST
-                        || c == MESSAGES_GLYPH_TEST
-                        || c == FREE_GLYPH_TEST
+                    c == crate::glyphs::diamond_filled()
+                        || c == crate::glyphs::diamond_dotted()
+                        || c == crate::glyphs::diamond_hollow()
                 })
                 .count();
             assert!(
@@ -1241,10 +1239,9 @@ mod tests {
                 .iter()
                 .filter(|s| {
                     let c = s.content.as_ref();
-                    c == SYSTEM_GLYPH_TEST
-                        || c == TOOLS_GLYPH_TEST
-                        || c == MESSAGES_GLYPH_TEST
-                        || c == FREE_GLYPH_TEST
+                    c == crate::glyphs::diamond_filled()
+                        || c == crate::glyphs::diamond_dotted()
+                        || c == crate::glyphs::diamond_hollow()
                 })
                 .count();
             assert!(

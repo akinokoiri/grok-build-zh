@@ -4,6 +4,8 @@ use crossterm::event::{
 use indexmap::IndexMap;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use unicode_width::UnicodeWidthStr;
+use xai_grok_shared::i18n;
 
 use crate::app::app_view::InputOutcome;
 use crate::views::credit_bar::CreditBalance;
@@ -59,8 +61,11 @@ fn render_with_modal(
     );
     let mut content = String::new();
     for y in 0..area.height {
-        for x in 0..area.width {
-            content.push_str(buf[(x, y)].symbol());
+        let mut x = 0;
+        while x < area.width {
+            let symbol = buf[(x, y)].symbol();
+            content.push_str(symbol);
+            x += symbol.width().max(1) as u16;
         }
         content.push('\n');
     }
@@ -164,7 +169,10 @@ fn usage_modal_renders_allowance_from_app_balance() {
     };
 
     let content = render_with_modal(&mut state, area, Some(&balance));
-    assert!(content.contains("Usage limit"), "{content}");
+    assert!(
+        content.contains(UsageInfoTab::UsageLimit.label().as_ref()),
+        "{content}"
+    );
     assert!(content.contains("(SuperGrok)"), "{content}");
     assert!(content.contains("42%"), "{content}");
     assert!(content.contains("Resets: May 29, 00:00"), "{content}");
@@ -179,7 +187,10 @@ fn usage_modal_renders_allowance_from_app_balance() {
         .unwrap()
         .set_tab(UsageInfoTab::ContextUsage);
     let content = render_with_modal(&mut state, area, Some(&balance));
-    assert!(content.contains("No active session."), "{content}");
+    assert!(
+        content.contains(i18n::source_text("No active session.").as_ref()),
+        "{content}"
+    );
 }
 
 #[test]
