@@ -17,23 +17,23 @@
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
 - ZIP SHA-256：`a129ab6759264181523f6ae67a3a4cf433b4422e30ba3276f20c4c78a9b6686d`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
-- 本机报告版本：`grok 1.0.16-zh.1 (3c3801bac1fa) [alpha]`
-- 本机可执行文件 SHA-256：`33EA75766933D8188B4B142D463F1A62500F891489E716C54C08847D92F9F95C`
-- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（414 条翻译已就绪）
+- 本机报告版本：`grok 1.0.24-zh.1 (f089b5adbda5) [alpha]`
+- 本机可执行文件 SHA-256：`0CD2CF41A4FE2D4D51B5D8E4EE5F07B0D31BC5AB52EC136D3A2B552E9951EE28`
+- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（448 条翻译，与发布源码哈希一致）
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- 本次本机更新因正在运行的 `grok-zh.exe` 占用而未完成；安装器保留原程序，上述旧版版本、哈希与 414 条语言包已复核。用户退出正在运行的会话后，在仓库运行 `./install.ps1 -Version 1.0.24-zh.1`，再核对版本与 448 条语言包。安装前确认旧语言包没有用户自定义条目；未结束用户进程。
+- 本机已使用正式 Release 安装器完成更新，包校验与版本冒烟通过。安装前确认旧语言包没有用户自定义条目。`grok-zh update --check --json` 返回当前及最新版本均为 `1.0.24-zh.1`、`updateAvailable=false`，来源为 `github:akinokoiri/grok-build-zh`。
 
 ## 本次已发布修复
 
 2026-09-12 根据实际截图补齐 `/context` 上下文面板、三个共享页签及底部快捷键的汉化，新增 34 条集中语言包条目。弹窗和 minimal 模式的历史输出共用该渲染实现；中文标签按终端显示列宽对齐。只在显示层翻译已知内置分类和计数词，模型名、`AGENTS.md`、`tokens` 单位及未知数据保留原样。
 
-该修复已随 `v1.0.24-zh.1` 发布，本机因文件占用仍为 `v1.0.16-zh.1`。只替换外部语言包无法修复旧二进制中尚未接入翻译的面板，需要安装正式新版。
+该修复已随 `v1.0.24-zh.1` 发布并安装到本机。面板翻译需要新版二进制和语言包配合，不能仅替换旧版的外部语言包。
 
 验证：翻译审计、格式检查、4 项共享语言包测试、2 项 protobuf 回归测试及 Windows pager-bin 编译检查均通过。PTY harness 编译问题已修复，40 项 context_info 测试在传统及现代终端两种字形模式下均通过，32 项 usage_modal 测试通过；安装器 5 种成功/失败场景通过。最终提交的 [Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/34674243170) 和 [正式发布门禁](https://github.com/akinokoiri/grok-build-zh/actions/runs/34674248647) 均成功，包括 Release profile 测试、版本冒烟和资产上传。
 
 ## 汉化与门禁快照
 
-集中式语言包源码及最新 Release 均有 448 条（本机旧版为 414 条）：
+集中式语言包源码、最新 Release 及本机均有 448 条：
 
 - 25 个内置斜杠命令说明已覆盖。
 - 72 个内置动作/快捷键说明已覆盖。
