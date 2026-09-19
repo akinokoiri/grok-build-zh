@@ -4,36 +4,37 @@
 
 ## 当前结论
 
-项目仅维护 Windows 11 x64 个人汉化发行版。本机仍安装已发布的 `v1.0.24-zh.1`。分支 `sync/official-1.0.35` 已合并官方 `a28ee2b2`（Grok Build 1.0.35），`SOURCE_REV` 为 `e8563f8f182296ebb53cadb3e1eab7615d76408e`。[PR #2](https://github.com/akinokoiri/grok-build-zh/pull/2) 的 Windows 校验和翻译审计已通过，尚未合并到 `zh-CN`，尚未发布。官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。
+项目仅维护 Windows 11 x64 个人汉化发行版。[PR #2](https://github.com/akinokoiri/grok-build-zh/pull/2) 已 merge 进 `zh-CN` 为 `58e02c2e`，同步官方 `a28ee2b2`（Grok Build 1.0.35），`SOURCE_REV` 为 `e8563f8f182296ebb53cadb3e1eab7615d76408e`。`v1.0.35-zh.1` 已从该提交发布，非 prerelease。官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。
 
 合并时 5 个 pager UI 冲突已按官方新逻辑解决，并接回集中语言包。新增 `mode.ask`（询问）。`xai-grok-shell` 的 `test-support` 补上对 `xai-grok-workspace/test-support` 的转发，否则 pager 测试编不过官方 `WorkspaceOps::for_test`。`/memory`、`/flush`、`/dream` 说明已在语言包中。
 
-`zh-CN` 仍是远端默认维护分支。已发布版本从 `f089b5ad` 构建。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
+本机仍运行 `v1.0.24-zh.1`：安装器无法替换正在使用的 `grok-zh.exe`。语言包没有用户自定义条目。退出当前会话后执行 `grok-zh update` 即可安装。
+
+`zh-CN` 仍是远端默认维护分支。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
 
 ## 已发布与本机状态
 
-- Release：`v1.0.24-zh.1`（2026-09-12 13:46，北京时间；非 prerelease，已设为 latest）
-- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.24-zh.1>
+- Release：`v1.0.35-zh.1`（2026-09-19 19:52，北京时间；非 prerelease，已设为 latest）
+- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.35-zh.1>
+- 构建提交：`58e02c2e`
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
-- ZIP SHA-256：`a129ab6759264181523f6ae67a3a4cf433b4422e30ba3276f20c4c78a9b6686d`
+- ZIP SHA-256：`0ec23aa04fdaed283e8155fda2081d6d5cde8bb3e812b7a56832dca70ed5cba6`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
-- 本机报告版本：`grok 1.0.24-zh.1 (f089b5adbda5) [alpha]`
+- 本机报告版本：`grok 1.0.24-zh.1 (f089b5adbda5) [stable]`（尚未替换）
 - 本机可执行文件 SHA-256：`0CD2CF41A4FE2D4D51B5D8E4EE5F07B0D31BC5AB52EC136D3A2B552E9951EE28`
-- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（448 条翻译，与发布源码哈希一致）
+- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（448 条；源码 449 条，仅缺 `mode.ask`，无用户自定义条目）
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- 本机已使用正式 Release 安装器完成更新，包校验与版本冒烟通过。安装前确认旧语言包没有用户自定义条目。`grok-zh update --check --json` 返回当前及最新版本均为 `1.0.24-zh.1`、`updateAvailable=false`，来源为 `github:akinokoiri/grok-build-zh`。
+- `grok-zh update --check --json`：`currentVersion=1.0.24-zh.1`，`latestVersion=1.0.35-zh.1`，`updateAvailable=true`，来源 `github:akinokoiri/grok-build-zh`。
 
 ## 本次已发布修复
 
-2026-09-12 根据实际截图补齐 `/context` 上下文面板、三个共享页签及底部快捷键的汉化，新增 34 条集中语言包条目。弹窗和 minimal 模式的历史输出共用该渲染实现；中文标签按终端显示列宽对齐。只在显示层翻译已知内置分类和计数词，模型名、`AGENTS.md`、`tokens` 单位及未知数据保留原样。
+2026-09-19 同步官方 1.0.24 → 1.0.35。用户可见变化包括 Windows ProjFS 启动崩溃修复、`grok clone` 反斜杠问题、`/memory` 弹窗、会话头、MCP 展示、`/btw` 句中提问等。个人版保留集中语言包，新增询问模式标记。
 
-该修复已随 `v1.0.24-zh.1` 发布并安装到本机。面板翻译需要新版二进制和语言包配合，不能仅替换旧版的外部语言包。
-
-验证：翻译审计、格式检查、4 项共享语言包测试、2 项 protobuf 回归测试及 Windows pager-bin 编译检查均通过。PTY harness 编译问题已修复，40 项 context_info 测试在传统及现代终端两种字形模式下均通过，32 项 usage_modal 测试通过；安装器 5 种成功/失败场景通过。最终提交的 [Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/34674243170) 和 [正式发布门禁](https://github.com/akinokoiri/grok-build-zh/actions/runs/34674248647) 均成功，包括 Release profile 测试、版本冒烟和资产上传。
+验证：[PR Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354593) 和 [正式发布](https://github.com/akinokoiri/grok-build-zh/actions/runs/35439173351) 均成功，包括静态门禁、Release 编译、语言包测试、protobuf 回归、版本冒烟和资产上传。本机因 `grok-zh.exe` 正在运行未能替换，需退出后执行 `grok-zh update`。
 
 ## 汉化与门禁快照
 
-集中式语言包源码现有 449 条；已发布 Release 及本机语言包仍为 448 条：
+集中式语言包源码和 Release 包内有 449 条；本机外部语言包仍为 448 条，待安装后替换：
 
 - 25 个内置斜杠命令说明已覆盖（含 `/memory`、`/flush`、`/dream`）。
 - 72 个内置动作/快捷键说明已覆盖。
@@ -66,6 +67,8 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 2026-09-19 [PR #2 Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354593) 成功，check 作业 15 分 56 秒；其中 `cargo check -p xai-grok-pager-bin` 约 11 分 02 秒。[翻译审计](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354529) 18 秒通过。这次上游跨 1.0.24 到 1.0.35，编译比上次 10 分 32 秒的同内容校验更久。
 
+2026-09-19 `v1.0.35-zh.1` 发布任务约 48 分 55 秒：正式编译 41 分 16 秒，Release 测试 3 分 58 秒。比 `v1.0.24-zh.1` 的 51 分 20 秒略短，正式编译仍远长于校验用的 `cargo check`。
+
 ## 本机维护环境
 
 - Rustup 1.29.0，Rust/Cargo 1.94.0（MSVC x64，minimal profile）。
@@ -74,9 +77,9 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 ## 下一次任务建议顺序
 
-1. 合并 [PR #2](https://github.com/akinokoiri/grok-build-zh/pull/2) 到 `zh-CN`。不要自动发布。
-2. 重要功能与 Windows 修复已累计到 1.0.35，适合发 `1.0.35-zh.1`。
-3. 发布后更新本文件中的维护提交、Release、本机安装和 CI 基线。
+1. 退出当前 grok-zh 会话后执行 `grok-zh update`，确认本机版本为 `1.0.35-zh.1`，再把本文件的本机 SHA 和语言包条数改成安装后的实测值。
+2. 获取 `official/main`，确认是否有值得同步的重要变更。
+3. 使用每周同步候选 PR，不自动合并、不自动发布。
 
 ## 已知但非阻塞事项
 
