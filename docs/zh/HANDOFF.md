@@ -4,7 +4,7 @@
 
 ## 当前结论
 
-项目仅维护 Windows 11 x64 个人汉化发行版。本机仍安装已发布的 `v1.0.24-zh.1`。本地分支 `sync/official-1.0.35` 已合并官方 `a28ee2b2`（Grok Build 1.0.35，9 月 15 日与 17 日两次 monorepo 同步），`SOURCE_REV` 为 `e8563f8f182296ebb53cadb3e1eab7615d76408e`。官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。尚未推送、尚未跑 Windows 校验工作流、尚未发布。
+项目仅维护 Windows 11 x64 个人汉化发行版。本机仍安装已发布的 `v1.0.24-zh.1`。分支 `sync/official-1.0.35` 已合并官方 `a28ee2b2`（Grok Build 1.0.35），`SOURCE_REV` 为 `e8563f8f182296ebb53cadb3e1eab7615d76408e`。[PR #2](https://github.com/akinokoiri/grok-build-zh/pull/2) 的 Windows 校验和翻译审计已通过，尚未合并到 `zh-CN`，尚未发布。官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。
 
 合并时 5 个 pager UI 冲突已按官方新逻辑解决，并接回集中语言包。新增 `mode.ask`（询问）。`xai-grok-shell` 的 `test-support` 补上对 `xai-grok-workspace/test-support` 的转发，否则 pager 测试编不过官方 `WorkspaceOps::for_test`。`/memory`、`/flush`、`/dream` 说明已在语言包中。
 
@@ -64,6 +64,8 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 2026-09-12 本轮最终 Windows 校验耗时 10 分 32 秒；`v1.0.24-zh.1` 发布任务约 51 分 20 秒，其中正式编译 44 分 57 秒，Release 测试 4 分 01 秒。合并后的同内容校验无需由主代理高频轮询；需要跨会话监控时必须确认持久调度和唤醒路径，不能仅凭临时子代理承诺持续监控。
 
+2026-09-19 [PR #2 Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354593) 成功，check 作业 15 分 56 秒；其中 `cargo check -p xai-grok-pager-bin` 约 11 分 02 秒。[翻译审计](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354529) 18 秒通过。这次上游跨 1.0.24 到 1.0.35，编译比上次 10 分 32 秒的同内容校验更久。
+
 ## 本机维护环境
 
 - Rustup 1.29.0，Rust/Cargo 1.94.0（MSVC x64，minimal profile）。
@@ -72,10 +74,9 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 ## 下一次任务建议顺序
 
-1. 推送 `sync/official-1.0.35`，运行 Windows x64 校验工作流。
-2. 通过后门禁后合并到 `zh-CN`。不要自动发布。
-3. 重要功能与 Windows 修复已累计到 1.0.35，适合发 `1.0.35-zh.1`。
-4. 发布后更新本文件中的维护提交、Release、本机安装和 CI 基线。
+1. 合并 [PR #2](https://github.com/akinokoiri/grok-build-zh/pull/2) 到 `zh-CN`。不要自动发布。
+2. 重要功能与 Windows 修复已累计到 1.0.35，适合发 `1.0.35-zh.1`。
+3. 发布后更新本文件中的维护提交、Release、本机安装和 CI 基线。
 
 ## 已知但非阻塞事项
 
