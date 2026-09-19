@@ -144,6 +144,7 @@ $RequiredIds = @(
     "mode.always_approve",
     "mode.auto",
     "mode.plan",
+    "mode.ask",
     "mode.plan_approval",
     "mode.commenting",
     "welcome.channel.stable",

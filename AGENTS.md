@@ -1,6 +1,6 @@
 # Grok Build 中文个人版：Agent 协作约定
 
-本仓库是 `xai-org/grok-build` 的 Windows 11 x64 个人汉化发行版，不是通用多平台分叉。开始任务前先读 `docs/zh/HANDOFF.md` 和 `docs/zh/MAINTENANCE.md`。
+本仓库是 `xai-org/grok-build` 的 Windows 11 x64 个人汉化发行版，不是通用多平台分叉。接续同步、发布或核对当前版本状态时读 `docs/zh/HANDOFF.md`；上游同步、语言包、安装或发布流程问题读 `docs/zh/MAINTENANCE.md` 的对应章节。自包含的局部修改无需通读两份文档，仍遵守下面的维护边界与验证矩阵。
 
 ## 不可偏离的维护边界
 
