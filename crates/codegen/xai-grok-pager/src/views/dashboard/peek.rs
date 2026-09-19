@@ -411,9 +411,9 @@ fn paint_peek_config_badge(
     } else {
         PermissionLabel::Ask
     };
-    let mode_label = panel.mode_label.map(|label| {
-        xai_grok_shared::i18n::translate(&format!("mode.{label}"), label)
-    });
+    let mode_label = panel
+        .mode_label
+        .map(|label| xai_grok_shared::i18n::translate(&format!("mode.{label}"), label));
     let always_approve_label =
         xai_grok_shared::i18n::translate("mode.always_approve", "always-approve");
     let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
@@ -1103,6 +1103,7 @@ mod tests {
         let theme = Theme::current();
 
         let badge_row = |panel: &PeekPanelState, h: u16| -> String {
+            use unicode_width::UnicodeWidthStr;
             let mut buf = Buffer::empty(Rect::new(0, 0, 80, h));
             let mut reply = test_reply();
             let _ = render_peek_panel(
@@ -1118,9 +1119,18 @@ mod tests {
                 None,
                 None,
             );
-            (0..80)
-                .filter_map(|x| buf.cell((x, h - 1)).map(|c| c.symbol().to_string()))
-                .collect()
+            let mut text = String::new();
+            let mut x = 0u16;
+            while x < 80 {
+                if let Some(cell) = buf.cell((x, h - 1)) {
+                    let symbol = cell.symbol();
+                    text.push_str(symbol);
+                    x += symbol.width().max(1) as u16;
+                } else {
+                    x += 1;
+                }
+            }
+            text
         };
 
         let plan_label = xai_grok_shared::i18n::translate("mode.plan", "plan");
