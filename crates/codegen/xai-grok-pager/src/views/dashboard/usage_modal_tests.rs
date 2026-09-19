@@ -63,9 +63,13 @@ fn render_with_modal(
     for y in 0..area.height {
         let mut x = 0;
         while x < area.width {
-            let symbol = buf[(x, y)].symbol();
-            content.push_str(symbol);
-            x += symbol.width().max(1) as u16;
+            if let Some(cell) = buf.cell((x, y)) {
+                let symbol = cell.symbol();
+                content.push_str(symbol);
+                x += symbol.width().max(1) as u16;
+            } else {
+                x += 1;
+            }
         }
         content.push('\n');
     }
