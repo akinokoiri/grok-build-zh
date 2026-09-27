@@ -679,11 +679,8 @@ pub(super) fn render_rows(
                         };
                         let desc = setting_description(meta);
                         render_expanded_description(buf, desc_rect, &desc, theme);
-                        let consumed = wrapped_description_height(
-                            &desc,
-                            area.width,
-                            desc_rect.height,
-                        );
+                        let consumed =
+                            wrapped_description_height(&desc, area.width, desc_rect.height);
                         y_cursor = y_cursor.saturating_add(consumed);
                     }
                     continue;
@@ -762,7 +759,10 @@ pub(super) fn render_rows(
                         height: desc_height.min(8), // cap at 8 lines per row to keep scroll sane
                     };
                     let desc = setting_description(meta);
-                    let detail = lock.map_or(desc.as_ref(), CodingDataSharingLock::reason);
+                    let detail: &str = match lock {
+                        Some(l) => l.reason(),
+                        None => desc.as_ref(),
+                    };
                     render_expanded_description(buf, desc_rect, detail, theme);
                     // Re-measure how many lines the wrapped description actually consumed, so y_cursor advances precisely
                     let consumed = wrapped_description_height(detail, area.width, desc_rect.height);
@@ -837,11 +837,7 @@ fn compute_filtered_row_heights(state: &SettingsModalState, area_width: u16) -> 
                     let mut h: u16 = 1;
                     if state.expanded_keys.contains(key) {
                         let desc = setting_description(meta);
-                        h = h.saturating_add(wrapped_description_height(
-                            &desc,
-                            area_width,
-                            8,
-                        ));
+                        h = h.saturating_add(wrapped_description_height(&desc, area_width, 8));
                     }
                     heights.push(h);
                     continue;
@@ -863,12 +859,11 @@ fn compute_filtered_row_heights(state: &SettingsModalState, area_width: u16) -> 
                 if is_expanded {
                     // Cap matches the forward render loop (`desc_rect.height = ... .min(8)`).
                     let desc = setting_description(meta);
-                    let detail = lock.map_or(desc.as_ref(), CodingDataSharingLock::reason);
-                    h = h.saturating_add(wrapped_description_height(
-                        detail,
-                        area_width,
-                        8,
-                    ));
+                    let detail: &str = match lock {
+                        Some(l) => l.reason(),
+                        None => desc.as_ref(),
+                    };
+                    h = h.saturating_add(wrapped_description_height(detail, area_width, 8));
                 }
                 heights.push(h);
             }

@@ -837,13 +837,11 @@ fn available_command(cmd: &BuiltinCommand) -> acp::AvailableCommand {
         cmd.name.to_string(),
         xai_grok_shared::i18n::command_description(cmd.name, cmd.description).into_owned(),
     )
-    .input(
-        cmd.argument_hint.map(|hint| {
-            acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
-                hint.to_string(),
-            ))
-        }),
-    )
+    .input(cmd.argument_hint.map(|hint| {
+        acp::AvailableCommandInput::Unstructured(acp::UnstructuredCommandInput::new(
+            hint.to_string(),
+        ))
+    }))
 }
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
