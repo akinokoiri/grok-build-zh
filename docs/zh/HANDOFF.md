@@ -6,12 +6,12 @@
 
 项目仅维护 Windows 11 x64 个人汉化发行版。上周发布的 `v1.0.35-zh.1`（构建提交 `58e02c2e`）已在本机前台执行安装脚本实测完成替换与版本校验。
 
-官方上游本周已跃迁至 1.0.41（`f0e3be11`，`SOURCE_REV` 为 `036a5d8348cd744767cd0b08518ab17bf608fa7f`）。本周同步候选 [PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) 已由分支 `sync/official-1.0.41` 创建：
-- 解决了 3 处合并冲突（`settings_modal/render.rs` 适配多行换行与生命周期、`Cargo.toml` 官方合入 `test-support`、`slash_commands.rs` 统一接入 `available_command` 汉化）。
+官方上游本周已跃迁至 1.0.41（`f0e3be11`，`SOURCE_REV` 为 `036a5d8348cd744767cd0b08518ab17bf608fa7f`）。本周同步 [PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) 已由分支 `sync/official-1.0.41` 合并进 `zh-CN`（合并提交 `d93d183b`）：
+- CI 校验工作流（run `36315448800`）耗时 11 分 41 秒全绿通过。
+- 解决了 3 处合并冲突（`settings_modal/render.rs` 适配多行换行与生命周期、`Cargo.toml` 采纳官方 `test-support`、`slash_commands.rs` 统一接入 `available_command` 汉化）。
 - 集中语言包新增 `dashboard_preview`（看板预览）与 `subagent_model_inheritance`（子代理模型继承）条目，总词条数由 449 增至 453 条，翻译审计通过。
 - 更新 `find-msvc-tools` 至 0.1.14，修复 Windows MSVC 环境下 `cc` 编译类型不匹配。
-- 本地最小验证矩阵全部通过（`audit-translations`、`cargo fmt`、`i18n` 单元测试、`dependency_tests`、`cargo check -p xai-grok-pager-bin`）。
-- 官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。PR 保持不自动合并、不自动发布。
+- 官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。PR 合并不触发自动发布，待手动运行 `Release Windows x64` 发布 `v1.0.41-zh.1`。
 
 `zh-CN` 仍是远端默认维护分支。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
 
@@ -80,10 +80,9 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 ## 下一次任务建议顺序
 
-1. 确认 [PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) 的 GitHub Actions Windows CI 校验通过。
-2. 合并 PR #3 进 `zh-CN`。
-3. 手动触发 `Release Windows x64` 工作流发布 `v1.0.41-zh.1`。
-4. 发布完成后在退出现有 grok-zh 会话的情况下执行 `grok-zh update`，实测核对本机 1.0.41-zh.1 的 SHA-256 和语言包。
+1. （已完成）[PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) CI 全绿通过并已成功合并进 `zh-CN`（`d93d183b`）。
+2. 在 GitHub Actions 页面手动触发 `Release Windows x64` 工作流（输入版本号 `1.0.41-zh.1`）构建正式 Release 包。
+3. 发布完成后在退出现有 grok-zh 会话的情况下执行 `grok-zh update`，实测核对本机 1.0.41-zh.1 的 SHA-256 和语言包。
 
 ## 已知但非阻塞事项
 
