@@ -17,17 +17,17 @@
 
 ## 已发布与本机状态
 
-- Release：`v1.0.35-zh.1`（2026-09-19 19:52，北京时间；非 prerelease，已设为 latest）
-- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.35-zh.1>
-- 构建提交：`58e02c2e`
+- Release：`v1.0.41-zh.1`（2026-09-27 20:38，北京时间；非 prerelease，已设为 latest）
+- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.41-zh.1>
+- 构建提交：`fa4bb613`
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
-- ZIP SHA-256：`0ec23aa04fdaed283e8155fda2081d6d5cde8bb3e812b7a56832dca70ed5cba6`
+- ZIP SHA-256：`5734d67e32f3f1a1d44b59fc86cd07f052e7da590e4c29589b1c935531bd0fb6`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
-- 本机报告版本：`grok 1.0.35-zh.1 (58e02c2ea2d6) [alpha]`（已完成替换）
-- 本机可执行文件 SHA-256：`9504AAFF7E20E77E65373AEA5D8265A034509CEDB3142D9E8746C74ADB10E4C5`
-- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（449 条，已含 `mode.ask`，无用户自定义条目）
+- 本机报告版本：`grok 1.0.41-zh.1 (fa4bb613d99f) [alpha]`（已完成替换）
+- 本机可执行文件 SHA-256：`13339F19684FDC4D0E2E774045037C928F28A335EC2049C998F589CB009E96E8`
+- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（453 条，已含 `dashboard_preview` 与 `subagent_model_inheritance`，无用户自定义条目）
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- `grok-zh update --check --json`：`currentVersion=1.0.35-zh.1`，`latestVersion=1.0.35-zh.1`，`updateAvailable=false`，来源 `github:akinokoiri/grok-build-zh`。
+- `grok-zh update --check --json`：`currentVersion=1.0.41-zh.1`，`latestVersion=1.0.41-zh.1`，`updateAvailable=false`，来源 `github:akinokoiri/grok-build-zh`。
 
 ## 本次已发布修复
 
@@ -72,6 +72,8 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 2026-09-19 `v1.0.35-zh.1` 发布任务约 48 分 55 秒：正式编译 41 分 16 秒，Release 测试 3 分 58 秒。比 `v1.0.24-zh.1` 的 51 分 20 秒略短，正式编译仍远长于校验用的 `cargo check`。
 
+2026-09-27 [PR #3 Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/36315448800) 耗时 11 分 41 秒通过。[v1.0.41-zh.1 发布任务](https://github.com/akinokoiri/grok-build-zh/actions/runs/36317253581) 约 46 分 48 秒：正式编译 38 分 24 秒，Release 测试约 4 分钟。本机已实测通过更新脚本完成替换与验证。
+
 ## 本机维护环境
 
 - Rustup 1.29.0，Rust/Cargo 1.94.0（MSVC x64，minimal profile）。
@@ -80,9 +82,9 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 ## 下一次任务建议顺序
 
-1. （已完成）[PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) CI 全绿通过并已成功合并进 `zh-CN`（`d93d183b`）。
-2. 在 GitHub Actions 页面手动触发 `Release Windows x64` 工作流（输入版本号 `1.0.41-zh.1`）构建正式 Release 包。
-3. 发布完成后在退出现有 grok-zh 会话的情况下执行 `grok-zh update`，实测核对本机 1.0.41-zh.1 的 SHA-256 和语言包。
+1. 本机已成功运行 `1.0.41-zh.1`。日常使用期间可留意新上游变动。
+2. 下周末（或有重大官方发布时）拉取 `official/main`，检查是否有重要功能或修复需要跟进。
+3. 继续使用每周同步候选 PR，遵循“静态门禁 -> 宽编译 -> 窄测试 -> 冒烟/发布”标准流程。
 
 ## 已知但非阻塞事项
 
