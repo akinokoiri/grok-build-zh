@@ -20,11 +20,11 @@
 - 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
 - ZIP SHA-256：`0ec23aa04fdaed283e8155fda2081d6d5cde8bb3e812b7a56832dca70ed5cba6`
 - 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
-- 本机报告版本：`grok 1.0.24-zh.1 (f089b5adbda5) [stable]`（尚未替换）
-- 本机可执行文件 SHA-256：`0CD2CF41A4FE2D4D51B5D8E4EE5F07B0D31BC5AB52EC136D3A2B552E9951EE28`
-- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（448 条；源码 449 条，仅缺 `mode.ask`，无用户自定义条目）
+- 本机报告版本：`grok 1.0.35-zh.1 (58e02c2ea2d6) [alpha]`（已完成替换）
+- 本机可执行文件 SHA-256：`9504AAFF7E20E77E65373AEA5D8265A034509CEDB3142D9E8746C74ADB10E4C5`
+- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（449 条，已含 `mode.ask`，无用户自定义条目）
 - 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- `grok-zh update --check --json`：`currentVersion=1.0.24-zh.1`，`latestVersion=1.0.35-zh.1`，`updateAvailable=true`，来源 `github:akinokoiri/grok-build-zh`。
+- `grok-zh update --check --json`：`currentVersion=1.0.35-zh.1`，`latestVersion=1.0.35-zh.1`，`updateAvailable=false`，来源 `github:akinokoiri/grok-build-zh`。
 
 ## 本次已发布修复
 
@@ -77,8 +77,8 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 ## 下一次任务建议顺序
 
-1. 退出当前 grok-zh 会话后执行 `grok-zh update`，确认本机版本为 `1.0.35-zh.1`，再把本文件的本机 SHA 和语言包条数改成安装后的实测值。
-2. 获取 `official/main`，确认是否有值得同步的重要变更。
+1. （已完成）本机已更新为 `1.0.35-zh.1`，可执行文件 SHA-256 与语言包条数已实测核准。
+2. 获取 `official/main`，确认是否有值得同步的重要变更。（已探查：上游跃迁至 1.0.41，包含 3 个 monorepo commit）。
 3. 使用每周同步候选 PR，不自动合并、不自动发布。
 
 ## 已知但非阻塞事项
