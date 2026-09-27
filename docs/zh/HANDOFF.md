@@ -1,14 +1,17 @@
 # 当前交接
 
-更新时间：2026-09-19（Asia/Shanghai）
+更新时间：2026-09-27（Asia/Shanghai）
 
 ## 当前结论
 
-项目仅维护 Windows 11 x64 个人汉化发行版。[PR #2](https://github.com/akinokoiri/grok-build-zh/pull/2) 已 merge 进 `zh-CN` 为 `58e02c2e`，同步官方 `a28ee2b2`（Grok Build 1.0.35），`SOURCE_REV` 为 `e8563f8f182296ebb53cadb3e1eab7615d76408e`。`v1.0.35-zh.1` 已从该提交发布，非 prerelease。官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。
+项目仅维护 Windows 11 x64 个人汉化发行版。上周发布的 `v1.0.35-zh.1`（构建提交 `58e02c2e`）已在本机前台执行安装脚本实测完成替换与版本校验。
 
-合并时 5 个 pager UI 冲突已按官方新逻辑解决，并接回集中语言包。新增 `mode.ask`（询问）。`xai-grok-shell` 的 `test-support` 补上对 `xai-grok-workspace/test-support` 的转发，否则 pager 测试编不过官方 `WorkspaceOps::for_test`。`/memory`、`/flush`、`/dream` 说明已在语言包中。
-
-本机仍运行 `v1.0.24-zh.1`：安装器无法替换正在使用的 `grok-zh.exe`。语言包没有用户自定义条目。退出当前会话后执行 `grok-zh update` 即可安装。
+官方上游本周已跃迁至 1.0.41（`f0e3be11`，`SOURCE_REV` 为 `036a5d8348cd744767cd0b08518ab17bf608fa7f`）。本周同步候选 [PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) 已由分支 `sync/official-1.0.41` 创建：
+- 解决了 3 处合并冲突（`settings_modal/render.rs` 适配多行换行与生命周期、`Cargo.toml` 官方合入 `test-support`、`slash_commands.rs` 统一接入 `available_command` 汉化）。
+- 集中语言包新增 `dashboard_preview`（看板预览）与 `subagent_model_inheritance`（子代理模型继承）条目，总词条数由 449 增至 453 条，翻译审计通过。
+- 更新 `find-msvc-tools` 至 0.1.14，修复 Windows MSVC 环境下 `cc` 编译类型不匹配。
+- 本地最小验证矩阵全部通过（`audit-translations`、`cargo fmt`、`i18n` 单元测试、`dependency_tests`、`cargo check -p xai-grok-pager-bin`）。
+- 官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。PR 保持不自动合并、不自动发布。
 
 `zh-CN` 仍是远端默认维护分支。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
 
@@ -77,9 +80,10 @@ Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/ru
 
 ## 下一次任务建议顺序
 
-1. （已完成）本机已更新为 `1.0.35-zh.1`，可执行文件 SHA-256 与语言包条数已实测核准。
-2. 获取 `official/main`，确认是否有值得同步的重要变更。（已探查：上游跃迁至 1.0.41，包含 3 个 monorepo commit）。
-3. 使用每周同步候选 PR，不自动合并、不自动发布。
+1. 确认 [PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) 的 GitHub Actions Windows CI 校验通过。
+2. 合并 PR #3 进 `zh-CN`。
+3. 手动触发 `Release Windows x64` 工作流发布 `v1.0.41-zh.1`。
+4. 发布完成后在退出现有 grok-zh 会话的情况下执行 `grok-zh update`，实测核对本机 1.0.41-zh.1 的 SHA-256 和语言包。
 
 ## 已知但非阻塞事项
 
