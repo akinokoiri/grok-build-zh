@@ -1,101 +1,55 @@
 # 当前交接
 
-更新时间：2026-10-03（Asia/Shanghai）
+更新时间：2026-10-04（Asia/Shanghai）
 
-## 本周同步（进行中）
-
-已在 `codex/sync-official-1.0.45` 合并官方公开源码 `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`（1.0.45，`SOURCE_REV` 为 `559751fdcec02d413e4c57c8832ab275e4f44980`）。官方发布说明已到 1.0.46，但公开源码尚未跟进，不将它计入本次构建。
-
-- 解决每周同步任务发现的 7 处冲突；采用官方 cloud-config 依赖、设置分类渲染与实际服务模型显示逻辑，保留集中汉化和个人更新边界。
-- 新增 `/context-window` 描述、窗口选项及选择器标题汉化，语言包 461 条；Auto-review 模式标记改为“自动审查”，推理强度汉化随上游移动到模型标签生成处。
-- 待 Windows 校验、PR 合并和 `Release Windows x64` 正式发布门禁通过后发布 `v1.0.45-zh.1`。
-- 当前已发布与本机安装仍是下节记录的 `v1.0.41-zh.1`；同步完成后更新本交接，不能把源码合并当作已安装。
 ## 当前结论
 
-项目仅维护 Windows 11 x64 个人汉化发行版。上周发布的 `v1.0.35-zh.1`（构建提交 `58e02c2e`）已在本机前台执行安装脚本实测完成替换与版本校验。
+Windows 11 x64 个人汉化版已从 `1.0.41-zh.1` 同步、发布并在本机安装为 `1.0.45-zh.1`。安装器完成 SHA-256 校验、程序替换及版本冒烟；本机显式更新检查确认已是最新版，来源仍为 `github:akinokoiri/grok-build-zh`。
 
-官方上游本周已跃迁至 1.0.41（`f0e3be11`，`SOURCE_REV` 为 `036a5d8348cd744767cd0b08518ab17bf608fa7f`）。本周同步 [PR #3](https://github.com/akinokoiri/grok-build-zh/pull/3) 已由分支 `sync/official-1.0.41` 合并进 `zh-CN`（合并提交 `d93d183b`）：
-- CI 校验工作流（run `36315448800`）耗时 11 分 41 秒全绿通过。
-- 解决了 3 处合并冲突（`settings_modal/render.rs` 适配多行换行与生命周期、`Cargo.toml` 采纳官方 `test-support`、`slash_commands.rs` 统一接入 `available_command` 汉化）。
-- 集中语言包新增 `dashboard_preview`（看板预览）与 `subagent_model_inheritance`（子代理模型继承）条目，总词条数由 449 增至 453 条，翻译审计通过。
-- 更新 `find-msvc-tools` 至 0.1.14，修复 Windows MSVC 环境下 `cc` 编译类型不匹配。
-- 官方后台更新仍硬关闭，显式更新仅使用本仓库 Release。PR 合并不触发自动发布，待手动运行 `Release Windows x64` 发布 `v1.0.41-zh.1`。
+- 同步 [PR #4](https://github.com/akinokoiri/grok-build-zh/pull/4) 已合并，维护分支和正式构建提交为 `39f8c78f1607726f283f59b7a377cdf8f75c43b9`。
+- 官方公开源码：`2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`，版本 `1.0.45`。
+- `SOURCE_REV`：`559751fdcec02d413e4c57c8832ab275e4f44980`，是官方内部源码快照标识，不是个人版构建提交。
+- 本轮查询时官方发布说明已到 `1.0.46`，公开源码尚未跟进；本次发行不包含该版本的新增修复。
 
-`zh-CN` 仍是远端默认维护分支。`legacy/full-fork-2026-08-29` 保留旧完整分支，不要删除。
+`zh-CN` 是 GitHub 默认维护分支；`official/main` 跟踪官方源码。`legacy/full-fork-2026-08-29` 是旧完整分支保留点，不要删除。
+
+## 本次变更
+
+- 纳入 Windows 剪贴板并发崩溃、非剪贴板粘贴误附旧图片、同文件并发编辑等修复。
+- 纳入 `/context-window`、模型选择时的窗口选项、自定义子代理选择、MCP token 文件按请求重读和子代理等待状态改进。
+- 解决每周同步任务发现的 7 处冲突：采用官方 cloud-config 依赖、设置分类渲染及实际服务模型显示逻辑，保留集中汉化和个人更新边界。
+- 新增上下文窗口命令、窗口选项和选择器标题汉化；模式标记适配 Auto-review；推理强度汉化移入上游新的模型标签生成函数。
+- `ZH_VERSION` 的官方提交记录已校正为 `2bdd1d6a`。官方后台更新仍硬关闭，显式更新仍只读本仓库 Release。
 
 ## 已发布与本机状态
 
-- Release：`v1.0.41-zh.1`（2026-09-27 20:38，北京时间；非 prerelease，已设为 latest）
-- 发布页：<https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.41-zh.1>
-- 构建提交：`fa4bb613`
-- 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`
-- ZIP SHA-256：`5734d67e32f3f1a1d44b59fc86cd07f052e7da590e4c29589b1c935531bd0fb6`
-- 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`
-- 本机报告版本：`grok 1.0.41-zh.1 (fa4bb613d99f) [alpha]`（已完成替换）
-- 本机可执行文件 SHA-256：`13339F19684FDC4D0E2E774045037C928F28A335EC2049C998F589CB009E96E8`
-- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`（453 条，已含 `dashboard_preview` 与 `subagent_model_inheritance`，无用户自定义条目）
-- 本机更新脚本：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`
-- `grok-zh update --check --json`：`currentVersion=1.0.41-zh.1`，`latestVersion=1.0.41-zh.1`，`updateAvailable=false`，来源 `github:akinokoiri/grok-build-zh`。
+- Release：[v1.0.45-zh.1](https://github.com/akinokoiri/grok-build-zh/releases/tag/v1.0.45-zh.1)，2026-10-04 00:53（北京时间）；非 prerelease，已设为 latest。
+- 资产：`grok-zh-x86_64-pc-windows-msvc.zip` 及其 `.sha256`，均由正式发布工作流生成。
+- ZIP SHA-256：`db481eba7eb391b428d31949d9bf3dfe7923fc921f9d81766440135128080c1b`。
+- 本机命令：`C:\Users\akino\.grok\bin\grok-zh.exe`。
+- 实测版本：`grok 1.0.45-zh.1 (39f8c78f1607) [alpha]`。
+- 本机程序 SHA-256：`9CCC8E7B815BE6A870584796E8151FBDB9E827630F3F39BE9625638AA27B4079`。
+- 本机语言包：`C:\Users\akino\.grok\i18n\zh-CN.json`，461 条，与当前源码文件哈希一致；安装前已确认旧文件无自定义词条。
+- 本机安装器：`C:\Users\akino\.grok\bin\install-grok-zh.ps1`。
+- `grok-zh update --check --json` 实测：`currentVersion=1.0.45-zh.1`，`latestVersion=1.0.45-zh.1`，`updateAvailable=false`，来源 `github:akinokoiri/grok-build-zh`。
+- 用户已退出旧程序，安装脚本在前台实测完成；上述验证不代表已人工遍历全部 TUI 交互。
 
-## 本次已发布修复
+## 验证与编译基线
 
-2026-09-19 同步官方 1.0.24 → 1.0.35。用户可见变化包括 Windows ProjFS 启动崩溃修复、`grok clone` 反斜杠问题、`/memory` 弹窗、会话头、MCP 展示、`/btw` 句中提问等。个人版保留集中语言包，新增询问模式标记。
+- [PR Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/37135157259)：固定候选提交 `b42c1423324651f1784a4affa491644dad201f5c`，全部通过，作业 11 分 50 秒；应用编译检查 8 分 16 秒。
+- 翻译审计、72 个内置动作覆盖、安装器成功/回滚/版本校验用例、格式、语言包加载测试和 Windows protobuf 回归测试通过。
+- [正式发布](https://github.com/akinokoiri/grok-build-zh/actions/runs/37135985366)：固定合并提交 `39f8c78f`；正式优化编译 36 分 54 秒，Release 测试 2 分 10 秒，版本冒烟、打包及发布均通过。
+- 相对 `official/main` 的个人补丁 `git diff --check` 通过。上游导入的 changelog 和测试夹具有原生空白告警，保留原样，不清理语义可能依赖空白的夹具。
 
-验证：[PR Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354593) 和 [正式发布](https://github.com/akinokoiri/grok-build-zh/actions/runs/35439173351) 均成功，包括静态门禁、Release 编译、语言包测试、protobuf 回归、版本冒烟和资产上传。本机因 `grok-zh.exe` 正在运行未能替换，需退出后执行 `grok-zh update`。
+工作流使用 `sccache 0.17.0` 缓存编译单元，Cargo 缓存不保存 `target/`，`CARGO_INCREMENTAL=0`。发布顺序是静态门禁 → 最终 release-dist 宽编译 → Release 窄测试 → 冒烟/发布。不要把约 12 分钟的 `cargo check` 当作正式发布耗时。
 
-## 汉化与门禁快照
+对照：2026-09-27 的 `v1.0.41-zh.1` 发布约 46 分 48 秒，正式编译 38 分 24 秒；更早跨版本发布约 49–51 分钟。不同上游改动和特性图会影响缓存命中。
 
-集中式语言包源码和 Release 包内有 449 条；本机外部语言包仍为 448 条，待安装后替换：
+## 后续与已知边界
 
-- 25 个内置斜杠命令说明已覆盖（含 `/memory`、`/flush`、`/dream`）。
-- 72 个内置动作/快捷键说明已覆盖。
-- 欢迎页菜单、会话与看板模式标记（始终批准/自动/计划/询问/批注）、Grok 4.6 公告、10 条当前官方轮换提示、推理强度和发布通道已覆盖；未知的未来远端文本保持英文回退，不做运行时机器翻译。
-- 审计脚本报告 301 个高置信英语候选。这是供 LLM 逐批审阅的队列，不表示应当机械地全部翻译；第三方、协议、测试和诊断文本必须继续排除。
+1. 日常使用已可直接运行新版 `grok-zh`；下次同步先核对公开源码是否已包含 1.0.46 或更新版本。
+2. 当前语言包 461 条；审计覆盖 26 个可发现的内置命令描述和 72 个内置动作。审计仍报告 305 个高置信英语候选，这是渐进审阅队列，不要求清零。
+3. 新的子代理等待状态及部分 Auto-review 设置枚举、提示仍保留英文，列入后续汉化；第三方内容、协议字段、测试夹具和诊断日志不翻译。
+4. 未优化的本地 debug 程序曾在本机执行 `version` 时栈溢出；正式 Release profile 冒烟正常，发行始终以工作流产物为准。
 
-本地翻译审计当前通过。核心入口：
-
-- `crates/codegen/xai-grok-shared/src/i18n.rs`
-- `crates/codegen/xai-grok-shared/i18n/zh-CN.json`
-- `crates/codegen/xai-grok-shared/i18n/schema.json`
-- `scripts/audit-translations.ps1`
-
-## CI 状态与耗时基线
-
-Windows 校验和发布使用 `sccache 0.17.0`，Cargo 注册表由 `Swatinem/rust-cache` 缓存，但不缓存 `target/`。`CARGO_INCREMENTAL=0` 是为了保证编译任务可被 sccache 命中。
-
-2026-08-29 普通校验对照：
-
-- 冷运行：19 分 56 秒。
-- 缓存重跑：11 分 55 秒。
-- 1637 个可缓存 Rust 任务中命中 1440 个，命中率 87.97%。
-- 固定 Action 版本后的最终验证约 12 分 42 秒，命中率 89.37%，无 sccache 错误。
-
-`v1.0.12-zh.2` 是启用独立 Release 参数后的首轮冷发布，实测总耗时 57 分 02 秒：旧 `Release gates` 顺序耗时 20 分 22 秒，最终 `release-dist` 构建又耗时 33 分 58 秒；sccache 为 0/1639 命中。门禁与最终构建实际上用了不同特性图，因此没有实现注释声称的依赖复用。发布后已把工作流顺序调整为“静态门禁 -> 最终 `release-dist` 构建 -> Release 测试 -> 冒烟/发布”，让窄测试复用宽构建；下一次发布需记录暖缓存实测，不能继续沿用旧的 12 分钟估计。
-
-不要把首次冷编译视作稳定耗时；上游大改、版本/特性参数变化会自然降低命中率。
-
-2026-09-12 本轮最终 Windows 校验耗时 10 分 32 秒；`v1.0.24-zh.1` 发布任务约 51 分 20 秒，其中正式编译 44 分 57 秒，Release 测试 4 分 01 秒。合并后的同内容校验无需由主代理高频轮询；需要跨会话监控时必须确认持久调度和唤醒路径，不能仅凭临时子代理承诺持续监控。
-
-2026-09-19 [PR #2 Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354593) 成功，check 作业 15 分 56 秒；其中 `cargo check -p xai-grok-pager-bin` 约 11 分 02 秒。[翻译审计](https://github.com/akinokoiri/grok-build-zh/actions/runs/35438354529) 18 秒通过。这次上游跨 1.0.24 到 1.0.35，编译比上次 10 分 32 秒的同内容校验更久。
-
-2026-09-19 `v1.0.35-zh.1` 发布任务约 48 分 55 秒：正式编译 41 分 16 秒，Release 测试 3 分 58 秒。比 `v1.0.24-zh.1` 的 51 分 20 秒略短，正式编译仍远长于校验用的 `cargo check`。
-
-2026-09-27 [PR #3 Windows 校验](https://github.com/akinokoiri/grok-build-zh/actions/runs/36315448800) 耗时 11 分 41 秒通过。[v1.0.41-zh.1 发布任务](https://github.com/akinokoiri/grok-build-zh/actions/runs/36317253581) 约 46 分 48 秒：正式编译 38 分 24 秒，Release 测试约 4 分钟。本机已实测通过更新脚本完成替换与验证。
-
-## 本机维护环境
-
-- Rustup 1.29.0，Rust/Cargo 1.94.0（MSVC x64，minimal profile）。
-- Protobuf Compiler 29.3（Winget `Google.Protobuf`）。
-- GitHub CLI 2.98.0（Winget `GitHub.cli`）；未写入独立 gh 登录，自动化通过现有 Git Credential Manager 凭据临时提供 `GH_TOKEN`。
-
-## 下一次任务建议顺序
-
-1. 本机已成功运行 `1.0.41-zh.1`。日常使用期间可留意新上游变动。
-2. 下周末（或有重大官方发布时）拉取 `official/main`，检查是否有重要功能或修复需要跟进。
-3. 继续使用每周同步候选 PR，遵循“静态门禁 -> 宽编译 -> 窄测试 -> 冒烟/发布”标准流程。
-
-## 已知但非阻塞事项
-
-- 301 个英语候选需要按功能区渐进审阅，不能用“清零队列”作为目标。
-- 未优化的本地 debug 可执行文件在此机器执行 `version` 时曾栈溢出，Release profile 正常；正式发布始终以 Release 工作流产物为准。
-- `SOURCE_REV` 是上游源码快照标识；`ZH_VERSION` 记录个人发行策略。不要把 Git 同步提交号、上游源码快照号和个人 Release 版本混为一个字段。
+维护流程见 [MAINTENANCE.md](MAINTENANCE.md)，工程边界和最小验证矩阵见 [AGENTS.md](../../AGENTS.md)。本机维护环境仍为 Rust/Cargo 1.94.0、Rustup 1.29.0、Protobuf 29.3、GitHub CLI 2.98.0；自动化临时使用现有 Git Credential Manager 凭据，不写入独立 gh 登录。
