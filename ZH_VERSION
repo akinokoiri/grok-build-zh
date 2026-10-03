@@ -1,5 +1,5 @@
 track = "official/main"
-official_commit = "37949780"
+official_commit = "2bdd1d6a"
 version_scheme = "<upstream>-zh.<revision>"
 platform = "x86_64-pc-windows-msvc"
 background_update = false

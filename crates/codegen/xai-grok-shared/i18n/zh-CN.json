@@ -394,7 +394,7 @@
     "welcome.tip.prefix": "提示：",
     "welcome.mode.always_approve": "始终批准",
     "mode.always_approve": "始终批准",
-    "mode.auto": "自动",
+    "mode.auto": "自动审查",
     "mode.plan": "计划",
     "mode.ask": "询问",
     "mode.plan_approval": "计划审批",
@@ -454,6 +454,14 @@
     "context.count.server": "个服务器",
     "context.count.servers": "个服务器",
     "context.count.file": "个文件",
-    "context.count.files": "个文件"
+    "context.count.files": "个文件",
+    "command.context-window.description": "设置当前模型的上下文窗口",
+    "context_window.active": "（当前）",
+    "context_window.default": "默认 · ",
+    "source.Pick context window": "选择上下文窗口",
+    "source.Pick model": "选择模型",
+    "source.Pick reasoning effort": "选择推理强度",
+    "source.Pick theme": "选择主题",
+    "source.Pick option": "选择选项"
   }
 }
