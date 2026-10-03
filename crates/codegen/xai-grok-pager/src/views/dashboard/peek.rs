@@ -369,12 +369,12 @@ fn paint_peek_config_badge(
         .map(|label| xai_grok_shared::i18n::translate(&format!("mode.{label}"), label));
     let always_approve_label =
         xai_grok_shared::i18n::translate("mode.always_approve", "always-approve");
-    let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
+    let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto-review");
     let mut flags = mode_flags(mode_label.as_deref(), permission, theme);
     for flag in &mut flags {
         flag.text = match flag.text {
             "always-approve" => always_approve_label.as_ref(),
-            "auto" => auto_label.as_ref(),
+            "auto-review" => auto_label.as_ref(),
             _ => flag.text,
         };
     }
@@ -1087,7 +1087,7 @@ mod tests {
         };
 
         let plan_label = xai_grok_shared::i18n::translate("mode.plan", "plan");
-        let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
+        let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto-review");
         let always_approve_label =
             xai_grok_shared::i18n::translate("mode.always_approve", "always-approve");
 

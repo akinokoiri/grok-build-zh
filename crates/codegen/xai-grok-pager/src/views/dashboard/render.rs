@@ -2100,7 +2100,7 @@ fn paint_dispatch_config_badge(
         .unwrap_or_default();
 
     let plan_label = xai_grok_shared::i18n::translate("mode.plan", "plan");
-    let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto");
+    let auto_label = xai_grok_shared::i18n::translate("mode.auto", "auto-review");
     let always_approve_label =
         xai_grok_shared::i18n::translate("welcome.mode.always_approve", "always-approve");
 

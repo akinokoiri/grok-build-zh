@@ -54,7 +54,7 @@ foreach ($Match in [regex]::Matches($ShellSource, 'name:\s*"([a-z0-9-]+)"')) {
 
 # Commands whose name is selected dynamically or declared through a macro are
 # not discoverable by the conservative source regex above.
-foreach ($Name in @("exit", "fullscreen", "minimal", "hooks", "marketplace", "skills")) {
+foreach ($Name in @("exit", "fullscreen", "minimal", "hooks", "marketplace", "skills", "context-window")) {
     [void]$CommandNames.Add($Name)
 }
 
@@ -98,6 +98,13 @@ foreach ($Match in [regex]::Matches($PaletteBlock, 'label:\s*"([^"]+)"')) {
 }
 
 $RequiredIds = @(
+    "context_window.active",
+    "context_window.default",
+    "source.Pick context window",
+    "source.Pick model",
+    "source.Pick reasoning effort",
+    "source.Pick theme",
+    "source.Pick option",
     "source.Context usage",
     "source.Usage limit",
     "source.Session info",
